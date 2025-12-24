@@ -1,4 +1,5 @@
 #include "MenuAccessibility.h"
+#include "SettingsMenuAccessibility.h"
 #include <SRAL.h>
 #include <RE/M/MessageBoxMenu.h>
 #include <RE/M/MessageBoxData.h>
@@ -68,16 +69,51 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
         if (auto* taskInterface = F4SE::GetTaskInterface()) {
             taskInterface->AddTask([this]() {
                 CheckAndSpeakSelection();
+                SettingsMenuAccessibility::GetSingleton()->CheckSelection(m_mainMenuOpen, m_pauseMenuOpen);
                 CheckForConfirmationDialog();
             });
         }
     }
 
-    // Check for Enter key (0x0D) - may show dialogs or we may need to read existing dialog
+    // Handle left/right arrows for settings value changes
+    // Also handle A/D keys which are used for left/right in menus
+    bool isValueChangeKey = false;
+    if (device == RE::INPUT_DEVICE::kKeyboard) {
+        isValueChangeKey = (idCode == 0x25 || idCode == 0x27 ||  // Left, Right arrows
+                            idCode == 0x41 || idCode == 0x44);    // A, D keys
+    } else if (device == RE::INPUT_DEVICE::kGamepad) {
+        isValueChangeKey = (idCode == 0x0004 || idCode == 0x0008);  // DPad Left, Right
+    }
+
+    if (isValueChangeKey) {
+        REX::DEBUG("Value change key pressed: device={} idCode=0x{:X}", static_cast<int>(device), idCode);
+        if (auto* taskInterface = F4SE::GetTaskInterface()) {
+            // Double-defer to give the game time to update the value in Scaleform
+            taskInterface->AddTask([this]() {
+                if (auto* taskInterface2 = F4SE::GetTaskInterface()) {
+                    taskInterface2->AddTask([this]() {
+                        SettingsMenuAccessibility::GetSingleton()->CheckValueChange(m_mainMenuOpen, m_pauseMenuOpen);
+                    });
+                }
+            });
+        }
+    }
+
+    // Check for Enter key (0x0D) - may show dialogs, enter settings options, etc.
     if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x0D) {
         if (auto* taskInterface = F4SE::GetTaskInterface()) {
             taskInterface->AddTask([this]() {
+                SettingsMenuAccessibility::GetSingleton()->OnEnterPressed(m_mainMenuOpen, m_pauseMenuOpen);
                 CheckForConfirmationDialog();
+            });
+        }
+    }
+
+    // Check for Escape key (0x1B) - may exit settings options view
+    if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x1B) {
+        if (auto* taskInterface = F4SE::GetTaskInterface()) {
+            taskInterface->AddTask([]() {
+                SettingsMenuAccessibility::GetSingleton()->OnEscapePressed();
             });
         }
     }
@@ -141,10 +177,12 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
         m_mainMenuOpen = false;
         m_mainMenuAnnounced = false;
         m_lastMainMenuSelection = -1;
+        SettingsMenuAccessibility::GetSingleton()->Reset();
     } else if (a_menuName == "PauseMenu"sv) {
         m_pauseMenuOpen = false;
         m_pauseMenuAnnounced = false;
         m_lastPauseMenuSelection = -1;
+        SettingsMenuAccessibility::GetSingleton()->Reset();
     } else if (a_menuName == "MessageBoxMenu"sv) {
         m_messageBoxOpen = false;
     }
