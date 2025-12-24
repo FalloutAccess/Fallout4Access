@@ -97,17 +97,36 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
 
     if (a_menuName == "MainMenu"sv) {
         m_mainMenuOpen = true;
+        m_mainMenuAnnounced = false;
         m_lastMainMenuSelection = -1;
-        SpeakText("Main Menu");
 
-        // Speak initial selection
-        CheckAndSpeakSelection();
+        // Check for splash screen "Press any button to start" text
+        // TODO: This text is announced as soon as MainMenu opens, which happens while the
+        // logo/intro video is still playing. Ideally we should wait until the video ends
+        // and the splash screen is actually visible before announcing.
+        if (auto menu = RE::UI::GetSingleton()->GetMenu("MainMenu"sv)) {
+            if (menu->uiMovie) {
+                Scaleform::GFx::Value splashText;
+                if (menu->uiMovie->GetVariable(&splashText, "root.Menu_mc.SplashScreenHolder_mc.SplashScreenText_tf.text")) {
+                    if (splashText.IsString()) {
+                        std::string text = splashText.GetString();
+                        if (!text.empty()) {
+                            SpeakText(CleanLocalizationString(text));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Menu will be announced when content becomes available (handles splash screen/video)
+        TryAnnounceMenu("MainMenu", "Main Menu", MAIN_MENU_LIST_PATH);
     } else if (a_menuName == "PauseMenu"sv) {
         m_pauseMenuOpen = true;
+        m_pauseMenuAnnounced = false;
         m_lastPauseMenuSelection = -1;
-        SpeakText("Pause Menu");
 
-        CheckAndSpeakSelection();
+        // Try to announce if menu is already ready, otherwise will announce on first content detection
+        TryAnnounceMenu("PauseMenu", "Pause Menu", PAUSE_MENU_LIST_PATH);
     } else if (a_menuName == "MessageBoxMenu"sv) {
         m_messageBoxOpen = true;
         if (auto menu = RE::UI::GetSingleton()->GetMenu("MessageBoxMenu"sv)) {
@@ -120,9 +139,11 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
 {
     if (a_menuName == "MainMenu"sv) {
         m_mainMenuOpen = false;
+        m_mainMenuAnnounced = false;
         m_lastMainMenuSelection = -1;
     } else if (a_menuName == "PauseMenu"sv) {
         m_pauseMenuOpen = false;
+        m_pauseMenuAnnounced = false;
         m_lastPauseMenuSelection = -1;
     } else if (a_menuName == "MessageBoxMenu"sv) {
         m_messageBoxOpen = false;
@@ -135,6 +156,9 @@ void MenuAccessibility::CheckAndSpeakSelection()
     if (!ui) return;
 
     if (m_mainMenuOpen) {
+        // Try to announce menu name first if not yet announced
+        TryAnnounceMenu("MainMenu", "Main Menu", MAIN_MENU_LIST_PATH);
+
         if (auto menu = ui->GetMenu("MainMenu"sv)) {
             auto currentSelection = GetSelectedIndex(menu.get(), MAIN_MENU_LIST_PATH);
             REX::INFO("MainMenu selection: current={} last={}", currentSelection, m_lastMainMenuSelection);
@@ -149,6 +173,9 @@ void MenuAccessibility::CheckAndSpeakSelection()
     }
 
     if (m_pauseMenuOpen) {
+        // Try to announce menu name first if not yet announced
+        TryAnnounceMenu("PauseMenu", "Pause Menu", PAUSE_MENU_LIST_PATH);
+
         if (auto menu = ui->GetMenu("PauseMenu"sv)) {
             auto currentSelection = GetSelectedIndex(menu.get(), PAUSE_MENU_LIST_PATH);
             REX::INFO("PauseMenu selection: current={} last={}", currentSelection, m_lastPauseMenuSelection);
@@ -402,5 +429,62 @@ void MenuAccessibility::SpeakMessageBox(RE::IMenu* a_menu)
 
     if (!speechText.empty()) {
         SpeakText(CleanLocalizationString(speechText));
+    }
+}
+
+bool MenuAccessibility::IsMenuPanelVisible(RE::IMenu* a_menu, const std::string& a_panelPath)
+{
+    if (!a_menu || !a_menu->uiMovie) {
+        return false;
+    }
+
+    Scaleform::GFx::Value panel;
+    if (!a_menu->uiMovie->GetVariable(&panel, a_panelPath.c_str())) {
+        return false;
+    }
+
+    if (panel.IsUndefined() || !panel.IsObject()) {
+        return false;
+    }
+
+    Scaleform::GFx::Value visible;
+    if (!panel.GetMember("visible", &visible) || !visible.IsBoolean()) {
+        return false;
+    }
+
+    return visible.GetBoolean();
+}
+
+void MenuAccessibility::TryAnnounceMenu(const std::string& a_menuName, const std::string& a_announcement, const std::string& a_listPath)
+{
+    // Check if already announced
+    bool* announced = nullptr;
+    if (a_menuName == "MainMenu") {
+        announced = &m_mainMenuAnnounced;
+    } else if (a_menuName == "PauseMenu") {
+        announced = &m_pauseMenuAnnounced;
+    }
+
+    if (!announced || *announced) {
+        return;  // Already announced or unknown menu
+    }
+
+    auto ui = RE::UI::GetSingleton();
+    if (!ui) {
+        return;
+    }
+
+    auto menu = ui->GetMenu(a_menuName.c_str());
+    if (!menu) {
+        return;
+    }
+
+    // Check if the menu has valid content (selected index >= 0 means list is populated)
+    auto selectedIndex = GetSelectedIndex(menu.get(), a_listPath);
+    if (selectedIndex >= 0) {
+        // Menu has content, announce it
+        *announced = true;
+        REX::INFO("{} is ready (selectedIndex={}), announcing", a_menuName, selectedIndex);
+        SpeakText(a_announcement);
     }
 }
