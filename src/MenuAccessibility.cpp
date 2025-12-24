@@ -1,5 +1,6 @@
 #include "MenuAccessibility.h"
 #include "SettingsMenuAccessibility.h"
+#include "SaveLoadMenuAccessibility.h"
 #include <SRAL.h>
 #include <RE/M/MessageBoxMenu.h>
 #include <RE/M/MessageBoxData.h>
@@ -70,6 +71,7 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
             taskInterface->AddTask([this]() {
                 CheckAndSpeakSelection();
                 SettingsMenuAccessibility::GetSingleton()->CheckSelection(m_mainMenuOpen, m_pauseMenuOpen);
+                SaveLoadMenuAccessibility::GetSingleton()->CheckSelection(m_mainMenuOpen, m_pauseMenuOpen);
                 CheckForConfirmationDialog();
             });
         }
@@ -178,11 +180,13 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
         m_mainMenuAnnounced = false;
         m_lastMainMenuSelection = -1;
         SettingsMenuAccessibility::GetSingleton()->Reset();
+        SaveLoadMenuAccessibility::GetSingleton()->Reset();
     } else if (a_menuName == "PauseMenu"sv) {
         m_pauseMenuOpen = false;
         m_pauseMenuAnnounced = false;
         m_lastPauseMenuSelection = -1;
         SettingsMenuAccessibility::GetSingleton()->Reset();
+        SaveLoadMenuAccessibility::GetSingleton()->Reset();
     } else if (a_menuName == "MessageBoxMenu"sv) {
         m_messageBoxOpen = false;
     }
