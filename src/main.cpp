@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "MenuAccessibility.h"
+#include "ObjectScanner.h"
 #include <SRAL.h>
 
 F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
@@ -24,6 +25,9 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 
     // Register menu accessibility event handler
     MenuAccessibility::GetSingleton()->Register();
+
+    // Register object scanner for gameplay
+    ObjectScanner::GetSingleton()->Register();
 
     return true;
 }
