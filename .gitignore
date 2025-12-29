@@ -12,3 +12,6 @@ vs*/
 # files
 *.zip
 compile_commands.json
+
+.claude/settings.local.json                                                                                                                                                                              
+lib/SRAL/ 

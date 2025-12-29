@@ -42,6 +42,7 @@ private:
     void SelectPrevious();
     void AnnounceCurrentObject();
     void LookAtCurrentObject();
+    void WalkToCurrentObject();
 
     // Categories
     void CycleCategory();

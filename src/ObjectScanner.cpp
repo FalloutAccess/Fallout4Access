@@ -1,7 +1,9 @@
 #include "ObjectScanner.h"
+#include "AutoWalk.h"
 #include <SRAL.h>
 #include <algorithm>
 #include <cmath>
+#include <REX/W32/USER32.h>
 
 // Static storage for singleton
 static RE::PlayerControlsData s_dummyData{};
@@ -42,6 +44,9 @@ void ObjectScanner::Register()
 
 bool ObjectScanner::ShouldHandleEvent(const RE::InputEvent* a_event)
 {
+    // Check AutoWalk arrival on every input event (frequent update)
+    AutoWalk::GetSingleton()->Update();
+
     if (!a_event) return false;
 
     auto* ui = RE::UI::GetSingleton();
@@ -65,6 +70,16 @@ void ObjectScanner::OnButtonEvent(const RE::ButtonEvent* a_event)
         return;
     }
 
+    // Cancel walking on WASD keys
+    if (AutoWalk::GetSingleton()->IsWalking()) {
+        // WASD keys: W=0x57, A=0x41, S=0x53, D=0x44
+        if (idCode == 0x57 || idCode == 0x41 || idCode == 0x53 || idCode == 0x44) {
+            AutoWalk::GetSingleton()->Stop();
+            SpeakText("Stopped");
+            return;
+        }
+    }
+
     if (idCode == NUMPAD_5) {
         REX::INFO("ObjectScanner: Numpad 5 pressed, scanning...");
         ScanAndAnnounce();
@@ -75,9 +90,17 @@ void ObjectScanner::OnButtonEvent(const RE::ButtonEvent* a_event)
         REX::INFO("ObjectScanner: Page Up pressed");
         SelectPrevious();
     } else if (idCode == HOME) {
-        REX::INFO("ObjectScanner: Home pressed");
-        LookAtCurrentObject();
-        AnnounceCurrentObject();
+        // Check if Shift is held using REX::W32 (returns negative if key is down)
+        bool shiftHeld = REX::W32::GetKeyState(REX::W32::VK_SHIFT) < 0;
+
+        if (shiftHeld) {
+            REX::INFO("ObjectScanner: Shift+Home pressed, walking to object");
+            WalkToCurrentObject();
+        } else {
+            REX::INFO("ObjectScanner: Home pressed");
+            LookAtCurrentObject();
+            AnnounceCurrentObject();
+        }
     } else if (idCode == END_KEY) {
         REX::INFO("ObjectScanner: End pressed, cycling category");
         CycleCategory();
@@ -379,6 +402,27 @@ float ObjectScanner::GetDistanceToObject(RE::TESObjectREFR* a_ref)
     if (!player || !a_ref) return -1.0f;
 
     return player->GetPosition().GetDistance(a_ref->GetPosition());
+}
+
+void ObjectScanner::WalkToCurrentObject()
+{
+    if (m_scannedObjects.empty() || m_currentIndex < 0) {
+        SpeakText("No object selected");
+        return;
+    }
+
+    const auto& obj = m_scannedObjects[m_currentIndex];
+    if (!obj.ref || obj.ref->IsDeleted() || obj.ref->IsDisabled()) {
+        SpeakText("Object no longer available");
+        return;
+    }
+
+    SpeakText("Walking to " + obj.name);
+
+    AutoWalk::GetSingleton()->WalkTo(obj.ref, 100.0f, [this]() {
+        LookAtCurrentObject();
+        SpeakText("Arrived");
+    });
 }
 
 void ObjectScanner::SpeakText(const std::string& a_text)
