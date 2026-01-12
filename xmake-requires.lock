@@ -9,7 +9,7 @@
                 commit = "590aa929a0e6ae8ddfde59c8df979a187ca2d8fa",
                 url = "https://gitlab.com/tboox/xmake-repo.git"
             },
-            version = "4.2.0"
+            version = "4.2.1"
         },
         ["ninja#f56260b5"] = {
             repo = {
@@ -22,7 +22,7 @@
         ["spdlog#09c8c173"] = {
             repo = {
                 branch = "master",
-                commit = "590aa929a0e6ae8ddfde59c8df979a187ca2d8fa",
+                commit = "fe66c26b0fe47b9539cc0fb9464857701e7ca9dc",
                 url = "https://gitlab.com/tboox/xmake-repo.git"
             },
             version = "v1.16.0"
