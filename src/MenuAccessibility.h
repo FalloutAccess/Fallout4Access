@@ -45,6 +45,7 @@ private:
     bool m_mainMenuOpen = false;
     bool m_pauseMenuOpen = false;
     bool m_messageBoxOpen = false;
+    bool m_dialogueMenuOpen = false;
     std::int32_t m_lastMainMenuSelection = -1;
     std::int32_t m_lastPauseMenuSelection = -1;
     bool m_inputHandlerRegistered = false;

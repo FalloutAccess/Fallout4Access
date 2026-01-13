@@ -1,6 +1,7 @@
 #include "MenuAccessibility.h"
 #include "SettingsMenuAccessibility.h"
 #include "SaveLoadMenuAccessibility.h"
+#include "DialogueMenuAccessibility.h"
 #include <SRAL.h>
 #include <RE/M/MessageBoxMenu.h>
 #include <RE/M/MessageBoxData.h>
@@ -39,7 +40,7 @@ RE::BSEventNotifyControl MenuAccessibility::ProcessEvent(
 bool MenuAccessibility::ShouldHandleEvent(const RE::InputEvent*)
 {
     // Only handle events when a tracked menu is open
-    return m_mainMenuOpen || m_pauseMenuOpen;
+    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen;
 }
 
 void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
@@ -72,6 +73,9 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
                 CheckAndSpeakSelection();
                 SettingsMenuAccessibility::GetSingleton()->CheckSelection(m_mainMenuOpen, m_pauseMenuOpen);
                 SaveLoadMenuAccessibility::GetSingleton()->CheckSelection(m_mainMenuOpen, m_pauseMenuOpen);
+                if (m_dialogueMenuOpen) {
+                    DialogueMenuAccessibility::GetSingleton()->CheckSelection();
+                }
                 CheckForConfirmationDialog();
             });
         }
@@ -170,6 +174,9 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
         if (auto menu = RE::UI::GetSingleton()->GetMenu("MessageBoxMenu"sv)) {
             SpeakMessageBox(menu.get());
         }
+    } else if (a_menuName == "DialogueMenu"sv) {
+        m_dialogueMenuOpen = true;
+        DialogueMenuAccessibility::GetSingleton()->OnDialogueMenuOpened();
     }
 }
 
@@ -189,6 +196,9 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
         SaveLoadMenuAccessibility::GetSingleton()->Reset();
     } else if (a_menuName == "MessageBoxMenu"sv) {
         m_messageBoxOpen = false;
+    } else if (a_menuName == "DialogueMenu"sv) {
+        m_dialogueMenuOpen = false;
+        DialogueMenuAccessibility::GetSingleton()->OnDialogueMenuClosed();
     }
 }
 
