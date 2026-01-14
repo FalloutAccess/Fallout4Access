@@ -69,7 +69,7 @@ When working with Scaleform UI elements, **do not guess paths**. Instead:
 
 FFDec can export SWF contents including scripts, symbols, and structure which reveals the exact Scaleform paths needed for `GetVariable()` calls.
 
-**Extracted BA2 archives location:** `E:/Games/modding/fallout4extract-ba/`
+**Extracted BA2 archives location:** `E:/Games/modding/Fallout4/fallout4extract-ba/`
 - Decompiled SWFs are in `Interface/*-extracted/scripts/` subdirectories
 
 ### Known Scaleform Paths (MainMenu.swf)

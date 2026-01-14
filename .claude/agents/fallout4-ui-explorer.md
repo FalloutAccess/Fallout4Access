@@ -17,7 +17,7 @@ You are an expert Fallout 4 UI analyst specializing in Scaleform/Flash-based gam
 ## Key Resources
 
 ### Extracted BA2 Archives Location
-`E:/Games/modding/fallout4extract-ba/`
+`E:/Games/modding/Fallout4/fallout4extract-ba/`
 
 ### Decompiled SWF Locations
 Interface SWFs are extracted to `Interface/*-extracted/scripts/` subdirectories. Key files:
