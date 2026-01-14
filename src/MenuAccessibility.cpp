@@ -2,6 +2,7 @@
 #include "SettingsMenuAccessibility.h"
 #include "SaveLoadMenuAccessibility.h"
 #include "DialogueMenuAccessibility.h"
+#include "SPECIALMenuAccessibility.h"
 #include <SRAL.h>
 #include <RE/M/MessageBoxMenu.h>
 #include <RE/M/MessageBoxData.h>
@@ -40,7 +41,7 @@ RE::BSEventNotifyControl MenuAccessibility::ProcessEvent(
 bool MenuAccessibility::ShouldHandleEvent(const RE::InputEvent*)
 {
     // Only handle events when a tracked menu is open
-    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen;
+    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen;
 }
 
 void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
@@ -76,6 +77,9 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
                 if (m_dialogueMenuOpen) {
                     DialogueMenuAccessibility::GetSingleton()->CheckSelection();
                 }
+                if (m_specialMenuOpen) {
+                    SPECIALMenuAccessibility::GetSingleton()->CheckSelection(m_mainMenuOpen, m_pauseMenuOpen);
+                }
                 CheckForConfirmationDialog();
             });
         }
@@ -99,6 +103,9 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
                 if (auto* taskInterface2 = F4SE::GetTaskInterface()) {
                     taskInterface2->AddTask([this]() {
                         SettingsMenuAccessibility::GetSingleton()->CheckValueChange(m_mainMenuOpen, m_pauseMenuOpen);
+                        if (m_specialMenuOpen) {
+                            SPECIALMenuAccessibility::GetSingleton()->CheckValueChange(m_mainMenuOpen, m_pauseMenuOpen);
+                        }
                     });
                 }
             });
@@ -177,6 +184,15 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
     } else if (a_menuName == "DialogueMenu"sv) {
         m_dialogueMenuOpen = true;
         DialogueMenuAccessibility::GetSingleton()->OnDialogueMenuOpened();
+    } else if (a_menuName == "SPECIALMenu"sv) {
+        m_specialMenuOpen = true;
+        REX::INFO("SPECIALMenu opened");
+        // Trigger initial selection check to announce menu and first item
+        if (auto* taskInterface = F4SE::GetTaskInterface()) {
+            taskInterface->AddTask([]() {
+                SPECIALMenuAccessibility::GetSingleton()->CheckSelection(false, false);
+            });
+        }
     }
 }
 
@@ -199,6 +215,10 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
     } else if (a_menuName == "DialogueMenu"sv) {
         m_dialogueMenuOpen = false;
         DialogueMenuAccessibility::GetSingleton()->OnDialogueMenuClosed();
+    } else if (a_menuName == "SPECIALMenu"sv) {
+        m_specialMenuOpen = false;
+        SPECIALMenuAccessibility::GetSingleton()->Reset();
+        REX::INFO("SPECIALMenu closed");
     }
 }
 
