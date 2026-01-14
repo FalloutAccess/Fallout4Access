@@ -48,6 +48,9 @@ add_requires("sral", {configs = {shared = false}})
 local MO2_MODS_PATH = "E:\\Games\\ModOrganizer\\Fallout 4\\mods"
 local MOD_FOLDER_NAME = "fallout4access"
 
+-- Fallout 4 installation path (for Papyrus compiler)
+local FO4_PATH = "E:\\SteamLibrary\\steamapps\\common\\Fallout 4"
+
 -- custom task to show installation info
 task("show-install-path")
     set_menu({
@@ -176,6 +179,15 @@ task("install-mo2")
             end
         end
 
+        -- Copy Data directory contents (preserving directory structure)
+        local data_dir = path.join(os.projectdir(), "Data")
+        local mo2_mod_dir = path.join(MO2_MODS_PATH, MOD_FOLDER_NAME)
+        if os.isdir(data_dir) then
+            print("📂 Installing Data files...")
+            os.cp(path.join(data_dir, "*"), mo2_mod_dir)
+            print("✓ Data files installed")
+        end
+
         print("✓ Installation to MO2 completed!")
         print("📁 Mod folder: " .. path.join(MO2_MODS_PATH, MOD_FOLDER_NAME))
         print("🎮 Enable the mod in Mod Organizer 2 to use it")
@@ -214,6 +226,55 @@ task("build-and-install-mo2")
 
 -- targets
 target("fallout4access")
+    -- compile Papyrus scripts before building
+    before_build(function(target)
+        local compiler = path.join(FO4_PATH, "Papyrus Compiler", "PapyrusCompiler.exe")
+        local flags_file = path.join(FO4_PATH, "Data", "Scripts", "Source", "Base", "Institute_Papyrus_Flags.flg")
+        local base_import = path.join(FO4_PATH, "Data", "Scripts", "Source", "Base")
+        local user_import = path.join(FO4_PATH, "Data", "Scripts", "Source", "User")
+        local project_source = path.join(os.projectdir(), "Data", "Scripts", "Source", "User")
+        local output_dir = path.join(os.projectdir(), "Data", "Scripts")
+
+        if not os.isfile(compiler) then
+            print("⚠️ Papyrus compiler not found at: " .. compiler)
+            print("   Skipping script compilation")
+            return
+        end
+
+        -- Find all .psc files
+        local psc_files = os.files(path.join(project_source, "**.psc"))
+        if #psc_files == 0 then
+            print("📜 No Papyrus scripts to compile")
+            return
+        end
+
+        print("📜 Compiling " .. #psc_files .. " Papyrus script(s)...")
+
+        -- Build import path string
+        local imports = base_import .. ";" .. user_import .. ";" .. project_source
+
+        for _, psc_file in ipairs(psc_files) do
+            local rel_path = path.relative(psc_file, project_source)
+            print("   Compiling: " .. rel_path)
+
+            -- Run compiler with relative path (compiler derives script name from path)
+            local args = {
+                rel_path,
+                "-f=" .. flags_file,
+                "-i=" .. imports,
+                "-o=" .. output_dir
+            }
+
+            local outdata, errdata = os.iorunv(compiler, args, {curdir = project_source})
+            if errdata and #errdata > 0 then
+                print("   ❌ Error: " .. errdata)
+                return
+            end
+        end
+
+        print("✓ Papyrus scripts compiled successfully")
+    end)
+
     -- add dependencies to target
     add_deps("commonlibf4")
     add_packages("sral")
@@ -233,6 +294,9 @@ target("fallout4access")
     add_headerfiles("src/**.h")
     add_includedirs("src")
     set_pcxxheader("src/pch.h")
+
+    -- install Data directory contents (scripts, etc.)
+    add_installfiles("Data/(**)", {prefixdir = ""})
 
     -- show installation path after install
     after_install(function(target)
