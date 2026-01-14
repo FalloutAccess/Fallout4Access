@@ -1,11 +1,26 @@
 #include "pch.h"
+#include "AutoWalk.h"
 #include "MenuAccessibility.h"
 #include "ObjectScanner.h"
 #include <SRAL.h>
 
+void OnF4SEMessage(F4SE::MessagingInterface::Message* a_msg)
+{
+    if (a_msg->type == F4SE::MessagingInterface::kGameDataReady) {
+        // Game data is loaded - initialize AutoWalk (finds GlobalVariables from ESP)
+        AutoWalk::GetSingleton()->Initialize();
+    }
+}
+
 F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 {
     F4SE::Init(a_f4se);
+
+    // Register for F4SE messages (data loaded, etc.)
+    auto* messaging = F4SE::GetMessagingInterface();
+    if (messaging) {
+        messaging->RegisterListener(OnF4SEMessage);
+    }
 
     // Initialize SRAL, excluding SAPI to prefer NVDA/JAWS
     REX::INFO("Initializing SRAL...");

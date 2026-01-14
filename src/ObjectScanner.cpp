@@ -70,10 +70,12 @@ void ObjectScanner::OnButtonEvent(const RE::ButtonEvent* a_event)
         return;
     }
 
-    // Cancel walking on WASD keys
+    // Cancel walking on WASD keys (DirectX scan codes)
     if (AutoWalk::GetSingleton()->IsWalking()) {
-        // WASD keys: W=0x57, A=0x41, S=0x53, D=0x44
-        if (idCode == 0x57 || idCode == 0x41 || idCode == 0x53 || idCode == 0x44) {
+        // WASD scan codes: W=0x11, A=0x1E, S=0x1F, D=0x20
+        // Also Escape=0x01 and Space=0x39
+        if (idCode == 0x11 || idCode == 0x1E || idCode == 0x1F || idCode == 0x20 ||
+            idCode == 0x01 || idCode == 0x39) {
             AutoWalk::GetSingleton()->Stop();
             SpeakText("Stopped");
             return;
@@ -94,8 +96,15 @@ void ObjectScanner::OnButtonEvent(const RE::ButtonEvent* a_event)
         bool shiftHeld = REX::W32::GetKeyState(REX::W32::VK_SHIFT) < 0;
 
         if (shiftHeld) {
-            REX::INFO("ObjectScanner: Shift+Home pressed, walking to object");
-            WalkToCurrentObject();
+            // Toggle: if already walking, stop; otherwise start walking
+            if (AutoWalk::GetSingleton()->IsWalking()) {
+                REX::INFO("ObjectScanner: Shift+Home pressed, stopping walk");
+                AutoWalk::GetSingleton()->Stop();
+                SpeakText("Stopped");
+            } else {
+                REX::INFO("ObjectScanner: Shift+Home pressed, walking to object");
+                WalkToCurrentObject();
+            }
         } else {
             REX::INFO("ObjectScanner: Home pressed");
             LookAtCurrentObject();

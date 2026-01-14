@@ -1,7 +1,7 @@
 #include "AutoWalk.h"
-#include <RE/C/COMMAND_TYPE.h>
 #include <SRAL.h>
 #include <cmath>
+#include <Windows.h>
 
 static AutoWalk* s_singleton = nullptr;
 
@@ -13,9 +13,52 @@ AutoWalk* AutoWalk::GetSingleton()
     return s_singleton;
 }
 
+void AutoWalk::Initialize()
+{
+    if (m_initialized) return;
+
+    // Find the GlobalVariables from fallout4access.esp
+    auto* dataHandler = RE::TESDataHandler::GetSingleton();
+    if (!dataHandler) {
+        REX::WARN("AutoWalk: TESDataHandler not available");
+        return;
+    }
+
+    // Try to find our globals by EditorID
+    for (auto* global : dataHandler->GetFormArray<RE::TESGlobal>()) {
+        if (!global) continue;
+
+        const char* editorID = global->GetFormEditorID();
+        if (!editorID) continue;
+
+        if (strcmp(editorID, "F4A_TargetFormID") == 0) {
+            m_globalTargetFormID = global;
+            REX::INFO("AutoWalk: Found F4A_TargetFormID global");
+        }
+        else if (strcmp(editorID, "F4A_StopDistance") == 0) {
+            m_globalStopDistance = global;
+            REX::INFO("AutoWalk: Found F4A_StopDistance global");
+        }
+    }
+
+    if (!m_globalTargetFormID || !m_globalStopDistance) {
+        REX::WARN("AutoWalk: fallout4access.esp not loaded or missing GlobalVariables");
+        REX::WARN("AutoWalk: Auto-walk feature disabled. Install fallout4access.esp to enable.");
+        return;
+    }
+
+    m_initialized = true;
+    REX::INFO("AutoWalk: Initialized successfully");
+}
+
 void AutoWalk::WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance,
                       std::function<void()> a_onArrival)
 {
+    if (!m_initialized) {
+        REX::WARN("AutoWalk: Not initialized (ESP not loaded?)");
+        return;
+    }
+
     if (!a_target || a_target->IsDeleted() || a_target->IsDisabled()) {
         REX::WARN("AutoWalk: Invalid target");
         return;
@@ -24,79 +67,41 @@ void AutoWalk::WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance,
     auto* player = RE::PlayerCharacter::GetSingleton();
     if (!player) return;
 
-    // Check if player has AI process
-    if (!player->currentProcess || !player->currentProcess->high) {
-        REX::WARN("AutoWalk: Player has no AI process");
-        return;
-    }
-
-    m_targetPos = a_target->GetPosition();
+    RE::NiPoint3 targetPos = a_target->GetPosition();
     RE::NiPoint3 playerPos = player->GetPosition();
-
-    float distance = playerPos.GetDistance(m_targetPos);
+    float distance = playerPos.GetDistance(targetPos);
 
     if (distance <= a_stopDistance) {
         // Already close enough
-        REX::INFO("AutoWalk: Already within {} units, calling arrival callback", a_stopDistance);
+        REX::INFO("AutoWalk: Already within {} units", a_stopDistance);
         if (a_onArrival) a_onArrival();
         return;
     }
 
-    // Store state
-    m_isWalking = true;
+    // Store state for arrival callback
     m_targetRef = a_target;
     m_stopDistance = a_stopDistance;
     m_onArrival = a_onArrival;
 
-    // Enable AI-driven movement (equivalent to Game.SetPlayerAIDriven(true))
-    player->SetAIControlledPackage(true);
-    player->aiControlledToPos = true;
+    // Set the stop distance global
+    m_globalStopDistance->value = a_stopDistance;
 
-    // Set the pathing destination using queuedTargetLoc
-    player->queuedTargetLoc.location = m_targetPos;
-    player->queuedTargetLoc.world = nullptr;  // Same worldspace
-    player->queuedTargetLoc.interior = player->GetParentCell();
-    player->queuedTargetLoc.isValid = true;
+    // Set the target FormID global - Papyrus will detect this and start walking
+    m_globalTargetFormID->value = static_cast<float>(a_target->GetFormID());
 
-    // Also set in HighProcessData for pathing
-    auto* highData = player->currentProcess->high;
-    highData->pathingDesiredPosition = m_targetPos;
-    highData->inCommandState = true;
-    highData->doingCommand = true;
-    highData->commandType = RE::COMMAND_TYPE::kMove;
-
-    REX::INFO("AutoWalk: AI walking to {} (distance: {}, stop at: {})",
-              a_target->GetDisplayFullName(), distance, a_stopDistance);
-    REX::INFO("AutoWalk: Set queuedTargetLoc.isValid={}, commandType=kMove",
-              player->queuedTargetLoc.isValid);
+    REX::INFO("AutoWalk: Set target FormID {} for {}, distance: {}",
+              a_target->GetFormID(), a_target->GetDisplayFullName(), distance);
 }
 
 void AutoWalk::Stop()
 {
-    if (!m_isWalking) return;
+    if (!m_targetRef) return;
 
-    auto* player = RE::PlayerCharacter::GetSingleton();
-    if (player) {
-        // Clear command state
-        if (player->currentProcess && player->currentProcess->high) {
-            auto* highData = player->currentProcess->high;
-            highData->inCommandState = false;
-            highData->doingCommand = false;
-            highData->commandType = RE::COMMAND_TYPE::kNone;
-        }
-
-        // Clear queuedTargetLoc
-        player->queuedTargetLoc.isValid = false;
-
-        // Restore player control (equivalent to Game.SetPlayerAIDriven(false))
-        player->SetAIControlledPackage(false);
-        player->aiControlledToPos = false;
-
-        // Cancel any active package
-        player->EndInterruptPackage(false);
+    if (m_initialized && m_globalTargetFormID) {
+        // Send stop signal (-1) - Papyrus will detect this and call StopWalking()
+        m_globalTargetFormID->value = -1.0f;
     }
 
-    m_isWalking = false;
     m_targetRef = nullptr;
     m_onArrival = nullptr;
 
@@ -105,63 +110,55 @@ void AutoWalk::Stop()
 
 void AutoWalk::Update()
 {
-    if (!m_isWalking) return;
+    // Skip if no target
+    if (!m_targetRef) return;
 
-    auto* player = RE::PlayerCharacter::GetSingleton();
-    if (!player) {
+    // Check for cancel keys (WASD, Escape, Space) using key state polling
+    // This works even when AI-driven movement blocks normal input events
+    // Virtual key codes: W=0x57, A=0x41, S=0x53, D=0x44, Escape=0x1B, Space=0x20
+    if (GetAsyncKeyState(0x57) & 0x8000 ||  // W
+        GetAsyncKeyState(0x41) & 0x8000 ||  // A
+        GetAsyncKeyState(0x53) & 0x8000 ||  // S
+        GetAsyncKeyState(0x44) & 0x8000 ||  // D
+        GetAsyncKeyState(0x1B) & 0x8000 ||  // Escape
+        GetAsyncKeyState(0x20) & 0x8000) {  // Space
+        REX::INFO("AutoWalk: Cancel key detected, stopping");
+        SRAL_Speak("Stopped", false);
         Stop();
         return;
     }
 
     // Check if target is still valid
-    if (!m_targetRef || m_targetRef->IsDeleted() || m_targetRef->IsDisabled()) {
-        REX::WARN("AutoWalk: Target became invalid, stopping");
+    if (m_targetRef->IsDeleted() || m_targetRef->IsDisabled()) {
+        REX::WARN("AutoWalk: Target became invalid");
         Stop();
         return;
     }
 
-    // Calculate distance to target using cached position
-    RE::NiPoint3 playerPos = player->GetPosition();
-    float distance = playerPos.GetDistance(m_targetPos);
-
-    // Check arrival
-    if (distance <= m_stopDistance + ARRIVAL_TOLERANCE) {
-        OnArrived();
-        return;
-    }
-
-    // AI handles movement automatically - no manual intervention needed
+    // Check arrival (Papyrus also checks, but we need to call our callback)
+    CheckArrival();
 }
 
-void AutoWalk::OnArrived()
+void AutoWalk::CheckArrival()
 {
     auto* player = RE::PlayerCharacter::GetSingleton();
-    if (player) {
-        // Clear command state
-        if (player->currentProcess && player->currentProcess->high) {
-            auto* highData = player->currentProcess->high;
-            highData->inCommandState = false;
-            highData->doingCommand = false;
-            highData->commandType = RE::COMMAND_TYPE::kNone;
+    if (!player || !m_targetRef) return;
+
+    RE::NiPoint3 playerPos = player->GetPosition();
+    RE::NiPoint3 targetPos = m_targetRef->GetPosition();
+    float distance = playerPos.GetDistance(targetPos);
+
+    if (distance <= m_stopDistance + ARRIVAL_TOLERANCE) {
+        REX::INFO("AutoWalk: Arrived (distance: {})", distance);
+
+        auto callback = m_onArrival;  // Copy before clearing state
+
+        // Clear our state (Papyrus handles its own cleanup)
+        m_targetRef = nullptr;
+        m_onArrival = nullptr;
+
+        if (callback) {
+            callback();
         }
-
-        // Clear queuedTargetLoc
-        player->queuedTargetLoc.isValid = false;
-
-        // Restore player control
-        player->SetAIControlledPackage(false);
-        player->aiControlledToPos = false;
-    }
-
-    auto callback = m_onArrival;  // Copy before clearing state
-
-    m_isWalking = false;
-    m_targetRef = nullptr;
-    m_onArrival = nullptr;
-
-    REX::INFO("AutoWalk: Arrived");
-
-    if (callback) {
-        callback();
     }
 }
