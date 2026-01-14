@@ -9,6 +9,7 @@ enum class ScanCategory {
     NPCs,
     Doors,
     Activators,
+    QuestMarkers,
     COUNT  // For cycling
 };
 
@@ -33,6 +34,7 @@ private:
 
     // Scanning
     void ScanObjects();
+    void ScanQuestMarkers();
     void ScanAndAnnounce();
     bool NeedsRescan();
     void ScanIfNeeded();
@@ -50,15 +52,22 @@ private:
     bool IsInteractable(RE::TESObjectREFR* a_ref);
     const char* GetCategoryName(ScanCategory a_category);
 
-    // Helpers
-    float GetDistanceToObject(RE::TESObjectREFR* a_ref);
-    void SpeakText(const std::string& a_text);
-
-    // Scanned object storage
+    // Scanned object storage (declared early for use in helpers)
     struct ScannedObject {
         RE::TESObjectREFR* ref;
         std::string name;
+        RE::NiPoint3 virtualPos{0.0f, 0.0f, 0.0f};  // Used for quest markers without refs
+        bool isVirtual = false;  // True for quest markers
     };
+
+    // Helpers
+    float GetDistanceToObject(RE::TESObjectREFR* a_ref);
+    float GetDistanceToPosition(const RE::NiPoint3& a_pos);
+    bool IsValidPosition(const RE::NiPoint3& a_pos);
+    float GetDistanceToScannedObject(const ScannedObject& a_obj);
+    void SpeakNoObjectsNearby();
+    void SpeakText(const std::string& a_text);
+
     std::vector<ScannedObject> m_scannedObjects;
     std::int32_t m_currentIndex = -1;
 

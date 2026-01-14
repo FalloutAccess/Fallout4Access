@@ -156,6 +156,7 @@ const char* ObjectScanner::GetCategoryName(ScanCategory a_category)
         case ScanCategory::NPCs: return "NPCs";
         case ScanCategory::Doors: return "Doors";
         case ScanCategory::Activators: return "Activators";
+        case ScanCategory::QuestMarkers: return "Quest Markers";
         default: return "Unknown";
     }
 }
@@ -164,6 +165,9 @@ bool ObjectScanner::MatchesCategory(RE::TESObjectREFR* a_ref, ScanCategory a_cat
 {
     if (a_category == ScanCategory::All) return true;
     if (!a_ref) return false;
+
+    // Quest markers are virtual - never match physical refs
+    if (a_category == ScanCategory::QuestMarkers) return false;
 
     // Check for Actor (NPC)
     if (a_ref->Is(RE::ENUM_FORM_ID::kACHR)) {
@@ -213,6 +217,12 @@ void ObjectScanner::ScanObjects()
     auto* player = RE::PlayerCharacter::GetSingleton();
     if (!player) {
         REX::WARN("ObjectScanner: No player singleton");
+        return;
+    }
+
+    // Quest markers use a different scanning method
+    if (m_currentCategory == ScanCategory::QuestMarkers) {
+        ScanQuestMarkers();
         return;
     }
 
@@ -279,15 +289,132 @@ void ObjectScanner::ScanObjects()
         m_scannedObjects.size(), GetCategoryName(m_currentCategory), SCAN_RADIUS);
 }
 
+void ObjectScanner::ScanQuestMarkers()
+{
+    auto* player = RE::PlayerCharacter::GetSingleton();
+    if (!player) {
+        REX::WARN("ObjectScanner: No player singleton");
+        return;
+    }
+
+    RE::NiPoint3 playerPos = player->GetPosition();
+    m_lastScanPosition = playerPos;
+
+    m_scannedObjects.clear();
+    m_currentIndex = -1;
+
+    // Debug: Log playerMarkerPath status
+    REX::INFO("ObjectScanner: playerMarkerPath is {}", player->playerMarkerPath ? "valid" : "null");
+    if (player->playerMarkerPath) {
+        auto& end = player->playerMarkerPath->end;
+        REX::INFO("ObjectScanner: playerMarkerPath->end = ({}, {}, {})", end.x, end.y, end.z);
+    }
+
+    REX::INFO("ObjectScanner: Player has {} objectives", player->objectives.size());
+
+    // Get displayed objectives and find their target references via quest aliases
+    for (const auto& instancedObj : player->objectives) {
+        if (!instancedObj.objective) continue;
+
+        // Only include displayed (active) objectives
+        if (instancedObj.enstanceState != RE::QUEST_OBJECTIVE_STATE::kDisplayed) {
+            continue;
+        }
+
+        auto* quest = instancedObj.objective->ownerQuest;
+        if (!quest) continue;
+
+        // Get objective display text
+        const char* text = instancedObj.objective->displayText.c_str();
+        if (!text || text[0] == '\0') {
+            text = "Quest Objective";
+        }
+
+        REX::INFO("ObjectScanner: Processing objective '{}' from quest '{}' with {} aliases",
+            text, quest->GetFormEditorID() ? quest->GetFormEditorID() : "unknown",
+            quest->aliases.size());
+
+        ScannedObject obj;
+        obj.ref = nullptr;
+        obj.name = text;
+        obj.isVirtual = true;
+        obj.virtualPos = {0.0f, 0.0f, 0.0f};
+
+        // Try to find a valid reference from quest aliases
+        // First pass: look for aliases marked as QuestObject (actual targets)
+        // Second pass: look for any valid non-Player alias
+        for (int pass = 0; pass < 2 && obj.isVirtual; pass++) {
+            for (const auto* alias : quest->aliases) {
+                if (!alias) continue;
+
+                // Always skip Player alias - it's never the target
+                if (alias->aliasName == "Player") continue;
+
+                // First pass: only check aliases with QuestObject flag
+                if (pass == 0 && !alias->IsQuestObject()) continue;
+
+                RE::ObjectRefHandle handle;
+                quest->GetAliasedRef(&handle, alias->aliasID);
+
+                bool handleValid = handle ? true : false;
+                REX::DEBUG("ObjectScanner: Pass {}: Alias '{}' (ID {}) QuestObj:{} handle:{}",
+                    pass, alias->aliasName.c_str(), alias->aliasID,
+                    alias->IsQuestObject(), handleValid);
+
+                if (handle) {
+                    auto refPtr = handle.get();
+                    if (refPtr && refPtr.get()) {
+                        auto* ref = refPtr.get();
+
+                        // Skip if it's the player
+                        if (ref == RE::PlayerCharacter::GetSingleton()) continue;
+
+                        const char* refName = ref->GetDisplayFullName();
+                        REX::INFO("ObjectScanner: Alias '{}' points to ref '{}' (deleted:{}, disabled:{})",
+                            alias->aliasName.c_str(),
+                            refName ? refName : "null",
+                            ref->IsDeleted(), ref->IsDisabled());
+
+                        if (!ref->IsDeleted() && !ref->IsDisabled()) {
+                            // Found a valid reference - store it directly
+                            obj.ref = ref;
+                            obj.isVirtual = false;
+                            obj.virtualPos = ref->GetPosition();
+                            REX::INFO("ObjectScanner: Using alias '{}' as quest target", alias->aliasName.c_str());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // If no alias ref found, try playerMarkerPath as fallback (requires V.A.N.S.)
+        if (obj.isVirtual && player->playerMarkerPath) {
+            RE::NiPoint3 markerPos = player->playerMarkerPath->end;
+            if (IsValidPosition(markerPos)) {
+                obj.virtualPos = markerPos;
+                REX::INFO("ObjectScanner: Using V.A.N.S. path for quest marker position");
+            }
+        }
+
+        m_scannedObjects.push_back(obj);
+        REX::INFO("ObjectScanner: Added quest objective: '{}' (has ref: {}, has valid pos: {})",
+            text, obj.ref != nullptr, IsValidPosition(obj.virtualPos));
+    }
+
+    if (!m_scannedObjects.empty()) {
+        m_currentIndex = 0;
+    }
+
+    REX::INFO("ObjectScanner: Found {} quest markers", m_scannedObjects.size());
+}
+
 void ObjectScanner::ScanAndAnnounce()
 {
     ScanObjects();
 
     if (m_scannedObjects.empty()) {
-        std::string msg = "No ";
-        msg += GetCategoryName(m_currentCategory);
-        msg += " nearby";
-        SpeakText(msg);
+        SpeakNoObjectsNearby();
         return;
     }
 
@@ -296,8 +423,14 @@ void ObjectScanner::ScanAndAnnounce()
     announcement += ". ";
 
     // Announce first object with dynamic distance
-    float dist = GetDistanceToObject(m_scannedObjects[0].ref);
-    announcement += m_scannedObjects[0].name + ", " + std::to_string(static_cast<int>(dist)) + " units";
+    const auto& firstObj = m_scannedObjects[0];
+    float dist = GetDistanceToScannedObject(firstObj);
+
+    if (dist >= 0) {
+        announcement += firstObj.name + ", " + std::to_string(static_cast<int>(dist)) + " units";
+    } else {
+        announcement += firstObj.name;
+    }
 
     SpeakText(announcement);
 }
@@ -307,10 +440,7 @@ void ObjectScanner::SelectNext()
     ScanIfNeeded();
 
     if (m_scannedObjects.empty()) {
-        std::string msg = "No ";
-        msg += GetCategoryName(m_currentCategory);
-        msg += " nearby";
-        SpeakText(msg);
+        SpeakNoObjectsNearby();
         return;
     }
 
@@ -327,10 +457,7 @@ void ObjectScanner::SelectPrevious()
     ScanIfNeeded();
 
     if (m_scannedObjects.empty()) {
-        std::string msg = "No ";
-        msg += GetCategoryName(m_currentCategory);
-        msg += " nearby";
-        SpeakText(msg);
+        SpeakNoObjectsNearby();
         return;
     }
 
@@ -345,10 +472,7 @@ void ObjectScanner::SelectPrevious()
 void ObjectScanner::AnnounceCurrentObject()
 {
     if (m_scannedObjects.empty() || m_currentIndex < 0) {
-        std::string msg = "No ";
-        msg += GetCategoryName(m_currentCategory);
-        msg += " nearby";
-        SpeakText(msg);
+        SpeakNoObjectsNearby();
         return;
     }
 
@@ -358,13 +482,18 @@ void ObjectScanner::AnnounceCurrentObject()
 
     const auto& obj = m_scannedObjects[m_currentIndex];
 
-    if (!obj.ref || obj.ref->IsDeleted() || obj.ref->IsDisabled()) {
+    // For physical objects, check if still valid
+    if (!obj.isVirtual && (!obj.ref || obj.ref->IsDeleted() || obj.ref->IsDisabled())) {
         SpeakText("Object no longer available");
         return;
     }
 
-    float dist = GetDistanceToObject(obj.ref);
-    std::string announcement = obj.name + ", " + std::to_string(static_cast<int>(dist)) + " units";
+    // Build announcement with distance
+    float dist = GetDistanceToScannedObject(obj);
+    std::string announcement = obj.name;
+    if (dist >= 0) {
+        announcement += ", " + std::to_string(static_cast<int>(dist)) + " units";
+    }
 
     SpeakText(announcement);
 }
@@ -376,9 +505,6 @@ void ObjectScanner::LookAtCurrentObject()
     }
 
     const auto& obj = m_scannedObjects[m_currentIndex];
-    if (!obj.ref || obj.ref->IsDeleted() || obj.ref->IsDisabled()) {
-        return;
-    }
 
     auto* player = RE::PlayerCharacter::GetSingleton();
     if (!player) {
@@ -389,11 +515,24 @@ void ObjectScanner::LookAtCurrentObject()
     RE::NiPoint3 eyePos, eyeDir;
     player->GetEyeVector(eyePos, eyeDir, true);
 
-    // Get object center (not base position)
     RE::NiPoint3 targetCenter;
-    obj.ref->GetObjectCenter(targetCenter);
 
-    // Calculate direction from eye to object center
+    if (obj.isVirtual) {
+        // Virtual object - use stored position
+        if (!IsValidPosition(obj.virtualPos)) {
+            REX::INFO("ObjectScanner: Cannot look at {} - no position data", obj.name);
+            return;
+        }
+        targetCenter = obj.virtualPos;
+    } else {
+        // Physical object - check validity and get center
+        if (!obj.ref || obj.ref->IsDeleted() || obj.ref->IsDisabled()) {
+            return;
+        }
+        obj.ref->GetObjectCenter(targetCenter);
+    }
+
+    // Calculate direction from eye to target
     RE::NiPoint3 direction = targetCenter - eyePos;
 
     float yaw = std::atan2(direction.x, direction.y);
@@ -413,6 +552,40 @@ float ObjectScanner::GetDistanceToObject(RE::TESObjectREFR* a_ref)
     return player->GetPosition().GetDistance(a_ref->GetPosition());
 }
 
+float ObjectScanner::GetDistanceToPosition(const RE::NiPoint3& a_pos)
+{
+    auto* player = RE::PlayerCharacter::GetSingleton();
+    if (!player) return -1.0f;
+
+    if (!IsValidPosition(a_pos)) {
+        return -1.0f;
+    }
+
+    return player->GetPosition().GetDistance(a_pos);
+}
+
+bool ObjectScanner::IsValidPosition(const RE::NiPoint3& a_pos)
+{
+    return a_pos.x != 0.0f || a_pos.y != 0.0f || a_pos.z != 0.0f;
+}
+
+float ObjectScanner::GetDistanceToScannedObject(const ScannedObject& a_obj)
+{
+    if (a_obj.isVirtual) {
+        return GetDistanceToPosition(a_obj.virtualPos);
+    } else {
+        return GetDistanceToObject(a_obj.ref);
+    }
+}
+
+void ObjectScanner::SpeakNoObjectsNearby()
+{
+    std::string msg = "No ";
+    msg += GetCategoryName(m_currentCategory);
+    msg += " nearby";
+    SpeakText(msg);
+}
+
 void ObjectScanner::WalkToCurrentObject()
 {
     if (m_scannedObjects.empty() || m_currentIndex < 0) {
@@ -421,6 +594,20 @@ void ObjectScanner::WalkToCurrentObject()
     }
 
     const auto& obj = m_scannedObjects[m_currentIndex];
+
+    // Handle virtual objects (quest markers without a direct reference)
+    if (obj.isVirtual) {
+        // Virtual quest markers can't be walked to without a reference
+        // The alias scan should have found a reference if one exists
+        if (IsValidPosition(obj.virtualPos)) {
+            SpeakText("Cannot walk to quest marker: only position known, no reference available");
+        } else {
+            SpeakText("Cannot walk to quest marker: position unknown");
+        }
+        return;
+    }
+
+    // Handle physical objects
     if (!obj.ref || obj.ref->IsDeleted() || obj.ref->IsDisabled()) {
         SpeakText("Object no longer available");
         return;
@@ -428,8 +615,24 @@ void ObjectScanner::WalkToCurrentObject()
 
     SpeakText("Walking to " + obj.name);
 
-    AutoWalk::GetSingleton()->WalkTo(obj.ref, 100.0f, [this]() {
-        LookAtCurrentObject();
+    // Capture reference for arrival callback (avoids stale m_currentIndex)
+    RE::TESObjectREFR* targetRef = obj.ref;
+    AutoWalk::GetSingleton()->WalkTo(targetRef, 100.0f, [this, targetRef]() {
+        // Look at the target on arrival
+        if (targetRef && !targetRef->IsDeleted() && !targetRef->IsDisabled()) {
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            if (player) {
+                RE::NiPoint3 eyePos, eyeDir;
+                player->GetEyeVector(eyePos, eyeDir, true);
+                RE::NiPoint3 targetCenter;
+                targetRef->GetObjectCenter(targetCenter);
+                RE::NiPoint3 direction = targetCenter - eyePos;
+                float yaw = std::atan2(direction.x, direction.y);
+                float horizontalDist = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+                float pitch = -std::atan2(direction.z, horizontalDist);
+                player->SetAngleOnReference(RE::NiPoint3(pitch, 0.0f, yaw));
+            }
+        }
         SpeakText("Arrived");
     });
 }
