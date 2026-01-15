@@ -80,7 +80,6 @@ private:
     bool m_registered = false;
 
     // Constants
-    static constexpr float SCAN_RADIUS = 3000.0f;
     static constexpr float RESCAN_DISTANCE_THRESHOLD = 100.0f;
 
     // Key codes (from BS_BUTTON_CODE.h)

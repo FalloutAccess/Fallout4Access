@@ -209,6 +209,16 @@ bool ObjectScanner::IsInteractable(RE::TESObjectREFR* a_ref)
         }
     }
 
+    // Check if object is activatable (has activation prompt)
+    // This filters out static objects like fence posts, rocks, etc.
+    auto* baseObj = a_ref->GetObjectReference();
+    if (baseObj) {
+        RE::BSString activateText;
+        if (!baseObj->GetActivateText(a_ref, activateText)) {
+            return false;  // No activation = not interactable
+        }
+    }
+
     return true;
 }
 
@@ -233,7 +243,6 @@ void ObjectScanner::ScanObjects()
     }
 
     RE::NiPoint3 playerPos = player->GetPosition();
-    float maxDistSq = SCAN_RADIUS * SCAN_RADIUS;
 
     // Store scan position for rescan detection
     m_lastScanPosition = playerPos;
@@ -262,8 +271,6 @@ void ObjectScanner::ScanObjects()
         RE::NiPoint3 objPos = ref->GetPosition();
         float distSq = playerPos.GetSquaredDistance(objPos);
 
-        if (distSq > maxDistSq) continue;
-
         const char* name = ref->GetDisplayFullName();
         if (!name || name[0] == '\0') continue;
 
@@ -285,8 +292,8 @@ void ObjectScanner::ScanObjects()
         m_currentIndex = 0;
     }
 
-    REX::INFO("ObjectScanner: Scanned {} {} within {} units",
-        m_scannedObjects.size(), GetCategoryName(m_currentCategory), SCAN_RADIUS);
+    REX::INFO("ObjectScanner: Scanned {} {}",
+        m_scannedObjects.size(), GetCategoryName(m_currentCategory));
 }
 
 void ObjectScanner::ScanQuestMarkers()
