@@ -158,6 +158,7 @@ const char* ObjectScanner::GetCategoryName(ScanCategory a_category)
         case ScanCategory::Containers: return "Containers";
         case ScanCategory::Activators: return "Activators";
         case ScanCategory::QuestMarkers: return "Quest Markers";
+        case ScanCategory::Corpses: return "Corpses";
         default: return "Unknown";
     }
 }
@@ -170,9 +171,18 @@ bool ObjectScanner::MatchesCategory(RE::TESObjectREFR* a_ref, ScanCategory a_cat
     // Quest markers are virtual - never match physical refs
     if (a_category == ScanCategory::QuestMarkers) return false;
 
-    // Check for Actor (NPC)
+    // Check for Actor (NPC or Corpse)
     if (a_ref->Is(RE::ENUM_FORM_ID::kACHR)) {
-        return a_category == ScanCategory::NPCs;
+        if (auto* actor = a_ref->As<RE::Actor>()) {
+            bool isDead = actor->IsDead(false);
+            if (a_category == ScanCategory::NPCs) {
+                return !isDead;  // NPCs are living actors only
+            }
+            if (a_category == ScanCategory::Corpses) {
+                return isDead;   // Corpses are dead actors only
+            }
+        }
+        return false;
     }
 
     // Get base object for other types
@@ -206,11 +216,17 @@ bool ObjectScanner::IsInteractable(RE::TESObjectREFR* a_ref)
     // Skip disabled/deleted
     if (a_ref->IsDeleted() || a_ref->IsDisabled()) return false;
 
-    // Check for dead actors
+    // Check for actors (living NPCs and corpses)
     if (a_ref->Is(RE::ENUM_FORM_ID::kACHR)) {
         if (auto* actor = a_ref->As<RE::Actor>()) {
-            if (actor->IsDead(false)) return false;
+            // For dead actors (corpses), exclude if already looted
+            if (actor->IsDead(false)) {
+                if (IsContainerEmpty(a_ref)) {
+                    return false;  // Skip empty corpses
+                }
+            }
         }
+        return true;  // Living NPCs and non-empty corpses are interactable
     }
 
     auto* baseObj = a_ref->GetObjectReference();

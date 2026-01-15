@@ -11,6 +11,7 @@ enum class ScanCategory {
     Containers,
     Activators,
     QuestMarkers,
+    Corpses,
     COUNT  // For cycling
 };
 
