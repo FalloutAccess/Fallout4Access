@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AutoWalk.h"
+#include "CrosshairAccessibility.h"
 #include "MenuAccessibility.h"
 #include "ObjectScanner.h"
 #include <SRAL.h>
@@ -7,8 +8,9 @@
 void OnF4SEMessage(F4SE::MessagingInterface::Message* a_msg)
 {
     if (a_msg->type == F4SE::MessagingInterface::kGameDataReady) {
-        // Game data is loaded - initialize AutoWalk (finds GlobalVariables from ESP)
+        // Game data is loaded - initialize components that need PlayerCharacter
         AutoWalk::GetSingleton()->Initialize();
+        CrosshairAccessibility::GetSingleton()->Register();
     }
 }
 
@@ -43,6 +45,9 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 
     // Register object scanner for gameplay
     ObjectScanner::GetSingleton()->Register();
+
+    // Note: CrosshairAccessibility is registered in OnF4SEMessage when game data is ready
+    // because it needs PlayerCharacter to be available
 
     return true;
 }
