@@ -8,6 +8,7 @@ enum class ScanCategory {
     All,
     NPCs,
     Doors,
+    Containers,
     Activators,
     QuestMarkers,
     COUNT  // For cycling
@@ -50,6 +51,7 @@ private:
     void CycleCategory();
     bool MatchesCategory(RE::TESObjectREFR* a_ref, ScanCategory a_category);
     bool IsInteractable(RE::TESObjectREFR* a_ref);
+    bool IsContainerEmpty(RE::TESObjectREFR* a_ref);
     const char* GetCategoryName(ScanCategory a_category);
 
     // Scanned object storage (declared early for use in helpers)

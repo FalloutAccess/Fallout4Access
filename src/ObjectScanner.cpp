@@ -155,6 +155,7 @@ const char* ObjectScanner::GetCategoryName(ScanCategory a_category)
         case ScanCategory::All: return "All objects";
         case ScanCategory::NPCs: return "NPCs";
         case ScanCategory::Doors: return "Doors";
+        case ScanCategory::Containers: return "Containers";
         case ScanCategory::Activators: return "Activators";
         case ScanCategory::QuestMarkers: return "Quest Markers";
         default: return "Unknown";
@@ -184,6 +185,9 @@ bool ObjectScanner::MatchesCategory(RE::TESObjectREFR* a_ref, ScanCategory a_cat
         case ScanCategory::Doors:
             return formType == RE::ENUM_FORM_ID::kDOOR;
 
+        case ScanCategory::Containers:
+            return formType == RE::ENUM_FORM_ID::kCONT;
+
         case ScanCategory::Activators:
             return formType == RE::ENUM_FORM_ID::kACTI ||
                    formType == RE::ENUM_FORM_ID::kTACT ||
@@ -209,17 +213,45 @@ bool ObjectScanner::IsInteractable(RE::TESObjectREFR* a_ref)
         }
     }
 
+    auto* baseObj = a_ref->GetObjectReference();
+    if (!baseObj) return false;
+
+    // Doors are always interactable (skip activation check)
+    // This ensures load doors are included
+    if (baseObj->GetFormType() == RE::ENUM_FORM_ID::kDOOR) {
+        return true;
+    }
+
     // Check if object is activatable (has activation prompt)
     // This filters out static objects like fence posts, rocks, etc.
-    auto* baseObj = a_ref->GetObjectReference();
-    if (baseObj) {
-        RE::BSString activateText;
-        if (!baseObj->GetActivateText(a_ref, activateText)) {
-            return false;  // No activation = not interactable
-        }
+    RE::BSString activateText;
+    if (!baseObj->GetActivateText(a_ref, activateText)) {
+        return false;  // No activation = not interactable
     }
 
     return true;
+}
+
+bool ObjectScanner::IsContainerEmpty(RE::TESObjectREFR* a_ref)
+{
+    if (!a_ref) return true;
+
+    // Get the runtime inventory list (tracks actual contents after looting)
+    RE::BGSInventoryList* inventoryList = a_ref->inventoryList;
+
+    // If no inventory list exists, container is empty
+    if (!inventoryList) return true;
+
+    // Check if the data array is empty
+    if (inventoryList->data.empty()) return true;
+
+    // Count actual items (entries may exist but have 0 count after looting)
+    std::uint32_t totalItems = 0;
+    for (const auto& item : inventoryList->data) {
+        totalItems += item.GetCount();
+    }
+
+    return totalItems == 0;
 }
 
 void ObjectScanner::ScanObjects()
@@ -433,10 +465,22 @@ void ObjectScanner::ScanAndAnnounce()
     const auto& firstObj = m_scannedObjects[0];
     float dist = GetDistanceToScannedObject(firstObj);
 
+    std::string objName = firstObj.name;
+
+    // Add empty indicator for containers
+    if (!firstObj.isVirtual && firstObj.ref) {
+        auto* baseObj = firstObj.ref->GetObjectReference();
+        if (baseObj && baseObj->GetFormType() == RE::ENUM_FORM_ID::kCONT) {
+            if (IsContainerEmpty(firstObj.ref)) {
+                objName += " (empty)";
+            }
+        }
+    }
+
     if (dist >= 0) {
-        announcement += firstObj.name + ", " + std::to_string(static_cast<int>(dist)) + " units";
+        announcement += objName + ", " + std::to_string(static_cast<int>(dist)) + " units";
     } else {
-        announcement += firstObj.name;
+        announcement += objName;
     }
 
     SpeakText(announcement);
@@ -498,6 +542,17 @@ void ObjectScanner::AnnounceCurrentObject()
     // Build announcement with distance
     float dist = GetDistanceToScannedObject(obj);
     std::string announcement = obj.name;
+
+    // Add empty indicator for containers
+    if (!obj.isVirtual && obj.ref) {
+        auto* baseObj = obj.ref->GetObjectReference();
+        if (baseObj && baseObj->GetFormType() == RE::ENUM_FORM_ID::kCONT) {
+            if (IsContainerEmpty(obj.ref)) {
+                announcement += " (empty)";
+            }
+        }
+    }
+
     if (dist >= 0) {
         announcement += ", " + std::to_string(static_cast<int>(dist)) + " units";
     }
