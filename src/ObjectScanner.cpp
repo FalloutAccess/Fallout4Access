@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <REX/W32/USER32.h>
+#include <RE/P/PipboyDataManager.h>
 
 // Static storage for singleton
 static RE::PlayerControlsData s_dummyData{};
@@ -159,7 +160,105 @@ const char* ObjectScanner::GetCategoryName(ScanCategory a_category)
         case ScanCategory::Activators: return "Activators";
         case ScanCategory::QuestMarkers: return "Quest Markers";
         case ScanCategory::Corpses: return "Corpses";
+        case ScanCategory::Locations: return "Locations";
         default: return "Unknown";
+    }
+}
+
+const char* ObjectScanner::GetMarkerTypeName(RE::MARKER_TYPE a_type)
+{
+    switch (a_type) {
+        case RE::MARKER_TYPE::kCave: return "Cave";
+        case RE::MARKER_TYPE::kCity: return "City";
+        case RE::MARKER_TYPE::kDiamondCity: return "Diamond City";
+        case RE::MARKER_TYPE::kEncampment: return "Encampment";
+        case RE::MARKER_TYPE::kIndustrial: return "Factory";
+        case RE::MARKER_TYPE::kGovtBuilding: return "Government Building";
+        case RE::MARKER_TYPE::kMetro: return "Metro Station";
+        case RE::MARKER_TYPE::kMilitaryBase: return "Military Base";
+        case RE::MARKER_TYPE::kLandmark: return "Landmark";
+        case RE::MARKER_TYPE::kOffice: return "Office Building";
+        case RE::MARKER_TYPE::kRuinsTown: return "Ruins";
+        case RE::MARKER_TYPE::kRuinsUrban: return "Urban Ruins";
+        case RE::MARKER_TYPE::kSanctuary: return "Sanctuary";
+        case RE::MARKER_TYPE::kSettlement: return "Settlement";
+        case RE::MARKER_TYPE::kSewer: return "Sewer";
+        case RE::MARKER_TYPE::kVault: return "Vault";
+        case RE::MARKER_TYPE::kAirfield: return "Airfield";
+        case RE::MARKER_TYPE::kBunkerHill: return "Bunker Hill";
+        case RE::MARKER_TYPE::kCamper: return "Camper";
+        case RE::MARKER_TYPE::kCar: return "Car";
+        case RE::MARKER_TYPE::kChurch: return "Church";
+        case RE::MARKER_TYPE::kCountryClub: return "Country Club";
+        case RE::MARKER_TYPE::kCustomHouse: return "Custom House";
+        case RE::MARKER_TYPE::kDriveIn: return "Drive-In";
+        case RE::MARKER_TYPE::kElevatedHighway: return "Highway";
+        case RE::MARKER_TYPE::kFaneuilHall: return "Faneuil Hall";
+        case RE::MARKER_TYPE::kFarm: return "Farm";
+        case RE::MARKER_TYPE::kFillingStation: return "Gas Station";
+        case RE::MARKER_TYPE::kForest: return "Forest";
+        case RE::MARKER_TYPE::kGoodNeighbor: return "Goodneighbor";
+        case RE::MARKER_TYPE::kGraveyard: return "Graveyard";
+        case RE::MARKER_TYPE::kHospital: return "Hospital";
+        case RE::MARKER_TYPE::kIndustrialDome: return "Industrial Dome";
+        case RE::MARKER_TYPE::kIndustrialStacks: return "Industrial Stacks";
+        case RE::MARKER_TYPE::kInstitute: return "Institute";
+        case RE::MARKER_TYPE::kIrishPride: return "Irish Pride";
+        case RE::MARKER_TYPE::kJunkyard: return "Junkyard";
+        case RE::MARKER_TYPE::kObservatory: return "Observatory";
+        case RE::MARKER_TYPE::kPier: return "Pier";
+        case RE::MARKER_TYPE::kPondOrLake: return "Pond";
+        case RE::MARKER_TYPE::kQuarry: return "Quarry";
+        case RE::MARKER_TYPE::kRadioactiveArea: return "Radioactive Area";
+        case RE::MARKER_TYPE::kRadioTower: return "Radio Tower";
+        case RE::MARKER_TYPE::kSalem: return "Salem";
+        case RE::MARKER_TYPE::kSchool: return "School";
+        case RE::MARKER_TYPE::kShipwreck: return "Shipwreck";
+        case RE::MARKER_TYPE::kSubmarine: return "Submarine";
+        case RE::MARKER_TYPE::kSwanPond: return "Swan Pond";
+        case RE::MARKER_TYPE::kTown: return "Town";
+        case RE::MARKER_TYPE::kBOS: return "Brotherhood of Steel";
+        case RE::MARKER_TYPE::kBrownstone: return "Brownstone";
+        case RE::MARKER_TYPE::kBunker: return "Bunker";
+        case RE::MARKER_TYPE::kCastle: return "Castle";
+        case RE::MARKER_TYPE::kSkyscraper: return "Skyscraper";
+        case RE::MARKER_TYPE::kLibertalia: return "Libertalia";
+        case RE::MARKER_TYPE::kLowrise: return "Low-Rise";
+        case RE::MARKER_TYPE::kMinutemen: return "Minutemen";
+        case RE::MARKER_TYPE::kPoliceStation: return "Police Station";
+        case RE::MARKER_TYPE::kPrydwen: return "Prydwen";
+        case RE::MARKER_TYPE::kRailroadFaction: return "Railroad";
+        case RE::MARKER_TYPE::kRailroad: return "Railroad";
+        case RE::MARKER_TYPE::kSatellite: return "Satellite";
+        case RE::MARKER_TYPE::kSentinel: return "Sentinel";
+        case RE::MARKER_TYPE::kUSSConstitution: return "USS Constitution";
+        case RE::MARKER_TYPE::kMechanist: return "Mechanist";
+        case RE::MARKER_TYPE::kRaiderSettlement: return "Raider Settlement";
+        case RE::MARKER_TYPE::kVassalSettlement: return "Vassal Settlement";
+        case RE::MARKER_TYPE::kPotentialVassalSettlement: return "Potential Settlement";
+        case RE::MARKER_TYPE::kBottlingPlant: return "Bottling Plant";
+        case RE::MARKER_TYPE::kGalactic: return "Galactic Zone";
+        case RE::MARKER_TYPE::kHub: return "Hub";
+        case RE::MARKER_TYPE::kKiddieKingdom: return "Kiddie Kingdom";
+        case RE::MARKER_TYPE::kMonorail: return "Monorail";
+        case RE::MARKER_TYPE::kRides: return "Rides";
+        case RE::MARKER_TYPE::kSafari: return "Safari";
+        case RE::MARKER_TYPE::kWildWest: return "Wild West";
+        case RE::MARKER_TYPE::kPOI: return "Point of Interest";
+        case RE::MARKER_TYPE::kDisciples: return "Disciples";
+        case RE::MARKER_TYPE::kOperators: return "Operators";
+        case RE::MARKER_TYPE::kPack: return "Pack";
+        case RE::MARKER_TYPE::kDoor: return "Door";
+        case RE::MARKER_TYPE::kCountEditor: return "Editor Marker";
+        case RE::MARKER_TYPE::kQuest: return "Quest";
+        case RE::MARKER_TYPE::kQuestDoor: return "Quest Door";
+        case RE::MARKER_TYPE::kQuestMultiple: return "Quest";
+        case RE::MARKER_TYPE::kPlayerSet: return "Custom Marker";
+        case RE::MARKER_TYPE::kPlayerLocation: return "Player Location";
+        case RE::MARKER_TYPE::kPowerArmorLocation: return "Power Armor";
+        case RE::MARKER_TYPE::kDogmeat: return "Dogmeat";
+        case RE::MARKER_TYPE::kTeammate: return "Companion";
+        default: return "Location";
     }
 }
 
@@ -168,8 +267,9 @@ bool ObjectScanner::MatchesCategory(RE::TESObjectREFR* a_ref, ScanCategory a_cat
     if (a_category == ScanCategory::All) return true;
     if (!a_ref) return false;
 
-    // Quest markers are virtual - never match physical refs
+    // Quest markers and locations are virtual - never match physical refs
     if (a_category == ScanCategory::QuestMarkers) return false;
+    if (a_category == ScanCategory::Locations) return false;
 
     // Check for Actor (NPC or Corpse)
     if (a_ref->Is(RE::ENUM_FORM_ID::kACHR)) {
@@ -278,9 +378,13 @@ void ObjectScanner::ScanObjects()
         return;
     }
 
-    // Quest markers use a different scanning method
+    // Quest markers and locations use different scanning methods
     if (m_currentCategory == ScanCategory::QuestMarkers) {
         ScanQuestMarkers();
+        return;
+    }
+    if (m_currentCategory == ScanCategory::Locations) {
+        ScanCompassMarkers();
         return;
     }
 
@@ -358,103 +462,78 @@ void ObjectScanner::ScanQuestMarkers()
     m_scannedObjects.clear();
     m_currentIndex = -1;
 
-    // Debug: Log playerMarkerPath status
-    REX::INFO("ObjectScanner: playerMarkerPath is {}", player->playerMarkerPath ? "valid" : "null");
-    if (player->playerMarkerPath) {
-        auto& end = player->playerMarkerPath->end;
-        REX::INFO("ObjectScanner: playerMarkerPath->end = ({}, {}, {})", end.x, end.y, end.z);
-    }
+    // Get PipboyDataManager for the authoritative quest marker data
+    auto* pipboyData = RE::PipboyDataManager::GetSingleton();
 
-    REX::INFO("ObjectScanner: Player has {} objectives", player->objectives.size());
-
-    // Get displayed objectives and find their target references via quest aliases
+    // First, find the first displayed objective text to use as the marker name
+    // This is the objective from the currently tracked quest
+    std::string objectiveText;
     for (const auto& instancedObj : player->objectives) {
         if (!instancedObj.objective) continue;
+        if (instancedObj.enstanceState != RE::QUEST_OBJECTIVE_STATE::kDisplayed) continue;
 
-        // Only include displayed (active) objectives
-        if (instancedObj.enstanceState != RE::QUEST_OBJECTIVE_STATE::kDisplayed) {
-            continue;
+        const char* objText = instancedObj.objective->displayText.c_str();
+        if (objText && objText[0] != '\0') {
+            objectiveText = objText;
+            REX::INFO("ObjectScanner: Found displayed objective: '{}'", objectiveText);
+            break;  // Use the first displayed objective
         }
+    }
 
-        auto* quest = instancedObj.objective->ownerQuest;
-        if (!quest) continue;
+    // Use worldQuestMarkers which contains the currently tracked quest marker(s)
+    // This is what the game uses to show markers on the Pip-Boy map
+    if (pipboyData) {
+        auto& worldMarkers = pipboyData->mapData.worldQuestMarkers;
+        REX::INFO("ObjectScanner: worldQuestMarkers has {} entries", worldMarkers.size());
 
-        // Get objective display text
-        const char* text = instancedObj.objective->displayText.c_str();
-        if (!text || text[0] == '\0') {
-            text = "Quest Objective";
-        }
+        for (const auto& [refHandle, pipboyObj] : worldMarkers) {
+            if (!refHandle) continue;
 
-        REX::INFO("ObjectScanner: Processing objective '{}' from quest '{}' with {} aliases",
-            text, quest->GetFormEditorID() ? quest->GetFormEditorID() : "unknown",
-            quest->aliases.size());
+            auto refPtr = refHandle.get();
+            if (!refPtr || !refPtr.get()) continue;
 
-        ScannedObject obj;
-        obj.ref = nullptr;
-        obj.name = text;
-        obj.isVirtual = true;
-        obj.virtualPos = {0.0f, 0.0f, 0.0f};
+            auto* ref = refPtr.get();
+            if (ref->IsDeleted() || ref->IsDisabled()) continue;
 
-        // Try to find a valid reference from quest aliases
-        // First pass: look for aliases marked as QuestObject (actual targets)
-        // Second pass: look for any valid non-Player alias
-        for (int pass = 0; pass < 2 && obj.isVirtual; pass++) {
-            for (const auto* alias : quest->aliases) {
-                if (!alias) continue;
+            // Get position from the reference
+            RE::NiPoint3 pos = ref->GetPosition();
+            if (!IsValidPosition(pos)) continue;
 
-                // Always skip Player alias - it's never the target
-                if (alias->aliasName == "Player") continue;
-
-                // First pass: only check aliases with QuestObject flag
-                if (pass == 0 && !alias->IsQuestObject()) continue;
-
-                RE::ObjectRefHandle handle;
-                quest->GetAliasedRef(&handle, alias->aliasID);
-
-                bool handleValid = handle ? true : false;
-                REX::DEBUG("ObjectScanner: Pass {}: Alias '{}' (ID {}) QuestObj:{} handle:{}",
-                    pass, alias->aliasName.c_str(), alias->aliasID,
-                    alias->IsQuestObject(), handleValid);
-
-                if (handle) {
-                    auto refPtr = handle.get();
-                    if (refPtr && refPtr.get()) {
-                        auto* ref = refPtr.get();
-
-                        // Skip if it's the player
-                        if (ref == RE::PlayerCharacter::GetSingleton()) continue;
-
-                        const char* refName = ref->GetDisplayFullName();
-                        REX::INFO("ObjectScanner: Alias '{}' points to ref '{}' (deleted:{}, disabled:{})",
-                            alias->aliasName.c_str(),
-                            refName ? refName : "null",
-                            ref->IsDeleted(), ref->IsDisabled());
-
-                        if (!ref->IsDeleted() && !ref->IsDisabled()) {
-                            // Found a valid reference - store it directly
-                            obj.ref = ref;
-                            obj.isVirtual = false;
-                            obj.virtualPos = ref->GetPosition();
-                            REX::INFO("ObjectScanner: Using alias '{}' as quest target", alias->aliasName.c_str());
-                            break;
-                        }
-                    }
-                }
+            // Use objective text if we found one, otherwise fall back to reference name
+            std::string markerName;
+            if (!objectiveText.empty()) {
+                markerName = objectiveText;
+            } else {
+                const char* name = ref->GetDisplayFullName();
+                markerName = (name && name[0] != '\0') ? name : "Quest Marker";
             }
-        }
 
-        // If no alias ref found, try playerMarkerPath as fallback (requires V.A.N.S.)
-        if (obj.isVirtual && player->playerMarkerPath) {
-            RE::NiPoint3 markerPos = player->playerMarkerPath->end;
-            if (IsValidPosition(markerPos)) {
-                obj.virtualPos = markerPos;
-                REX::INFO("ObjectScanner: Using V.A.N.S. path for quest marker position");
-            }
-        }
+            ScannedObject obj;
+            obj.ref = ref;
+            obj.name = markerName;
+            obj.isVirtual = false;
+            obj.virtualPos = pos;
 
-        m_scannedObjects.push_back(obj);
-        REX::INFO("ObjectScanner: Added quest objective: '{}' (has ref: {}, has valid pos: {})",
-            text, obj.ref != nullptr, IsValidPosition(obj.virtualPos));
+            m_scannedObjects.push_back(obj);
+            REX::INFO("ObjectScanner: Added quest marker: '{}' at ({}, {}, {})",
+                markerName, pos.x, pos.y, pos.z);
+        }
+    }
+
+    // Fallback: If no markers found via PipboyDataManager, try V.A.N.S. path
+    if (m_scannedObjects.empty() && player->playerMarkerPath) {
+        RE::NiPoint3 markerPos = player->playerMarkerPath->end;
+        if (IsValidPosition(markerPos)) {
+            ScannedObject obj;
+            obj.ref = nullptr;
+            obj.name = "Quest Marker (V.A.N.S.)";
+            obj.isVirtual = true;
+            obj.virtualPos = markerPos;
+
+            m_scannedObjects.push_back(obj);
+            REX::INFO("ObjectScanner: Using V.A.N.S. path for quest marker at ({}, {}, {})",
+                markerPos.x, markerPos.y, markerPos.z);
+        }
     }
 
     if (!m_scannedObjects.empty()) {
@@ -462,6 +541,146 @@ void ObjectScanner::ScanQuestMarkers()
     }
 
     REX::INFO("ObjectScanner: Found {} quest markers", m_scannedObjects.size());
+}
+
+void ObjectScanner::ScanCompassMarkers()
+{
+    auto* player = RE::PlayerCharacter::GetSingleton();
+    if (!player) {
+        REX::WARN("ObjectScanner: No player singleton");
+        return;
+    }
+
+    auto* pipboyData = RE::PipboyDataManager::GetSingleton();
+    if (!pipboyData) {
+        REX::WARN("ObjectScanner: No PipboyDataManager singleton");
+        return;
+    }
+
+    RE::NiPoint3 playerPos = player->GetPosition();
+    m_lastScanPosition = playerPos;
+
+    m_scannedObjects.clear();
+    m_currentIndex = -1;
+
+    // Check if player is in an interior cell - compass doesn't show exterior locations there
+    auto* playerCell = player->GetParentCell();
+    if (!playerCell) {
+        REX::WARN("ObjectScanner: Player has no parent cell");
+        return;
+    }
+
+    if (playerCell->IsInterior()) {
+        REX::INFO("ObjectScanner: Player is in interior cell, no exterior locations on compass");
+        SpeakText("No Locations nearby");
+        return;
+    }
+
+    // Get the player's worldspace for filtering
+    auto* playerWorldspace = playerCell->IsExterior() ? playerCell->worldSpace : nullptr;
+
+    // Get compass range from game setting (default 3000 if not found)
+    float compassRange = 3000.0f;
+    auto* gameSettings = RE::GameSettingCollection::GetSingleton();
+    if (gameSettings) {
+        auto* setting = gameSettings->GetSetting("fHUDCompassLocationMaxDist");
+        if (setting) {
+            compassRange = setting->GetFloat();
+            REX::INFO("ObjectScanner: Using compass range from game setting: {:.0f}", compassRange);
+        }
+    }
+
+    // Temporary struct for sorting by distance
+    struct TempMarker {
+        RE::TESObjectREFR* ref;
+        std::string name;
+        float distance;
+    };
+    std::vector<TempMarker> tempMarkers;
+
+    // Iterate through travelLocationsMarkers
+    for (const auto& [markerData, pipboyObj] : pipboyData->mapData.travelLocationsMarkers) {
+        if (!markerData) continue;
+
+        // Check if location is discovered (flag 0x02 = Can Travel To)
+        bool isDiscovered = (markerData->flags & 0x02) != 0;
+
+        // Get the marker name - use "Unknown Location" if not discovered
+        std::string name;
+        if (isDiscovered) {
+            const char* fullName = markerData->GetFullName();
+            if (fullName && fullName[0] != '\0') {
+                name = fullName;
+            }
+        }
+        if (name.empty()) {
+            name = "Unknown Location";
+        }
+
+        // Find the corresponding ref by matching marker data
+        RE::TESObjectREFR* foundRef = nullptr;
+        RE::NiPoint3 pos;
+
+        for (const auto& [formId, refHandle] : pipboyData->mapData.travelLocationRefrHandles) {
+            if (!refHandle) continue;
+            auto refPtr = refHandle.get();
+            if (!refPtr) continue;
+            auto* ref = refPtr.get();
+            if (!ref || ref->IsDeleted() || ref->IsDisabled()) continue;
+
+            // Check if this ref's marker data matches
+            auto* refMarkerData = ref->GetMapMarkerData();
+            if (refMarkerData == markerData) {
+                foundRef = ref;
+                pos = ref->GetPosition();
+                break;
+            }
+        }
+
+        if (!foundRef) continue;
+
+        // Check if location is in the same worldspace as the player
+        auto* refCell = foundRef->GetParentCell();
+        if (refCell && playerWorldspace) {
+            auto* refWorldspace = refCell->IsExterior() ? refCell->worldSpace : nullptr;
+            if (refWorldspace != playerWorldspace) {
+                continue;  // Different worldspace, skip
+            }
+        }
+
+        float dist = playerPos.GetDistance(pos);
+
+        // Only include markers within compass range
+        if (dist > compassRange) {
+            continue;
+        }
+
+        tempMarkers.push_back({foundRef, name, dist});
+        REX::INFO("ObjectScanner: Found location '{}' discovered={} dist={:.0f}",
+            name, isDiscovered, dist);
+    }
+
+    // Sort by distance (closest first)
+    std::sort(tempMarkers.begin(), tempMarkers.end(),
+        [](const TempMarker& a, const TempMarker& b) {
+            return a.distance < b.distance;
+        });
+
+    // Store in member vector
+    for (const auto& marker : tempMarkers) {
+        ScannedObject obj;
+        obj.ref = marker.ref;
+        obj.name = marker.name;
+        obj.isVirtual = false;
+        m_scannedObjects.push_back(obj);
+    }
+
+    if (!m_scannedObjects.empty()) {
+        m_currentIndex = 0;
+    }
+
+    REX::INFO("ObjectScanner: Found {} compass locations within {} units",
+        m_scannedObjects.size(), static_cast<int>(compassRange));
 }
 
 void ObjectScanner::ScanAndAnnounce()
@@ -491,6 +710,12 @@ void ObjectScanner::ScanAndAnnounce()
                 objName += " (empty)";
             }
         }
+    }
+
+    // Add marker type for locations
+    if (firstObj.markerType.has_value()) {
+        objName += ", ";
+        objName += GetMarkerTypeName(firstObj.markerType.value());
     }
 
     if (dist >= 0) {
@@ -567,6 +792,12 @@ void ObjectScanner::AnnounceCurrentObject()
                 announcement += " (empty)";
             }
         }
+    }
+
+    // Add marker type for locations
+    if (obj.markerType.has_value()) {
+        announcement += ", ";
+        announcement += GetMarkerTypeName(obj.markerType.value());
     }
 
     if (dist >= 0) {

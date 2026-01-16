@@ -12,6 +12,7 @@ enum class ScanCategory {
     Activators,
     QuestMarkers,
     Corpses,
+    Locations,
     COUNT  // For cycling
 };
 
@@ -37,6 +38,7 @@ private:
     // Scanning
     void ScanObjects();
     void ScanQuestMarkers();
+    void ScanCompassMarkers();
     void ScanAndAnnounce();
     bool NeedsRescan();
     void ScanIfNeeded();
@@ -54,6 +56,7 @@ private:
     bool IsInteractable(RE::TESObjectREFR* a_ref);
     bool IsContainerEmpty(RE::TESObjectREFR* a_ref);
     const char* GetCategoryName(ScanCategory a_category);
+    const char* GetMarkerTypeName(RE::MARKER_TYPE a_type);
 
     // Scanned object storage (declared early for use in helpers)
     struct ScannedObject {
@@ -61,6 +64,7 @@ private:
         std::string name;
         RE::NiPoint3 virtualPos{0.0f, 0.0f, 0.0f};  // Used for quest markers without refs
         bool isVirtual = false;  // True for quest markers
+        std::optional<RE::MARKER_TYPE> markerType;  // For location markers (nullopt if not a location)
     };
 
     // Helpers
