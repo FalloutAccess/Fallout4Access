@@ -42,6 +42,7 @@ package("sral")
 package_end()
 
 add_requires("sral", {configs = {shared = false}})
+add_requires("zydis")
 
 -- Project-specific configuration
 -- Mod Organizer 2 installation path
@@ -277,7 +278,7 @@ target("fallout4access")
 
     -- add dependencies to target
     add_deps("commonlibf4")
-    add_packages("sral")
+    add_packages("sral", "zydis")
     add_defines("SRAL_STATIC")
     add_includedirs("lib/SRAL/Include")
 

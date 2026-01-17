@@ -1,4 +1,5 @@
 #include "HUDMessageHook.h"
+#include "InstructionLength.h"
 #include <SRAL.h>
 
 HUDMessageHook* HUDMessageHook::GetSingleton()
@@ -25,30 +26,25 @@ void HUDMessageHook::Install()
     // 1. Executes the original function's first instructions
     // 2. Jumps back to the rest of the original function
     //
-    // For ShowHUDMessage, we'll copy enough bytes and add a jump back.
-    // A JMP14 (14-byte absolute jump) needs 14 bytes.
-    // We need to copy at least 14 bytes of complete instructions.
-    //
-    // Typical x64 prologue:
-    //   push rbp           (1 byte)  - optional
-    //   mov rbp, rsp       (3 bytes) - optional
-    //   sub rsp, N         (4-7 bytes)
-    //   mov [rsp+X], reg   (4-8 bytes per save)
-    //
-    // Based on disassembly, the instruction boundary is at 14 bytes:
-    //   48 83 EC 58       - sub rsp, 0x58        (4 bytes)
-    //   C6 44 24 28 00    - mov [rsp+0x28], 0    (5 bytes) = 9 total
-    //   44 88 4C 24 20    - mov [rsp+0x20], r9b  (5 bytes) = 14 total
-    // This matches JMP14 size perfectly.
+    // Use Zydis to automatically detect instruction boundaries.
+    // We need at least sizeof(JMP14) = 14 bytes to write our jump.
+    constexpr std::size_t kMinBytesNeeded = sizeof(REL::ASM::JMP14);  // 14 bytes
 
-    constexpr std::size_t kBytesToCopy = 14;
-    constexpr std::size_t kTrampolineSize = kBytesToCopy + sizeof(REL::ASM::JMP14);
+    std::size_t bytesToCopy = InstructionLength::CalculateMinimumCopySize(targetAddr, kMinBytesNeeded);
+    if (bytesToCopy == 0) {
+        REX::ERROR("HUDMessageHook: Failed to calculate instruction boundary, hook not installed");
+        return;
+    }
+
+    REX::INFO("HUDMessageHook: Detected instruction boundary at {} bytes", bytesToCopy);
+
+    std::size_t trampolineSize = bytesToCopy + sizeof(REL::ASM::JMP14);
 
     // Allocate trampoline memory
     auto& trampoline = REL::GetTrampoline();
-    trampoline.create(kTrampolineSize + 64);  // Extra for the branch
+    trampoline.create(trampolineSize + 64);  // Extra for the branch
 
-    auto* trampolineMem = static_cast<std::byte*>(trampoline.allocate(kTrampolineSize));
+    auto* trampolineMem = static_cast<std::byte*>(trampoline.allocate(trampolineSize));
     if (!trampolineMem) {
         REX::ERROR("HUDMessageHook: Failed to allocate trampoline memory, hook not installed");
         // Don't install the hook - we can't call the original function safely
@@ -56,18 +52,18 @@ void HUDMessageHook::Install()
     }
 
     // Copy original bytes to trampoline
-    std::memcpy(trampolineMem, reinterpret_cast<void*>(targetAddr), kBytesToCopy);
+    std::memcpy(trampolineMem, reinterpret_cast<void*>(targetAddr), bytesToCopy);
 
-    // Add JMP14 back to original + kBytesToCopy
-    auto* jmp = reinterpret_cast<REL::ASM::JMP14*>(trampolineMem + kBytesToCopy);
-    new (jmp) REL::ASM::JMP14(targetAddr + kBytesToCopy);
+    // Add JMP14 back to original + bytesToCopy
+    auto* jmp = reinterpret_cast<REL::ASM::JMP14*>(trampolineMem + bytesToCopy);
+    new (jmp) REL::ASM::JMP14(targetAddr + bytesToCopy);
 
     // Store the trampoline as our "original" function
     s_originalFunc = reinterpret_cast<OriginalFunc_t>(trampolineMem);
 
     REX::INFO("HUDMessageHook: Trampoline at {:X}, jumping back to {:X}",
         reinterpret_cast<std::uintptr_t>(trampolineMem),
-        targetAddr + kBytesToCopy);
+        targetAddr + bytesToCopy);
 
     // Now overwrite the original function entry with a jump to our hook
     // We need a JMP14 (14 bytes) to reach our hook function
