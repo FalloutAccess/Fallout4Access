@@ -1,6 +1,9 @@
 #pragma once
 
 #include "pch.h"
+#include "HUDNotificationAccessibility.h"
+#include "PipBoyMenuAccessibility.h"
+#include "ExamineMenuAccessibility.h"
 
 class MenuAccessibility :
     public RE::BSTEventSink<RE::MenuOpenCloseEvent>,
@@ -30,32 +33,22 @@ private:
 
     void OnMenuOpened(const RE::BSFixedString& a_menuName);
     void OnMenuClosed(const RE::BSFixedString& a_menuName);
-    void CheckAndSpeakSelection();
-    void CheckForConfirmationDialog();
-    void DumpScaleformChildren(Scaleform::GFx::Value& a_obj, const std::string& a_path, int a_depth = 0);
-    std::string GetSelectedItemText(RE::IMenu* a_menu, const std::string& a_listPath);
-    std::int32_t GetSelectedIndex(RE::IMenu* a_menu, const std::string& a_listPath);
     void SpeakText(const std::string& a_text, bool a_interrupt = false);
-    std::string CleanLocalizationString(const std::string& a_text);
     void SpeakMessageBox(RE::IMenu* a_menu);
-    bool IsMenuPanelVisible(RE::IMenu* a_menu, const std::string& a_panelPath);
-    void TryAnnounceMenu(const std::string& a_menuName, const std::string& a_announcement, const std::string& a_listPath);
+    void SpeakMessageBoxFromScaleform(RE::IMenu* a_menu);
+    void ScheduleMessageBoxRead(int a_framesRemaining);
 
     // Menu tracking
     bool m_mainMenuOpen = false;
     bool m_pauseMenuOpen = false;
     bool m_messageBoxOpen = false;
+    std::atomic<bool> m_messageBoxSpoken{ false };
     bool m_dialogueMenuOpen = false;
     bool m_specialMenuOpen = false;
-    std::int32_t m_lastMainMenuSelection = -1;
-    std::int32_t m_lastPauseMenuSelection = -1;
+    bool m_terminalMenuOpen = false;
+    bool m_vatsMenuOpen = false;
+    bool m_hudMenuOpen = false;
+    bool m_pipBoyMenuOpen = false;
+    bool m_examineMenuOpen = false;
     bool m_inputHandlerRegistered = false;
-    bool m_mainMenuAnnounced = false;
-    bool m_pauseMenuAnnounced = false;
-
-    // List paths (discovered from log analysis)
-    static constexpr const char* MAIN_MENU_LIST_PATH = "root.Menu_mc.MainPanel_mc.List_mc";
-    static constexpr const char* PAUSE_MENU_LIST_PATH = "root.Menu_mc.MainPanel_mc.List_mc";
-    static constexpr const char* MAIN_MENU_PANEL_PATH = "root.Menu_mc.MainPanel_mc";
-    static constexpr const char* PAUSE_MENU_PANEL_PATH = "root.Menu_mc.MainPanel_mc";
 };

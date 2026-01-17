@@ -1,4 +1,6 @@
 #include "MenuAccessibility.h"
+#include "MainMenuHook.h"
+#include "LocalizationHelper.h"
 #include "SettingsMenuAccessibility.h"
 #include "SaveLoadMenuAccessibility.h"
 #include "DialogueMenuAccessibility.h"
@@ -43,7 +45,7 @@ RE::BSEventNotifyControl MenuAccessibility::ProcessEvent(
 bool MenuAccessibility::ShouldHandleEvent(const RE::InputEvent*)
 {
     // Only handle events when a tracked menu is open
-    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen;
+    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen || m_examineMenuOpen;
 }
 
 void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
@@ -98,7 +100,12 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
         // Delay the check to next frame so the game has time to update the selection
         if (auto* taskInterface = F4SE::GetTaskInterface()) {
             taskInterface->AddTask([this, isPipBoyItemNavKey, isPipBoyPageNavKey, isPipBoyNavUp]() {
-                CheckAndSpeakSelection();
+                // Main/Pause menus: Need keystroke-triggered checks because selectedIndex
+                // doesn't update without keyboard focus on the Scaleform list
+                if (m_mainMenuOpen || m_pauseMenuOpen) {
+                    MainMenuHook::GetSingleton()->CheckMainListSelection();
+                }
+                // Settings/SaveLoad: Keystroke-triggered checks for selection
                 SettingsMenuAccessibility::GetSingleton()->CheckSelection(m_mainMenuOpen, m_pauseMenuOpen);
                 SaveLoadMenuAccessibility::GetSingleton()->CheckSelection(m_mainMenuOpen, m_pauseMenuOpen);
                 if (m_dialogueMenuOpen) {
@@ -120,7 +127,7 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
                         PipBoyMenuAccessibility::GetSingleton()->CheckPageChange();
                     }
                 }
-                CheckForConfirmationDialog();
+                // Confirmation dialog: MainMenuHook handles this per-frame
             });
         }
     }
@@ -196,11 +203,11 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
 
     if (isAcceptKey) {
         // Terminal: AdvanceMovie hook handles mode changes per-frame
+        // MainMenu/PauseMenu: AdvanceMovie hooks handle confirm dialog detection per-frame
 
         if (auto* taskInterface = F4SE::GetTaskInterface()) {
             taskInterface->AddTask([this]() {
                 SettingsMenuAccessibility::GetSingleton()->OnEnterPressed(m_mainMenuOpen, m_pauseMenuOpen);
-                CheckForConfirmationDialog();
             });
         }
     }
@@ -271,36 +278,18 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
 
     if (a_menuName == "MainMenu"sv) {
         m_mainMenuOpen = true;
-        m_mainMenuAnnounced = false;
-        m_lastMainMenuSelection = -1;
-
-        // Check for splash screen "Press any button to start" text
-        // TODO: This text is announced as soon as MainMenu opens, which happens while the
-        // logo/intro video is still playing. Ideally we should wait until the video ends
-        // and the splash screen is actually visible before announcing.
-        if (auto menu = RE::UI::GetSingleton()->GetMenu("MainMenu"sv)) {
-            if (menu->uiMovie) {
-                Scaleform::GFx::Value splashText;
-                if (menu->uiMovie->GetVariable(&splashText, "root.Menu_mc.SplashScreenHolder_mc.SplashScreenText_tf.text")) {
-                    if (splashText.IsString()) {
-                        std::string text = splashText.GetString();
-                        if (!text.empty()) {
-                            SpeakText(CleanLocalizationString(text));
-                        }
-                    }
-                }
-            }
-        }
-
-        // Menu will be announced when content becomes available (handles splash screen/video)
-        TryAnnounceMenu("MainMenu", "Main Menu", MAIN_MENU_LIST_PATH);
+        REX::INFO("MainMenu opened");
+        // MainMenuHook handles splash screen, menu name, list selection, and confirmation dialogs
+        MainMenuHook::GetSingleton()->Install();
+        MainMenuHook::GetSingleton()->ResetState();
+        MainMenuHook::GetSingleton()->SetMainMenuOpen(true);
     } else if (a_menuName == "PauseMenu"sv) {
         m_pauseMenuOpen = true;
-        m_pauseMenuAnnounced = false;
-        m_lastPauseMenuSelection = -1;
-
-        // Try to announce if menu is already ready, otherwise will announce on first content detection
-        TryAnnounceMenu("PauseMenu", "Pause Menu", PAUSE_MENU_LIST_PATH);
+        REX::INFO("PauseMenu opened");
+        // MainMenuHook handles the same SWF (MainMenu.swf) for PauseMenu
+        MainMenuHook::GetSingleton()->Install();
+        MainMenuHook::GetSingleton()->ResetState();
+        MainMenuHook::GetSingleton()->SetPauseMenuOpen(true);
     } else if (a_menuName == "MessageBoxMenu"sv) {
         m_messageBoxOpen = true;
         m_messageBoxSpoken = false;
@@ -333,6 +322,10 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
         m_pipBoyMenuOpen = true;
         REX::INFO("PipboyMenu opened");
         PipBoyMenuAccessibility::GetSingleton()->OnPipBoyMenuOpened();
+    } else if (a_menuName == "ExamineMenu"sv) {
+        m_examineMenuOpen = true;
+        REX::INFO("ExamineMenu opened");
+        ExamineMenuAccessibility::GetSingleton()->OnExamineMenuOpened();
     }
 }
 
@@ -340,16 +333,12 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
 {
     if (a_menuName == "MainMenu"sv) {
         m_mainMenuOpen = false;
-        m_mainMenuAnnounced = false;
-        m_lastMainMenuSelection = -1;
-        SettingsMenuAccessibility::GetSingleton()->Reset();
-        SaveLoadMenuAccessibility::GetSingleton()->Reset();
+        // MainMenuHook handles resetting panel handlers via SetMainMenuOpen(false)
+        MainMenuHook::GetSingleton()->SetMainMenuOpen(false);
     } else if (a_menuName == "PauseMenu"sv) {
         m_pauseMenuOpen = false;
-        m_pauseMenuAnnounced = false;
-        m_lastPauseMenuSelection = -1;
-        SettingsMenuAccessibility::GetSingleton()->Reset();
-        SaveLoadMenuAccessibility::GetSingleton()->Reset();
+        // MainMenuHook handles resetting panel handlers via SetPauseMenuOpen(false)
+        MainMenuHook::GetSingleton()->SetPauseMenuOpen(false);
     } else if (a_menuName == "MessageBoxMenu"sv) {
         m_messageBoxOpen = false;
         m_messageBoxSpoken = false;
@@ -372,132 +361,16 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
     } else if (a_menuName == "PipboyMenu"sv) {
         m_pipBoyMenuOpen = false;
         PipBoyMenuAccessibility::GetSingleton()->OnPipBoyMenuClosed();
+    } else if (a_menuName == "ExamineMenu"sv) {
+        m_examineMenuOpen = false;
+        REX::INFO("ExamineMenu closed");
+        ExamineMenuAccessibility::GetSingleton()->OnExamineMenuClosed();
     }
 }
 
-void MenuAccessibility::CheckAndSpeakSelection()
-{
-    auto ui = RE::UI::GetSingleton();
-    if (!ui) return;
-
-    if (m_mainMenuOpen) {
-        // Try to announce menu name first if not yet announced
-        TryAnnounceMenu("MainMenu", "Main Menu", MAIN_MENU_LIST_PATH);
-
-        if (auto menu = ui->GetMenu("MainMenu"sv)) {
-            auto currentSelection = GetSelectedIndex(menu.get(), MAIN_MENU_LIST_PATH);
-            REX::INFO("MainMenu selection: current={} last={}", currentSelection, m_lastMainMenuSelection);
-            if (currentSelection >= 0 && currentSelection != m_lastMainMenuSelection) {
-                m_lastMainMenuSelection = currentSelection;
-                auto text = GetSelectedItemText(menu.get(), MAIN_MENU_LIST_PATH);
-                if (!text.empty()) {
-                    SpeakText(CleanLocalizationString(text));
-                }
-            }
-        }
-    }
-
-    if (m_pauseMenuOpen) {
-        // Try to announce menu name first if not yet announced
-        TryAnnounceMenu("PauseMenu", "Pause Menu", PAUSE_MENU_LIST_PATH);
-
-        if (auto menu = ui->GetMenu("PauseMenu"sv)) {
-            auto currentSelection = GetSelectedIndex(menu.get(), PAUSE_MENU_LIST_PATH);
-            REX::INFO("PauseMenu selection: current={} last={}", currentSelection, m_lastPauseMenuSelection);
-            if (currentSelection >= 0 && currentSelection != m_lastPauseMenuSelection) {
-                m_lastPauseMenuSelection = currentSelection;
-                auto text = GetSelectedItemText(menu.get(), PAUSE_MENU_LIST_PATH);
-                if (!text.empty()) {
-                    SpeakText(CleanLocalizationString(text));
-                }
-            }
-        }
-    }
-}
-
-std::int32_t MenuAccessibility::GetSelectedIndex(RE::IMenu* a_menu, const std::string& a_listPath)
-{
-    if (!a_menu || !a_menu->uiMovie) {
-        return -1;
-    }
-
-    std::string indexPath = a_listPath + ".selectedIndex";
-    Scaleform::GFx::Value indexValue;
-    if (a_menu->uiMovie->GetVariable(&indexValue, indexPath.c_str())) {
-        if (indexValue.IsInt()) {
-            return indexValue.GetInt();
-        } else if (indexValue.IsNumber()) {
-            return static_cast<std::int32_t>(indexValue.GetNumber());
-        }
-    }
-
-    return -1;
-}
-
-std::string MenuAccessibility::GetSelectedItemText(RE::IMenu* a_menu, const std::string& a_listPath)
-{
-    if (!a_menu || !a_menu->uiMovie) {
-        return "";
-    }
-
-    auto selectedIndex = GetSelectedIndex(a_menu, a_listPath);
-    if (selectedIndex < 0) {
-        return "";
-    }
-
-    // Get entryList array
-    std::string entryListPath = a_listPath + ".entryList";
-    Scaleform::GFx::Value entryList;
-    if (!a_menu->uiMovie->GetVariable(&entryList, entryListPath.c_str()) || !entryList.IsArray()) {
-        return "";
-    }
-
-    if (static_cast<std::uint32_t>(selectedIndex) >= entryList.GetArraySize()) {
-        return "";
-    }
-
-    // Get the selected entry
-    Scaleform::GFx::Value entry;
-    if (!entryList.GetElement(static_cast<std::uint32_t>(selectedIndex), &entry) || !entry.IsObject()) {
-        return "";
-    }
-
-    // Get the text property
-    Scaleform::GFx::Value textValue;
-    if (entry.GetMember("text", &textValue) && textValue.IsString()) {
-        return textValue.GetString();
-    }
-
-    // Try label as fallback
-    if (entry.GetMember("label", &textValue) && textValue.IsString()) {
-        return textValue.GetString();
-    }
-
-    return "";
-}
-
-std::string MenuAccessibility::CleanLocalizationString(const std::string& a_text)
-{
-    if (a_text.empty()) {
-        return a_text;
-    }
-
-    std::string result = a_text;
-
-    // Remove $ prefix used for localization keys
-    if (result[0] == '$') {
-        result = result.substr(1);
-    }
-
-    // Replace underscores and hyphens with spaces for better speech
-    for (char& c : result) {
-        if (c == '_' || c == '-') {
-            c = ' ';
-        }
-    }
-
-    return result;
-}
+// NOTE: CheckAndSpeakSelection, GetSelectedIndex, GetSelectedItemText, CleanLocalizationString removed
+// Main/Pause menu list selection is now handled by MainMenuHook per-frame
+// Use LocalizationHelper::CleanString() for string cleaning
 
 void MenuAccessibility::SpeakText(const std::string& a_text, bool a_interrupt)
 {
@@ -507,106 +380,8 @@ void MenuAccessibility::SpeakText(const std::string& a_text, bool a_interrupt)
     }
 }
 
-// TODO: Find a way to read the confirmation dialog automatically when it appears,
-// not just when user presses a key. May need to hook into Scaleform events or
-// use a frame callback to poll for dialog visibility changes.
-void MenuAccessibility::CheckForConfirmationDialog()
-{
-    auto ui = RE::UI::GetSingleton();
-    if (!ui) return;
-
-    // Check both MainMenu and PauseMenu for confirmation dialogs
-    RE::IMenu* menu = nullptr;
-    if (m_mainMenuOpen) {
-        if (auto m = ui->GetMenu("MainMenu"sv)) {
-            menu = m.get();
-        }
-    } else if (m_pauseMenuOpen) {
-        if (auto m = ui->GetMenu("PauseMenu"sv)) {
-            menu = m.get();
-        }
-    }
-
-    if (!menu || !menu->uiMovie) return;
-
-    // Check if ConfirmPanel is visible
-    Scaleform::GFx::Value confirmPanel;
-    if (!menu->uiMovie->GetVariable(&confirmPanel, "root.Menu_mc.ConfirmPanel_mc")) return;
-    if (confirmPanel.IsUndefined() || !confirmPanel.IsObject()) return;
-
-    Scaleform::GFx::Value visible;
-    if (!confirmPanel.GetMember("visible", &visible) || !visible.IsBoolean() || !visible.GetBoolean()) {
-        return;
-    }
-
-    // Get confirmation text
-    Scaleform::GFx::Value confirmText;
-    if (!menu->uiMovie->GetVariable(&confirmText, "root.Menu_mc.ConfirmPanel_mc.Text_mc.TextPulse_mc.textField.text")) return;
-    if (!confirmText.IsString()) return;
-
-    std::string text = confirmText.GetString();
-
-    // Trim whitespace
-    text.erase(0, text.find_first_not_of(" \t\n\r"));
-    if (!text.empty()) {
-        text.erase(text.find_last_not_of(" \t\n\r") + 1);
-    }
-
-    // Always speak if we have text (user requested no duplicate check)
-    if (!text.empty()) {
-        REX::INFO("Confirmation dialog: '{}'", text);
-        SpeakText(text + ". Press Enter to confirm, Escape to cancel.");
-    }
-}
-
-void MenuAccessibility::DumpScaleformChildren(Scaleform::GFx::Value& a_obj, const std::string& a_path, int a_depth)
-{
-    if (a_depth > 3) return;  // Limit depth to avoid excessive logging
-
-    if (!a_obj.IsObject() && !a_obj.IsDisplayObject()) {
-        return;
-    }
-
-    // Try to get numChildren (for display objects)
-    Scaleform::GFx::Value numChildren;
-    if (a_obj.GetMember("numChildren", &numChildren) && numChildren.IsNumber()) {
-        int count = static_cast<int>(numChildren.GetNumber());
-        REX::INFO("{} has {} children", a_path, count);
-    }
-
-    // Look for specific properties that might indicate a confirmation dialog
-    const char* propsToCheck[] = { "visible", "text", "htmlText", "label", "ConfirmText_tf", "CancelText_tf" };
-    for (const char* prop : propsToCheck) {
-        Scaleform::GFx::Value propVal;
-        if (a_obj.GetMember(prop, &propVal)) {
-            if (propVal.IsString()) {
-                REX::INFO("{}[{}] = '{}'", a_path, prop, propVal.GetString());
-            } else if (propVal.IsBoolean()) {
-                REX::INFO("{}[{}] = {}", a_path, prop, propVal.GetBoolean() ? "true" : "false");
-            }
-        }
-    }
-
-    // Check for named children that might be confirmation-related
-    const char* childNames[] = {
-        "Menu_mc", "ConfirmPanel_mc", "Confirm_mc", "MessageBox_mc",
-        "PopupPanel_mc", "BottomBar_mc", "ButtonBar_mc", "ConfirmText_tf",
-        "BodyText_tf", "HeaderText_tf", "QuestionText_tf", "Body_tf",
-        "Header_tf", "Message_tf", "Text_tf", "Question_tf", "strMessage",
-        "strHeader", "textField", "label"
-    };
-
-    for (const char* childName : childNames) {
-        Scaleform::GFx::Value child;
-        if (a_obj.GetMember(childName, &child)) {
-            if (!child.IsUndefined()) {
-                std::string childPath = a_path + "." + childName;
-                REX::INFO("Found child: {}", childPath);
-                DumpScaleformChildren(child, childPath, a_depth + 1);
-            }
-        }
-    }
-}
+// NOTE: CheckForConfirmationDialog and DumpScaleformChildren removed
+// Confirmation dialogs are now detected per-frame by MainMenuHook
 
 void MenuAccessibility::ScheduleMessageBoxRead(int a_maxRetries)
 {
@@ -733,7 +508,7 @@ void MenuAccessibility::SpeakMessageBox(RE::IMenu* a_menu)
         msgData->buttonText.size());
 
     if (!speechText.empty()) {
-        SpeakText(CleanLocalizationString(speechText));
+        SpeakText(LocalizationHelper::CleanString(speechText));
     }
 }
 
@@ -778,63 +553,9 @@ void MenuAccessibility::SpeakMessageBoxFromScaleform(RE::IMenu* a_menu)
     REX::INFO("MessageBox (Scaleform): body='{}' buttons found", speechText);
 
     if (!speechText.empty()) {
-        SpeakText(CleanLocalizationString(speechText));
+        SpeakText(LocalizationHelper::CleanString(speechText));
     }
 }
 
-bool MenuAccessibility::IsMenuPanelVisible(RE::IMenu* a_menu, const std::string& a_panelPath)
-{
-    if (!a_menu || !a_menu->uiMovie) {
-        return false;
-    }
-
-    Scaleform::GFx::Value panel;
-    if (!a_menu->uiMovie->GetVariable(&panel, a_panelPath.c_str())) {
-        return false;
-    }
-
-    if (panel.IsUndefined() || !panel.IsObject()) {
-        return false;
-    }
-
-    Scaleform::GFx::Value visible;
-    if (!panel.GetMember("visible", &visible) || !visible.IsBoolean()) {
-        return false;
-    }
-
-    return visible.GetBoolean();
-}
-
-void MenuAccessibility::TryAnnounceMenu(const std::string& a_menuName, const std::string& a_announcement, const std::string& a_listPath)
-{
-    // Check if already announced
-    bool* announced = nullptr;
-    if (a_menuName == "MainMenu") {
-        announced = &m_mainMenuAnnounced;
-    } else if (a_menuName == "PauseMenu") {
-        announced = &m_pauseMenuAnnounced;
-    }
-
-    if (!announced || *announced) {
-        return;  // Already announced or unknown menu
-    }
-
-    auto ui = RE::UI::GetSingleton();
-    if (!ui) {
-        return;
-    }
-
-    auto menu = ui->GetMenu(a_menuName.c_str());
-    if (!menu) {
-        return;
-    }
-
-    // Check if the menu has valid content (selected index >= 0 means list is populated)
-    auto selectedIndex = GetSelectedIndex(menu.get(), a_listPath);
-    if (selectedIndex >= 0) {
-        // Menu has content, announce it
-        *announced = true;
-        REX::INFO("{} is ready (selectedIndex={}), announcing", a_menuName, selectedIndex);
-        SpeakText(a_announcement);
-    }
-}
+// NOTE: IsMenuPanelVisible and TryAnnounceMenu removed
+// Panel visibility and menu announcements are now handled by MainMenuHook per-frame
