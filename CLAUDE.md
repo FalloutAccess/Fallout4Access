@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Fallout 4 accessibility F4SE plugin that provides screen reader support for blind users. Uses SRAL (Screen Reader Abstraction Library) to speak via NVDA, JAWS, or SAPI.
 
-**Current Status:** Main menu, pause menu, settings menu, save/load menus, and confirmation dialogs are accessible. Splash screen text is announced. More menus need to be implemented.
+**Current Status:** Main menu, pause menu, settings menu, save/load menus, confirmation dialogs, in-game terminals, and Pip-Boy (Inventory and Data pages) are accessible. Splash screen text is announced. NPC dialogue subtitles are read aloud with speaker names. More menus need to be implemented.
 
 ## Build Commands
 
@@ -104,3 +104,163 @@ Settings panel:           root.Menu_mc.SettingsPanel_mc
 Options panel:            root.Menu_mc.OptionsPanel_mc.Fader_mc.List_mc
 Controls panel:           root.Menu_mc.ControlsPanel_mc.Fader_mc.List_mc
 ```
+
+### Known Scaleform Paths (TerminalMenu.swf)
+
+```
+Terminal base:            root.TerminalBase_mc (Terminal class instance)
+
+Text fields (pre-animation strings for immediate access):
+  - strHeaderText         (string) terminal name/header
+  - strWelcomeText        (string) welcome message
+  - strDisplayText        (string) body text or hacking grid
+
+Menu list:                root.TerminalBase_mc.MenuItemList_mc (BSScrollingList)
+  - selectedIndex         (int) current selection
+  - entryList             (array) menu items with .text property
+
+Hacking mode:
+  - HackingAttempts_tf.text (string) "X ATTEMPT(S) LEFT"
+  - ResponseLog_tf.text   (string) previous guess results
+
+Terminal modes (RE::TerminalMenu::Mode):
+  - kInit (0), kHack (1), kLogin (2), kList (3)
+  - kText (4), kImage (5), kHolotape (6), kWaitingForPapyrus (7)
+```
+
+### Known Scaleform Paths (PipboyMenu.swf)
+
+```
+Data object:              root.DataObj (central data container populated from C++)
+
+Page/Tab state:
+  - CurrentPage           (int) 0=STAT, 1=INV, 2=DATA, 3=MAP, 4=RADIO
+  - CurrentTab            (int) sub-tab index within current page
+
+Inventory arrays:
+  - InvItems              (array) all inventory items
+  - InvSelectedItems      (array) selected index for each tab [7 elements]
+
+Inventory item properties (InvItems[i]):
+  - text                  (string) item display name
+  - count                 (int) stack count
+  - equipState            (int) 0=unequipped, >0=equipped
+  - isLegendary           (bool) has legendary effects
+  - taggedForSearch       (bool) tagged for component search
+  - favorite              (int) 0=not favorite, >0=quickkey slot
+
+Item card details:        root.DataObj.ItemCard_mc.InfoObj (array)
+  - text                  (string) stat label (e.g., "Value", "Weight", "DAM")
+  - value                 (number/string) stat value
+  - damageType            (int) damage type ID
+  - showAsDescription     (bool) true if this is description text
+
+Quest data:               root.DataObj.QuestsList (array)
+  - text                  (string) quest name
+  - description           (string) quest description
+  - active                (bool) currently tracked
+  - completed             (bool) quest completed
+  - isDivider             (bool) is a category divider
+  - formID                (uint) quest form ID (0 = misc container)
+
+Workshop data:            root.DataObj.WorkshopsList (array)
+  - text                  (string) settlement name
+  - happiness             (number) settlement happiness percentage
+  - population            (int) number of settlers
+
+General stats:            root.DataObj.GeneralStatsList (array)
+  - text                  (string) stat name
+  - value                 (number/string) stat value
+
+Pip-Boy pages:
+  - STAT (0): Status, SPECIAL, Perks tabs
+  - INV (1): Weapons, Apparel, Aid, Misc, Junk, Mods, Ammo tabs
+  - DATA (2): Quests, Workshops, Stats tabs
+  - MAP (3): World Map, Local Map tabs
+  - RADIO (4): Radio stations list
+```
+
+### Known Scaleform Paths (HUDMenu.swf)
+
+```
+Subtitles:                root.BottomCenterGroup_mc.SubtitleText_mc
+  - SpeakerName_tf.text   (string) speaker's name
+  - SubtitleText_tf.text  (string) subtitle/dialogue text
+
+HUD Notifications:        root.HUDNotificationsGroup_mc
+  - Messages_mc           message display container
+    - ShownMessageArray   (array) currently visible messages
+    - MessageArray        (array) queued messages
+  - QuestUpdates_mc       quest notification area
+    - QuestName_tf.text   (string) quest name
+    - UpdateType_tf.text  (string) "Started", "Completed", etc.
+  - ObjectiveUpdates_mc   objective notification area
+    - ShownObjectivesV    (array) visible objectives
+  - XPMeter_mc            XP gain display
+    - NumberText.text     (string) XP amount
+    - LeveUpTextClip.textField.text (string) level up text (note: "LeveUp" typo in game)
+  - TutorialText_mc       tutorial popup
+    - TutorialText_tf.text (string) tutorial message
+```
+
+### Input Key Codes
+
+Fallout 4 uses **Windows Virtual Key codes** (not DirectInput scan codes) for keyboard input in `RE::ButtonEvent::QIDCode()`:
+
+```
+Navigation:
+  - Up Arrow:    0x26 (VK_UP)
+  - Down Arrow:  0x28 (VK_DOWN)
+  - Left Arrow:  0x25 (VK_LEFT)
+  - Right Arrow: 0x27 (VK_RIGHT)
+  - W:           0x57
+  - A:           0x41
+  - S:           0x53
+  - D:           0x44
+
+Actions:
+  - Enter:       0x0D (VK_RETURN)
+  - E:           0x45 (Activate)
+  - Tab:         0x09 (VK_TAB, used as Back in terminals)
+  - Escape:      0x1B (VK_ESCAPE)
+  - Space:       0x20 (VK_SPACE)
+
+Pip-Boy specific:
+  - Q:           0x51 (Previous tab)
+  - E:           0x45 (Next tab)
+  - 1-5:         0x31-0x35 (Direct page select)
+
+Device types (RE::INPUT_DEVICE):
+  - kKeyboard:   0
+  - kMouse:      1
+  - kGamepad:    2
+```
+
+### F4SE Task Interface Warning
+
+**NEVER use infinite/recursive polling with `F4SE::GetTaskInterface()->AddTask()`**. Each task executes on the next frame, so recursive scheduling like this will hang the game:
+
+```cpp
+// BAD - causes game hang!
+void StartPolling() {
+    taskInterface->AddTask([this]() {
+        DoSomething();
+        StartPolling();  // Infinite recursion floods task queue
+    });
+}
+```
+
+Instead, schedule a **fixed number** of checks:
+
+```cpp
+// GOOD - limited checks
+void ScheduleDelayedChecks(int count) {
+    if (count <= 0) return;
+    taskInterface->AddTask([this, count]() {
+        DoSomething();
+        ScheduleDelayedChecks(count - 1);  // Decrements to zero
+    });
+}
+```
+
+This runs one check per frame for N frames, then stops.

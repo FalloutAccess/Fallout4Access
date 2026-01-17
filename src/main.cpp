@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "AutoWalk.h"
 #include "CrosshairAccessibility.h"
+#include "HUDMessageHook.h"
+#include "ItemStatFormatter.h"
 #include "MenuAccessibility.h"
 #include "ObjectScanner.h"
 #include <SRAL.h>
@@ -11,6 +13,9 @@ void OnF4SEMessage(F4SE::MessagingInterface::Message* a_msg)
         // Game data is loaded - initialize components that need PlayerCharacter
         AutoWalk::GetSingleton()->Initialize();
         CrosshairAccessibility::GetSingleton()->Register();
+
+        // Load damage type translations
+        ItemStatFormatter::LoadTranslations();
     }
 }
 
@@ -45,6 +50,9 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 
     // Register object scanner for gameplay
     ObjectScanner::GetSingleton()->Register();
+
+    // Install HUD message hook for item pickups, location discoveries, etc.
+    HUDMessageHook::GetSingleton()->Install();
 
     // Note: CrosshairAccessibility is registered in OnF4SEMessage when game data is ready
     // because it needs PlayerCharacter to be available
