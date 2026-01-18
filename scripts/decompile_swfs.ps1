@@ -50,7 +50,20 @@ foreach ($swf in $swfFiles) {
     }
 
     Write-Host "[$count/$($swfFiles.Count)] Extracting: $($swf.FullName)"
-    & $FFDecPath -export script $outputDir $swf.FullName 2>&1 | Out-Null
+    & $FFDecPath  -export all,xfl $outputDir $swf.FullName
+
+    # Clean up redundant .as files from xfl/ directory
+    # These duplicate scripts/ but without the useful [Embed] annotations
+    # Keep only the xfl/{SWFName}/ subfolder which has LIBRARY/*.xml with instance names
+    $xflDir = Join-Path $outputDir "xfl"
+    if (Test-Path $xflDir) {
+        $redundantAs = Get-ChildItem -Path $xflDir -Filter "*.as" -File -ErrorAction SilentlyContinue
+        if ($redundantAs) {
+            $redundantAs | Remove-Item -Force
+            Write-Host "  Cleaned up $($redundantAs.Count) redundant .as files from xfl/"
+        }
+    }
+
     $extracted++
 }
 
