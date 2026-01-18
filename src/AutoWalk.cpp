@@ -1,4 +1,5 @@
 #include "AutoWalk.h"
+#include "SpeechManager.h"
 #include <SRAL.h>
 #include <cmath>
 #include <Windows.h>
@@ -123,7 +124,7 @@ void AutoWalk::Update()
         GetAsyncKeyState(0x1B) & 0x8000 ||  // Escape
         GetAsyncKeyState(0x20) & 0x8000) {  // Space
         REX::INFO("AutoWalk: Cancel key detected, stopping");
-        SRAL_Speak("Stopped", false);
+        SpeechManager::GetSingleton()->Speak("Stopped");
         Stop();
         return;
     }

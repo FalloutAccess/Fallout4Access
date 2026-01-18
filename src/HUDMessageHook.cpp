@@ -1,5 +1,6 @@
 #include "HUDMessageHook.h"
 #include "InstructionLength.h"
+#include "SpeechManager.h"
 #include <SRAL.h>
 
 HUDMessageHook* HUDMessageHook::GetSingleton()
@@ -154,9 +155,5 @@ void HUDMessageHook::RecordAnnouncement(const std::string& a_text)
 
 void HUDMessageHook::SpeakText(const std::string& a_text)
 {
-    if (a_text.empty()) return;
-
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), false);  // Never interrupt per CLAUDE.md
-    }
+    SpeechManager::GetSingleton()->Speak(a_text);
 }

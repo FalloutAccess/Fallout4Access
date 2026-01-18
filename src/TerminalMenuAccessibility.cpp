@@ -1,4 +1,5 @@
 #include "TerminalMenuAccessibility.h"
+#include "SpeechManager.h"
 #include "TerminalMenuHook.h"
 #include <SRAL.h>
 
@@ -96,8 +97,5 @@ std::string TerminalMenuAccessibility::GetWelcomeText(RE::IMenu* a_menu)
 
 void TerminalMenuAccessibility::SpeakText(const std::string& a_text, bool a_interrupt)
 {
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), a_interrupt);
-        REX::INFO("Spoke: {}", a_text);
-    }
+    SpeechManager::GetSingleton()->Speak(a_text, a_interrupt);
 }

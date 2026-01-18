@@ -1,4 +1,5 @@
 #include "PipBoyPageBase.h"
+#include "SpeechManager.h"
 #include <SRAL.h>
 
 const Scaleform::GFx::Value* PipBoyPageBase::GetDataObj(RE::IMenu* a_menu)
@@ -125,10 +126,7 @@ std::int32_t PipBoyPageBase::GetInventoryListSelection(RE::IMenu* a_menu)
 
 void PipBoyPageBase::SpeakText(const std::string& a_text, bool a_interrupt)
 {
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), a_interrupt);
-        REX::INFO("PipBoy spoke: {}", a_text);
-    }
+    SpeechManager::GetSingleton()->Speak(a_text, a_interrupt);
 }
 
 std::string PipBoyPageBase::CleanLocalizationString(const std::string& a_text)

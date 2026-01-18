@@ -1,4 +1,5 @@
 #include "CrosshairAccessibility.h"
+#include "SpeechManager.h"
 #include <SRAL.h>
 #include <chrono>
 
@@ -167,7 +168,5 @@ std::string CrosshairAccessibility::GetActivateText(RE::TESObjectREFR* a_ref)
 
 void CrosshairAccessibility::SpeakText(const std::string& a_text)
 {
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), false);
-    }
+    SpeechManager::GetSingleton()->Speak(a_text);
 }

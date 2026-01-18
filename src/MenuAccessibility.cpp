@@ -1,6 +1,7 @@
 #include "MenuAccessibility.h"
 #include "MainMenuHook.h"
 #include "LocalizationHelper.h"
+#include "SpeechManager.h"
 #include "SettingsMenuAccessibility.h"
 #include "SaveLoadMenuAccessibility.h"
 #include "DialogueMenuAccessibility.h"
@@ -114,10 +115,7 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
                 if (m_specialMenuOpen) {
                     SPECIALMenuAccessibility::GetSingleton()->CheckSelection(m_mainMenuOpen, m_pauseMenuOpen);
                 }
-                // Terminal: AdvanceMovie hook handles state tracking per-frame
-                if (m_vatsMenuOpen) {
-                    VATSMenuAccessibility::GetSingleton()->CheckSelection();
-                }
+                // Terminal/VATS: AdvanceMovie hooks handle state tracking per-frame
                 if (m_pipBoyMenuOpen) {
                     if (isPipBoyItemNavKey) {
                         // Up/Down navigates items within a list
@@ -153,10 +151,7 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
                         if (m_specialMenuOpen) {
                             SPECIALMenuAccessibility::GetSingleton()->CheckValueChange(m_mainMenuOpen, m_pauseMenuOpen);
                         }
-                        if (m_vatsMenuOpen) {
-                            // A/D keys cycle targets in VATS
-                            VATSMenuAccessibility::GetSingleton()->CheckTargetChange();
-                        }
+                        // VATS: AdvanceMovie hook handles target cycling per-frame
                     });
                 }
             });
@@ -374,10 +369,7 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
 
 void MenuAccessibility::SpeakText(const std::string& a_text, bool a_interrupt)
 {
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), a_interrupt);
-        REX::INFO("Spoke: {}", a_text);
-    }
+    SpeechManager::GetSingleton()->Speak(a_text, a_interrupt);
 }
 
 // NOTE: CheckForConfirmationDialog and DumpScaleformChildren removed

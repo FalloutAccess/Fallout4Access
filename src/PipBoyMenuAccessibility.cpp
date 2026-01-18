@@ -2,6 +2,7 @@
 #include "PipBoyInventoryPage.h"
 #include "PipBoyDataPage.h"
 #include "PipBoyCallbackHook.h"
+#include "SpeechManager.h"
 #include <RE/P/PipboyMenu.h>
 #include <SRAL.h>
 
@@ -320,8 +321,5 @@ const char* PipBoyMenuAccessibility::GetPageName(Page a_page)
 
 void PipBoyMenuAccessibility::SpeakText(const std::string& a_text, bool a_interrupt)
 {
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), a_interrupt);
-        REX::INFO("PipBoy spoke: {}", a_text);
-    }
+    SpeechManager::GetSingleton()->Speak(a_text, a_interrupt);
 }

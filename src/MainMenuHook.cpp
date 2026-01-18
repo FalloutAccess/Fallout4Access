@@ -2,6 +2,7 @@
 #include "LocalizationHelper.h"
 #include "SettingsMenuAccessibility.h"
 #include "SaveLoadMenuAccessibility.h"
+#include "SpeechManager.h"
 #include <RE/P/PauseMenu.h>
 #include <SRAL.h>
 
@@ -626,10 +627,5 @@ std::string MainMenuHook::GetSplashText(RE::MainMenu* a_menu)
 
 void MainMenuHook::SpeakText(const std::string& a_text)
 {
-    if (a_text.empty()) return;
-
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), false);  // Never interrupt per CLAUDE.md
-        REX::INFO("MainMenuHook spoke: {}", a_text);
-    }
+    SpeechManager::GetSingleton()->Speak(a_text);
 }

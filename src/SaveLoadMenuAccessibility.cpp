@@ -1,4 +1,5 @@
 #include "SaveLoadMenuAccessibility.h"
+#include "SpeechManager.h"
 #include <SRAL.h>
 
 SaveLoadMenuAccessibility* SaveLoadMenuAccessibility::GetSingleton()
@@ -338,10 +339,7 @@ void SaveLoadMenuAccessibility::CheckSelection(bool a_mainMenuOpen, bool a_pause
 
 void SaveLoadMenuAccessibility::SpeakText(const std::string& a_text)
 {
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), false);
-        REX::INFO("SaveLoad spoke: {}", a_text);
-    }
+    SpeechManager::GetSingleton()->Speak(a_text);
 }
 
 std::string SaveLoadMenuAccessibility::CleanLocalizationString(const std::string& a_text)

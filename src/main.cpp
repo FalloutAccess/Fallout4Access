@@ -1,10 +1,13 @@
 #include "pch.h"
 #include "AutoWalk.h"
 #include "CrosshairAccessibility.h"
+#include "ExamineMenuHook.h"
 #include "HUDMessageHook.h"
 #include "ItemStatFormatter.h"
 #include "MenuAccessibility.h"
 #include "ObjectScanner.h"
+#include "SpeechManager.h"
+#include "VATSMenuHook.h"
 #include <SRAL.h>
 
 void OnF4SEMessage(F4SE::MessagingInterface::Message* a_msg)
@@ -37,10 +40,12 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
         REX::ERROR("SRAL initialization failed");
     }
 
-    // Speak test message
+    // Initialize speech manager (creates dedicated speech log)
+    SpeechManager::GetSingleton()->Initialize();
+
+    // Speak test message via centralized manager
     if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak("Fallout 4 accessibility plugin loaded successfully", false);
-        REX::INFO("Spoke loading message");
+        SpeechManager::GetSingleton()->Speak("Fallout 4 accessibility plugin loaded successfully");
     } else {
         REX::WARN("No speech engine available");
     }
@@ -53,6 +58,12 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 
     // Install HUD message hook for item pickups, location discoveries, etc.
     HUDMessageHook::GetSingleton()->Install();
+
+    // Install ExamineMenu hook for workbench accessibility
+    ExamineMenuHook::GetSingleton()->Install();
+
+    // Install VATSMenu hook for VATS accessibility
+    VATSMenuHook::GetSingleton()->Install();
 
     // Note: CrosshairAccessibility is registered in OnF4SEMessage when game data is ready
     // because it needs PlayerCharacter to be available

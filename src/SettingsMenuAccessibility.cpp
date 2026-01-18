@@ -1,4 +1,5 @@
 #include "SettingsMenuAccessibility.h"
+#include "SpeechManager.h"
 #include <SRAL.h>
 
 SettingsMenuAccessibility* SettingsMenuAccessibility::GetSingleton()
@@ -351,10 +352,7 @@ void SettingsMenuAccessibility::CheckValueChange(bool a_mainMenuOpen, bool a_pau
 
 void SettingsMenuAccessibility::SpeakText(const std::string& a_text)
 {
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), false);
-        REX::INFO("Settings spoke: {}", a_text);
-    }
+    SpeechManager::GetSingleton()->Speak(a_text);
 }
 
 std::string SettingsMenuAccessibility::CleanLocalizationString(const std::string& a_text)

@@ -1,5 +1,6 @@
 #include "PipBoyCallbackHook.h"
 #include "ItemStatFormatter.h"
+#include "SpeechManager.h"
 #include <F4SE/F4SE.h>
 #include <SRAL.h>
 #include <cmath>
@@ -381,12 +382,7 @@ void PipBoyCallbackHook::AnnounceWorkshop(const Scaleform::GFx::Value& a_worksho
 
 void PipBoyCallbackHook::SpeakText(const std::string& a_text)
 {
-    if (a_text.empty()) return;
-
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), false);  // Never interrupt per CLAUDE.md
-        REX::INFO("PipBoyCallbackHook spoke: {}", a_text);
-    }
+    SpeechManager::GetSingleton()->Speak(a_text);
 }
 
 std::string PipBoyCallbackHook::CleanLocalizationString(const std::string& a_text)

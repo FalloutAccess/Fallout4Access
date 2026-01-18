@@ -1,4 +1,5 @@
 #include "DialogueMenuAccessibility.h"
+#include "SpeechManager.h"
 #include <SRAL.h>
 
 DialogueMenuAccessibility* DialogueMenuAccessibility::GetSingleton()
@@ -269,8 +270,5 @@ std::string DialogueMenuAccessibility::GetChallengeDifficulty(std::int32_t a_lev
 
 void DialogueMenuAccessibility::SpeakText(const std::string& a_text, bool a_interrupt)
 {
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), a_interrupt);
-        REX::INFO("Spoke: {}", a_text);
-    }
+    SpeechManager::GetSingleton()->Speak(a_text, a_interrupt);
 }

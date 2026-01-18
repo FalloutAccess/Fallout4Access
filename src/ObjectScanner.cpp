@@ -1,10 +1,13 @@
 #include "ObjectScanner.h"
 #include "AutoWalk.h"
+#include "SpeechManager.h"
 #include <SRAL.h>
 #include <algorithm>
 #include <cmath>
 #include <REX/W32/USER32.h>
 #include <RE/P/PipboyDataManager.h>
+#include <RE/P/PowerArmor.h>
+#include <RE/T/TESFurniture.h>
 
 // Static storage for singleton
 static RE::PlayerControlsData s_dummyData{};
@@ -161,6 +164,8 @@ const char* ObjectScanner::GetCategoryName(ScanCategory a_category)
         case ScanCategory::QuestMarkers: return "Quest Markers";
         case ScanCategory::Corpses: return "Corpses";
         case ScanCategory::Locations: return "Locations";
+        case ScanCategory::Companions: return "Companions";
+        case ScanCategory::PowerArmor: return "Power Armor";
         default: return "Unknown";
     }
 }
@@ -267,9 +272,11 @@ bool ObjectScanner::MatchesCategory(RE::TESObjectREFR* a_ref, ScanCategory a_cat
     if (a_category == ScanCategory::All) return true;
     if (!a_ref) return false;
 
-    // Quest markers and locations are virtual - never match physical refs
+    // These categories use separate scanning methods
     if (a_category == ScanCategory::QuestMarkers) return false;
     if (a_category == ScanCategory::Locations) return false;
+    if (a_category == ScanCategory::Companions) return false;
+    if (a_category == ScanCategory::PowerArmor) return false;
 
     // Check for Actor (NPC or Corpse)
     if (a_ref->Is(RE::ENUM_FORM_ID::kACHR)) {
@@ -378,13 +385,21 @@ void ObjectScanner::ScanObjects()
         return;
     }
 
-    // Quest markers and locations use different scanning methods
+    // These categories use different scanning methods
     if (m_currentCategory == ScanCategory::QuestMarkers) {
         ScanQuestMarkers();
         return;
     }
     if (m_currentCategory == ScanCategory::Locations) {
         ScanCompassMarkers();
+        return;
+    }
+    if (m_currentCategory == ScanCategory::Companions) {
+        ScanCompanions();
+        return;
+    }
+    if (m_currentCategory == ScanCategory::PowerArmor) {
+        ScanPowerArmor();
         return;
     }
 
@@ -465,21 +480,6 @@ void ObjectScanner::ScanQuestMarkers()
     // Get PipboyDataManager for the authoritative quest marker data
     auto* pipboyData = RE::PipboyDataManager::GetSingleton();
 
-    // First, find the first displayed objective text to use as the marker name
-    // This is the objective from the currently tracked quest
-    std::string objectiveText;
-    for (const auto& instancedObj : player->objectives) {
-        if (!instancedObj.objective) continue;
-        if (instancedObj.enstanceState != RE::QUEST_OBJECTIVE_STATE::kDisplayed) continue;
-
-        const char* objText = instancedObj.objective->displayText.c_str();
-        if (objText && objText[0] != '\0') {
-            objectiveText = objText;
-            REX::INFO("ObjectScanner: Found displayed objective: '{}'", objectiveText);
-            break;  // Use the first displayed objective
-        }
-    }
-
     // Use worldQuestMarkers which contains the currently tracked quest marker(s)
     // This is what the game uses to show markers on the Pip-Boy map
     if (pipboyData) {
@@ -499,13 +499,46 @@ void ObjectScanner::ScanQuestMarkers()
             RE::NiPoint3 pos = ref->GetPosition();
             if (!IsValidPosition(pos)) continue;
 
-            // Use objective text if we found one, otherwise fall back to reference name
+            // Try to find which objective this marker belongs to
+            // by checking if any quest's aliases point to this reference
             std::string markerName;
-            if (!objectiveText.empty()) {
-                markerName = objectiveText;
-            } else {
+            for (const auto& instancedObj : player->objectives) {
+                if (!instancedObj.objective) continue;
+                if (instancedObj.enstanceState != RE::QUEST_OBJECTIVE_STATE::kDisplayed) continue;
+
+                auto* quest = instancedObj.objective->ownerQuest;
+                if (!quest) continue;
+
+                // Check if any alias in this quest points to our marker ref
+                bool foundMatch = false;
+                for (const auto* alias : quest->aliases) {
+                    if (!alias) continue;
+
+                    RE::ObjectRefHandle aliasHandle;
+                    quest->GetAliasedRef(&aliasHandle, alias->aliasID);
+
+                    if (aliasHandle) {
+                        auto aliasRefPtr = aliasHandle.get();
+                        if (aliasRefPtr && aliasRefPtr.get() == ref) {
+                            // Found the objective that owns this marker
+                            const char* objText = instancedObj.objective->displayText.c_str();
+                            if (objText && objText[0] != '\0') {
+                                markerName = objText;
+                            }
+                            foundMatch = true;
+                            REX::INFO("ObjectScanner: Matched marker to objective '{}'", markerName);
+                            break;
+                        }
+                    }
+                }
+                if (foundMatch) break;
+            }
+
+            // Fall back to reference name if no objective match found
+            if (markerName.empty()) {
                 const char* name = ref->GetDisplayFullName();
                 markerName = (name && name[0] != '\0') ? name : "Quest Marker";
+                REX::INFO("ObjectScanner: No objective match, using ref name '{}'", markerName);
             }
 
             ScannedObject obj;
@@ -517,22 +550,6 @@ void ObjectScanner::ScanQuestMarkers()
             m_scannedObjects.push_back(obj);
             REX::INFO("ObjectScanner: Added quest marker: '{}' at ({}, {}, {})",
                 markerName, pos.x, pos.y, pos.z);
-        }
-    }
-
-    // Fallback: If no markers found via PipboyDataManager, try V.A.N.S. path
-    if (m_scannedObjects.empty() && player->playerMarkerPath) {
-        RE::NiPoint3 markerPos = player->playerMarkerPath->end;
-        if (IsValidPosition(markerPos)) {
-            ScannedObject obj;
-            obj.ref = nullptr;
-            obj.name = "Quest Marker (V.A.N.S.)";
-            obj.isVirtual = true;
-            obj.virtualPos = markerPos;
-
-            m_scannedObjects.push_back(obj);
-            REX::INFO("ObjectScanner: Using V.A.N.S. path for quest marker at ({}, {}, {})",
-                markerPos.x, markerPos.y, markerPos.z);
         }
     }
 
@@ -681,6 +698,183 @@ void ObjectScanner::ScanCompassMarkers()
 
     REX::INFO("ObjectScanner: Found {} compass locations within {} units",
         m_scannedObjects.size(), static_cast<int>(compassRange));
+}
+
+void ObjectScanner::ScanCompanions()
+{
+    auto* player = RE::PlayerCharacter::GetSingleton();
+    if (!player) {
+        REX::WARN("ObjectScanner: No player singleton");
+        return;
+    }
+
+    auto* cell = player->GetParentCell();
+    if (!cell) {
+        REX::WARN("ObjectScanner: Player has no parent cell");
+        return;
+    }
+
+    RE::NiPoint3 playerPos = player->GetPosition();
+    m_lastScanPosition = playerPos;
+
+    m_scannedObjects.clear();
+    m_currentIndex = -1;
+
+    // Temporary struct for sorting by distance
+    struct TempCompanion {
+        RE::Actor* actor;
+        std::string name;
+        float distance;
+    };
+    std::vector<TempCompanion> tempCompanions;
+
+    // Scan all actors in the cell and check if they're following the player
+    for (auto& refPtr : cell->references) {
+        auto* ref = refPtr.get();
+        if (!ref || ref == player) continue;
+        if (ref->IsDeleted() || ref->IsDisabled()) continue;
+
+        // Check if this is an actor
+        if (!ref->Is(RE::ENUM_FORM_ID::kACHR)) continue;
+
+        auto* actor = ref->As<RE::Actor>();
+        if (!actor) continue;
+        if (actor->IsDead(false)) continue;  // Skip dead actors
+
+        // Check if this actor is following the player (companion check)
+        if (!actor->IsFollowing()) continue;
+
+        const char* name = actor->GetDisplayFullName();
+        if (!name || name[0] == '\0') continue;
+
+        float dist = playerPos.GetDistance(actor->GetPosition());
+
+        tempCompanions.push_back({actor, name, dist});
+        REX::INFO("ObjectScanner: Found companion '{}' dist={:.0f}", name, dist);
+    }
+
+    // Sort by distance (closest first)
+    std::sort(tempCompanions.begin(), tempCompanions.end(),
+        [](const TempCompanion& a, const TempCompanion& b) {
+            return a.distance < b.distance;
+        });
+
+    // Store in member vector
+    for (const auto& companion : tempCompanions) {
+        ScannedObject obj;
+        obj.ref = companion.actor;
+        obj.name = companion.name;
+        obj.isVirtual = false;
+        m_scannedObjects.push_back(obj);
+    }
+
+    if (!m_scannedObjects.empty()) {
+        m_currentIndex = 0;
+    }
+
+    REX::INFO("ObjectScanner: Found {} companions", m_scannedObjects.size());
+}
+
+void ObjectScanner::ScanPowerArmor()
+{
+    auto* player = RE::PlayerCharacter::GetSingleton();
+    if (!player) {
+        REX::WARN("ObjectScanner: No player singleton");
+        return;
+    }
+
+    RE::NiPoint3 playerPos = player->GetPosition();
+    m_lastScanPosition = playerPos;
+
+    m_scannedObjects.clear();
+    m_currentIndex = -1;
+
+    // Temporary struct for sorting by distance
+    struct TempPowerArmor {
+        RE::TESObjectREFR* ref;
+        std::string name;
+        float distance;
+    };
+    std::vector<TempPowerArmor> tempPowerArmor;
+
+    // Check lastUsedPowerArmor from PlayerCharacter
+    if (player->lastUsedPowerArmor) {
+        auto refPtr = player->lastUsedPowerArmor.get();
+        if (refPtr) {
+            auto* ref = refPtr.get();
+            if (ref && !ref->IsDeleted() && !ref->IsDisabled()) {
+                const char* name = ref->GetDisplayFullName();
+                std::string displayName = (name && name[0] != '\0') ? name : "Power Armor";
+                float dist = playerPos.GetDistance(ref->GetPosition());
+
+                tempPowerArmor.push_back({ref, displayName, dist});
+                REX::INFO("ObjectScanner: Found last used power armor '{}' dist={:.0f}", displayName, dist);
+            }
+        }
+    }
+
+    // Scan cell for furniture with power armor keyword
+    auto* cell = player->GetParentCell();
+    if (cell) {
+        auto* paKeyword = RE::PowerArmor::GetArmorKeyword();
+
+        for (auto& refPtr : cell->references) {
+            auto* ref = refPtr.get();
+            if (!ref || ref == player) continue;
+            if (ref->IsDeleted() || ref->IsDisabled()) continue;
+
+            auto* baseObj = ref->GetObjectReference();
+            if (!baseObj) continue;
+
+            // Check if this is a furniture object (power armor frames are furniture)
+            if (baseObj->GetFormType() != RE::ENUM_FORM_ID::kFURN) continue;
+
+            // Cast to TESFurniture to access HasKeyword (via BGSKeywordForm inheritance)
+            auto* furniture = static_cast<RE::TESFurniture*>(baseObj);
+
+            // Check if it has the power armor keyword
+            if (paKeyword && furniture->HasKeyword(paKeyword)) {
+                // Check if already added (avoid duplicates with lastUsedPowerArmor)
+                bool alreadyAdded = false;
+                for (const auto& existing : tempPowerArmor) {
+                    if (existing.ref == ref) {
+                        alreadyAdded = true;
+                        break;
+                    }
+                }
+
+                if (!alreadyAdded) {
+                    const char* name = ref->GetDisplayFullName();
+                    std::string displayName = (name && name[0] != '\0') ? name : "Power Armor Frame";
+                    float dist = playerPos.GetDistance(ref->GetPosition());
+
+                    tempPowerArmor.push_back({ref, displayName, dist});
+                    REX::INFO("ObjectScanner: Found power armor frame '{}' dist={:.0f}", displayName, dist);
+                }
+            }
+        }
+    }
+
+    // Sort by distance (closest first)
+    std::sort(tempPowerArmor.begin(), tempPowerArmor.end(),
+        [](const TempPowerArmor& a, const TempPowerArmor& b) {
+            return a.distance < b.distance;
+        });
+
+    // Store in member vector
+    for (const auto& pa : tempPowerArmor) {
+        ScannedObject obj;
+        obj.ref = pa.ref;
+        obj.name = pa.name;
+        obj.isVirtual = false;
+        m_scannedObjects.push_back(obj);
+    }
+
+    if (!m_scannedObjects.empty()) {
+        m_currentIndex = 0;
+    }
+
+    REX::INFO("ObjectScanner: Found {} power armor frames", m_scannedObjects.size());
 }
 
 void ObjectScanner::ScanAndAnnounce()
@@ -948,8 +1142,5 @@ void ObjectScanner::WalkToCurrentObject()
 
 void ObjectScanner::SpeakText(const std::string& a_text)
 {
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), false);
-        REX::INFO("ObjectScanner spoke: {}", a_text);
-    }
+    SpeechManager::GetSingleton()->Speak(a_text);
 }

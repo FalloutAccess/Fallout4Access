@@ -1,4 +1,5 @@
 #include "HUDMenuHook.h"
+#include "SpeechManager.h"
 #include <SRAL.h>
 #include <RE/H/HUDMenu.h>
 
@@ -618,9 +619,5 @@ void HUDMenuHook::CleanExpiredAnnouncements()
 
 void HUDMenuHook::SpeakText(const std::string& a_text)
 {
-    if (a_text.empty()) return;
-
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), false);  // Never interrupt per CLAUDE.md
-    }
+    SpeechManager::GetSingleton()->Speak(a_text);
 }

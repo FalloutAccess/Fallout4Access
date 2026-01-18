@@ -1,4 +1,5 @@
 #include "DeferredItemAnnouncer.h"
+#include "SpeechManager.h"
 #include <F4SE/F4SE.h>
 #include <RE/U/UI.h>
 #include <RE/P/PipboyMenu.h>
@@ -123,12 +124,7 @@ std::string DeferredItemAnnouncer::BuildAnnouncement(
 
 void DeferredItemAnnouncer::SpeakText(const std::string& a_text)
 {
-    if (a_text.empty()) return;
-
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), false);  // Never interrupt per CLAUDE.md
-        REX::INFO("DeferredItemAnnouncer spoke: {}", a_text);
-    }
+    SpeechManager::GetSingleton()->Speak(a_text);
 }
 
 std::string DeferredItemAnnouncer::CleanString(const std::string& a_text)

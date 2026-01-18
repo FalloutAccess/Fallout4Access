@@ -35,7 +35,8 @@ cp build/windows/x64/release/fallout4access.dll "E:/Games/ModOrganizer/Fallout 4
 
 ### Key APIs
 
-- **SRAL** - `SRAL_Initialize()`, `SRAL_Speak()`, `SRAL_GetCurrentEngine()`
+- **SpeechManager** - `SpeechManager::GetSingleton()->Speak()` - Centralized speech output with automatic logging
+- **SRAL** - `SRAL_Initialize()`, `SRAL_GetCurrentEngine()` (internal use only - use SpeechManager for speech)
 - **RE::UI** - UI system access and menu event registration
 - **RE::IMenu** - Menu interface with Scaleform movie access
 - **RE::Scaleform::GFx** - Flash/Scaleform UI framework for accessing menu elements
@@ -46,18 +47,74 @@ cp build/windows/x64/release/fallout4access.dll "E:/Games/ModOrganizer/Fallout 4
 - C++23 compiler (MSVC or Clang-CL)
 - Windows x64
 
+## Log Files
+
+The plugin creates two log files in `D:\alex\OneDrive\Документы\My Games\Fallout4\F4SE\`:
+
+### fallout4access.log (Main Debug Log)
+
+Contains debug/info logging for development:
+- Plugin initialization and SRAL status
+- Menu open/close events
+- Hook installation details
+- Scaleform data access
+- Errors and warnings
+
+**Does NOT contain speech output** (that goes to the speech log).
+
+### fallout4access_speech.log (Speech Transcript)
+
+Contains timestamped record of all screen reader output:
+```
+[12:34:56] Fallout 4 accessibility plugin loaded successfully
+[12:34:58] Main Menu
+[12:35:01] Continue
+[12:35:03] Load
+```
+
+**Format:** `[HH:MM:SS] <spoken text>`
+
+**Use this log to:**
+- Debug what was announced to the user
+- Review gameplay sessions
+- Verify speech output is correct
+- Check announcement timing and ordering
+
+The log is truncated on each game launch (fresh log per session).
+
 ## Workflow Preferences
 
 ### Always Use Subagents For:
 
 - **CommonLibF4 API research** - Use `commonlibf4-api-analyst` subagent when exploring RE:: classes, menu systems, Scaleform APIs, or any CommonLibF4 functionality in `lib/commonlibf4`
-- **Log analysis** - Use `f4se-log-analyzer` subagent when reading and analyzing `fallout4access.log` or other F4SE plugin logs at `D:\alex\OneDrive\Документы\My Games\Fallout4\F4SE\`
+- **Log analysis** - Use `f4se-log-analyzer` subagent when reading and analyzing plugin logs at `D:\alex\OneDrive\Документы\My Games\Fallout4\F4SE\`:
+  - `fallout4access.log` - Main debug log (initialization, menu events, hooks, errors)
+  - `fallout4access_speech.log` - Speech-only log (timestamped record of all screen reader output)
 
 These subagents have specialized knowledge and reduce context usage.
 
-### SRAL Usage
+### Speech Output (SpeechManager)
 
-- **Never use interrupt=true** with `SRAL_Speak()` calls. Always use `interrupt=false` (the default in SpeakText).
+All speech output goes through the centralized `SpeechManager` singleton:
+
+```cpp
+#include "SpeechManager.h"
+
+// Speak text (logs to fallout4access_speech.log automatically)
+SpeechManager::GetSingleton()->Speak("Hello world");
+
+// With interrupt parameter (should always be false per project rules)
+SpeechManager::GetSingleton()->Speak(text, false);
+```
+
+**Rules:**
+- **Never call `SRAL_Speak()` directly** - always use `SpeechManager::GetSingleton()->Speak()`
+- **Never use interrupt=true** - always use `interrupt=false` (the default)
+- Speech is automatically logged to `fallout4access_speech.log` with timestamps
+
+**Log files:**
+- `fallout4access.log` - Debug/info logging (menu events, hooks, errors)
+- `fallout4access_speech.log` - Speech transcript with `[HH:MM:SS]` timestamps
 
 ### Scaleform UI Discovery
 

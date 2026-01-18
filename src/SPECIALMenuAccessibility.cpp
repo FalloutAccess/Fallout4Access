@@ -1,4 +1,5 @@
 #include "SPECIALMenuAccessibility.h"
+#include "SpeechManager.h"
 #include <SRAL.h>
 
 SPECIALMenuAccessibility* SPECIALMenuAccessibility::GetSingleton()
@@ -313,10 +314,7 @@ void SPECIALMenuAccessibility::CheckValueChange(bool a_mainMenuOpen, bool a_paus
 
 void SPECIALMenuAccessibility::SpeakText(const std::string& a_text)
 {
-    if (SRAL_GetCurrentEngine() != 0) {
-        SRAL_Speak(a_text.c_str(), false);
-        REX::INFO("SPECIAL spoke: {}", a_text);
-    }
+    SpeechManager::GetSingleton()->Speak(a_text);
 }
 
 std::string SPECIALMenuAccessibility::CleanLocalizationString(const std::string& a_text)

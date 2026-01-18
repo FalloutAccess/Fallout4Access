@@ -13,6 +13,8 @@ enum class ScanCategory {
     QuestMarkers,
     Corpses,
     Locations,
+    Companions,
+    PowerArmor,
     COUNT  // For cycling
 };
 
@@ -39,6 +41,8 @@ private:
     void ScanObjects();
     void ScanQuestMarkers();
     void ScanCompassMarkers();
+    void ScanCompanions();
+    void ScanPowerArmor();
     void ScanAndAnnounce();
     bool NeedsRescan();
     void ScanIfNeeded();
