@@ -321,3 +321,42 @@ void ScheduleDelayedChecks(int count) {
 ```
 
 This runs one check per frame for N frames, then stops.
+
+### Logging Guidelines
+
+**Avoid verbose per-frame logging.** Functions called from `AdvanceMovie` hooks or other per-frame callbacks execute 60+ times per second. Adding `REX::DEBUG` calls in these paths causes log files to grow to megabytes in minutes.
+
+**When to use each log level:**
+
+```cpp
+// REX::INFO - Use sparingly for significant events:
+// - Plugin initialization/shutdown
+// - Hook installation success
+// - Menu open/close events
+// - Feature activation (e.g., "Q key pressed, switching sides")
+REX::INFO("ContainerMenuAccessibility: Menu opened");
+
+// REX::ERROR - Use for actual failures that need attention:
+REX::ERROR("Failed to install AdvanceMovie hook");
+
+// REX::DEBUG - Avoid in per-frame code paths. OK for:
+// - One-time initialization diagnostics
+// - Code under active development (remove before commit)
+// - Behind a compile-time flag for deep debugging
+```
+
+**Never add DEBUG logging to:**
+- `AdvanceMovie` hooks or functions called from them
+- `GetSelectedIndex()`, `GetItemAtIndex()`, or similar getters
+- State-checking functions (`CheckSelection`, `CheckStateChanges`, etc.)
+- Any function that runs every frame
+
+**If you need per-frame diagnostics** during development, use a counter to limit output:
+```cpp
+static int logCount = 0;
+if (logCount < 10) {
+    REX::DEBUG("Diagnostic info: {}", value);
+    logCount++;
+}
+```
+Remove these before committing.
