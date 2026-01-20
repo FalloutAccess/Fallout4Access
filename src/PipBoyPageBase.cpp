@@ -22,7 +22,6 @@ std::int32_t PipBoyPageBase::GetCurrentTab(RE::IMenu* a_menu)
 {
     const auto* dataObj = GetDataObj(a_menu);
     if (!dataObj) {
-        REX::DEBUG("GetCurrentTab: No dataObj");
         return -1;
     }
 
@@ -36,11 +35,9 @@ std::int32_t PipBoyPageBase::GetCurrentTab(RE::IMenu* a_menu)
         } else if (tabValue.IsUInt()) {
             tab = static_cast<int>(tabValue.GetUInt());
         }
-        REX::DEBUG("GetCurrentTab: tab={}", tab);
         return tab;
     }
 
-    REX::DEBUG("GetCurrentTab: Failed to get CurrentTab");
     return -1;
 }
 
@@ -52,11 +49,9 @@ bool PipBoyPageBase::GetInvSelectedItems(RE::IMenu* a_menu, Scaleform::GFx::Valu
     }
 
     if (dataObj->GetMember("InvSelectedItems", a_outArray) && a_outArray->IsArray()) {
-        REX::DEBUG("GetInvSelectedItems: Got array with size={}", a_outArray->GetArraySize());
         return true;
     }
 
-    REX::DEBUG("GetInvSelectedItems: Failed to get array");
     return false;
 }
 
@@ -68,11 +63,9 @@ bool PipBoyPageBase::GetInvItems(RE::IMenu* a_menu, Scaleform::GFx::Value* a_out
     }
 
     if (dataObj->GetMember("InvItems", a_outArray) && a_outArray->IsArray()) {
-        REX::DEBUG("GetInvItems: Got array with size={}", a_outArray->GetArraySize());
         return true;
     }
 
-    REX::DEBUG("GetInvItems: Failed to get array");
     return false;
 }
 

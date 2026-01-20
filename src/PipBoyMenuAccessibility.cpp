@@ -72,7 +72,6 @@ void PipBoyMenuAccessibility::OnPipBoyMenuClosed()
 void PipBoyMenuAccessibility::CheckSelection()
 {
     if (!m_isOpen) {
-        REX::DEBUG("PipBoyMenuAccessibility::CheckSelection - not open");
         return;
     }
 
@@ -81,13 +80,11 @@ void PipBoyMenuAccessibility::CheckSelection()
 
     auto menu = ui->GetMenu("PipboyMenu"sv);
     if (!menu) {
-        REX::DEBUG("PipBoyMenuAccessibility::CheckSelection - no menu");
         return;
     }
 
     // Check for page change first
     auto currentPage = GetCurrentPage(menu.get());
-    REX::DEBUG("PipBoyMenuAccessibility::CheckSelection - page={}", static_cast<int>(currentPage));
 
     if (currentPage != m_currentPage) {
         SwitchToPage(currentPage);
@@ -97,15 +94,12 @@ void PipBoyMenuAccessibility::CheckSelection()
     // Delegate to active page handler
     if (auto* activePage = GetActivePage()) {
         activePage->CheckSelection();
-    } else {
-        REX::DEBUG("PipBoyMenuAccessibility::CheckSelection - no active page handler for page {}", static_cast<int>(m_currentPage));
     }
 }
 
 void PipBoyMenuAccessibility::CheckPageChange()
 {
     if (!m_isOpen) {
-        REX::DEBUG("PipBoyMenuAccessibility::CheckPageChange - not open");
         return;
     }
 
@@ -116,8 +110,6 @@ void PipBoyMenuAccessibility::CheckPageChange()
     if (!menu) return;
 
     auto currentPage = GetCurrentPage(menu.get());
-    REX::DEBUG("PipBoyMenuAccessibility::CheckPageChange - current={} stored={}",
-               static_cast<int>(currentPage), static_cast<int>(m_currentPage));
 
     if (currentPage != m_currentPage) {
         SwitchToPage(currentPage);
@@ -157,43 +149,32 @@ void PipBoyMenuAccessibility::OnNavigate(bool a_up)
 void PipBoyMenuAccessibility::CheckTabChange()
 {
     if (!m_isOpen) {
-        REX::DEBUG("PipBoyMenuAccessibility::CheckTabChange - not open");
         return;
     }
-
-    REX::DEBUG("PipBoyMenuAccessibility::CheckTabChange - page={}", static_cast<int>(m_currentPage));
 
     // Delegate to active page handler for tab changes within page
     if (auto* activePage = GetActivePage()) {
         activePage->CheckTabChange();
     } else {
         // For unimplemented pages, try to read and announce tab directly
-        REX::DEBUG("PipBoyMenuAccessibility::CheckTabChange - fallback for unimplemented page");
-
         auto ui = RE::UI::GetSingleton();
         if (!ui) {
-            REX::DEBUG("PipBoyMenuAccessibility::CheckTabChange - no UI");
             return;
         }
 
         auto menu = ui->GetMenu("PipboyMenu"sv);
         if (!menu || !menu->uiMovie) {
-            REX::DEBUG("PipBoyMenuAccessibility::CheckTabChange - no menu/movie");
             return;
         }
 
         Scaleform::GFx::Value tabValue;
         bool gotTab = menu->uiMovie->GetVariable(&tabValue, "root.DataObj.CurrentTab");
-        REX::DEBUG("PipBoyMenuAccessibility::CheckTabChange - GetVariable CurrentTab={} isInt={} isNum={} isUInt={}",
-                   gotTab, tabValue.IsInt(), tabValue.IsNumber(), tabValue.IsUInt());
 
         if (gotTab) {
             int tab = -1;
             if (tabValue.IsInt()) tab = tabValue.GetInt();
             else if (tabValue.IsNumber()) tab = static_cast<int>(tabValue.GetNumber());
             else if (tabValue.IsUInt()) tab = static_cast<int>(tabValue.GetUInt());
-
-            REX::DEBUG("PipBoyMenuAccessibility::CheckTabChange - tab={} lastTab={}", tab, m_lastTab);
 
             if (tab >= 0 && tab != m_lastTab) {
                 m_lastTab = tab;
@@ -219,7 +200,6 @@ void PipBoyMenuAccessibility::Reset()
 PipBoyMenuAccessibility::Page PipBoyMenuAccessibility::GetCurrentPage(RE::IMenu* a_menu)
 {
     if (!a_menu) {
-        REX::DEBUG("GetCurrentPage: No menu");
         return Page::STAT;
     }
 
@@ -229,26 +209,13 @@ PipBoyMenuAccessibility::Page PipBoyMenuAccessibility::GetCurrentPage(RE::IMenu*
     // Access dataObj member which is a Scaleform::GFx::Value at offset 0x0F0
     const auto& dataObj = pipboyMenu->dataObj;
 
-    if (dataObj.IsUndefined()) {
-        REX::DEBUG("GetCurrentPage: dataObj is undefined");
-        return Page::STAT;
-    }
-
-    if (!dataObj.IsObject()) {
-        REX::DEBUG("GetCurrentPage: dataObj is not an object, type={}",
-                   dataObj.IsInt() ? "int" : dataObj.IsNumber() ? "number" : "other");
+    if (dataObj.IsUndefined() || !dataObj.IsObject()) {
         return Page::STAT;
     }
 
     // Get CurrentPage member from dataObj
     Scaleform::GFx::Value pageValue;
     if (dataObj.GetMember("CurrentPage", &pageValue)) {
-        const char* typeStr = pageValue.IsUndefined() ? "undefined" :
-                              pageValue.IsInt() ? "int" :
-                              pageValue.IsUInt() ? "uint" :
-                              pageValue.IsNumber() ? "number" : "other";
-        REX::DEBUG("GetCurrentPage: dataObj.CurrentPage type={}", typeStr);
-
         int pageNum = 0;
         if (pageValue.IsInt()) {
             pageNum = pageValue.GetInt();
@@ -258,12 +225,9 @@ PipBoyMenuAccessibility::Page PipBoyMenuAccessibility::GetCurrentPage(RE::IMenu*
             pageNum = static_cast<int>(pageValue.GetUInt());
         }
 
-        REX::DEBUG("GetCurrentPage: page={}", pageNum);
         if (pageNum >= 0 && pageNum <= 4) {
             return static_cast<Page>(pageNum);
         }
-    } else {
-        REX::DEBUG("GetCurrentPage: Failed to get CurrentPage from dataObj");
     }
 
     return Page::STAT;

@@ -149,17 +149,9 @@ void MainMenuHook::CheckStateChanges(RE::MainMenu* a_menu)
 
 MainMenuHook::ActivePanel MainMenuHook::DetectActivePanel(RE::MainMenu* a_menu)
 {
-    // Debug: log which overlay panels are visible
-    static int debugCounter = 0;
     bool confirmVis = IsPanelVisible(a_menu, CONFIRM_PANEL_PATH);
     bool settingsVis = IsPanelVisible(a_menu, SETTINGS_PANEL_PATH);
     bool saveloadVis = IsPanelVisible(a_menu, SAVELOAD_PANEL_PATH);
-    auto selection = GetSelectedIndex(a_menu);
-
-    if (++debugCounter % 60 == 1) {  // Log once per second
-        REX::DEBUG("MainMenuHook: confirm={} settings={} saveload={} selection={}",
-            confirmVis, settingsVis, saveloadVis, selection);
-    }
 
     // Check panels in priority order (overlays first)
     if (confirmVis) {
@@ -175,6 +167,7 @@ MainMenuHook::ActivePanel MainMenuHook::DetectActivePanel(RE::MainMenu* a_menu)
     // For main panel, use selection index as the indicator since the List_mc
     // doesn't have a standard "visible" property but selectedIndex works
     // If we can read a valid selection, the main list is active
+    auto selection = GetSelectedIndex(a_menu);
     if (selection >= 0) {
         return ActivePanel::MainList;
     }
@@ -259,11 +252,9 @@ void MainMenuHook::OnSplashScreen(RE::MainMenu* a_menu)
 void MainMenuHook::OnMainListSelection(RE::MainMenu* a_menu)
 {
     auto currentSelection = GetSelectedIndex(a_menu);
-    REX::DEBUG("MainMenuHook: OnMainListSelection current={} last={}", currentSelection, m_lastSelection);
     if (currentSelection >= 0 && currentSelection != m_lastSelection) {
         m_lastSelection = currentSelection;
         auto text = GetSelectedItemText(a_menu, currentSelection);
-        REX::DEBUG("MainMenuHook: Selection changed to {} text='{}'", currentSelection, text);
         if (!text.empty()) {
             SpeakText(LocalizationHelper::Translate(text));
         }
@@ -278,7 +269,6 @@ void MainMenuHook::CheckMainListSelectionFromClips(RE::MainMenu* a_menu)
     if (currentSelection >= 0 && currentSelection != m_lastSelection) {
         m_lastSelection = currentSelection;
         auto text = GetSelectedItemText(a_menu, currentSelection);
-        REX::DEBUG("MainMenuHook: Clip selection changed to {} text='{}'", currentSelection, text);
         if (!text.empty()) {
             SpeakText(LocalizationHelper::Translate(text));
         }
@@ -287,13 +277,9 @@ void MainMenuHook::CheckMainListSelectionFromClips(RE::MainMenu* a_menu)
 
 void MainMenuHook::CheckMainListSelection()
 {
-    REX::DEBUG("CheckMainListSelection: mainMenuOpen={} pauseMenuOpen={} lastPanel={}",
-        m_mainMenuOpen, m_pauseMenuOpen, static_cast<int>(m_lastPanel));
-
     // Called from keystroke handler - need to get the menu and check selection
     auto ui = RE::UI::GetSingleton();
     if (!ui) {
-        REX::DEBUG("CheckMainListSelection: no UI singleton");
         return;
     }
 
@@ -305,7 +291,6 @@ void MainMenuHook::CheckMainListSelection()
     }
 
     if (!menu || !menu->uiMovie) {
-        REX::DEBUG("CheckMainListSelection: no menu or movie");
         return;
     }
 
@@ -314,11 +299,9 @@ void MainMenuHook::CheckMainListSelection()
     // Try to find the selected entry by checking which clip has selected=true
     // This works even when selectedIndex property doesn't update
     auto currentSelection = GetSelectedIndexFromClips(mainMenu);
-    REX::DEBUG("CheckMainListSelection: currentSelection={} lastSelection={}", currentSelection, m_lastSelection);
     if (currentSelection >= 0 && currentSelection != m_lastSelection) {
         m_lastSelection = currentSelection;
         auto text = GetSelectedItemText(mainMenu, currentSelection);
-        REX::DEBUG("MainMenuHook: Keystroke selection changed to {} text='{}'", currentSelection, text);
         if (!text.empty()) {
             SpeakText(LocalizationHelper::Translate(text));
         }
@@ -354,13 +337,11 @@ void MainMenuHook::CheckConfirmDialog()
 std::int32_t MainMenuHook::GetSelectedIndexFromClips(RE::MainMenu* a_menu)
 {
     if (!a_menu || !a_menu->uiMovie) {
-        REX::DEBUG("GetSelectedIndexFromClips: no menu or movie");
         return -1;
     }
 
     // First try the standard selectedIndex
     auto selectedIndex = GetSelectedIndex(a_menu);
-    REX::DEBUG("GetSelectedIndexFromClips: standard selectedIndex={}", selectedIndex);
 
     // Don't rely solely on selectedIndex - it doesn't update without focus
     // But if it changed from what we tracked, use it
@@ -373,14 +354,12 @@ std::int32_t MainMenuHook::GetSelectedIndexFromClips(RE::MainMenu* a_menu)
     // Get the list object first
     Scaleform::GFx::Value list;
     if (!a_menu->uiMovie->GetVariable(&list, MAIN_LIST_PATH) || !list.IsObject()) {
-        REX::DEBUG("GetSelectedIndexFromClips: List not found");
         return -1;
     }
 
     // Get number of children in the list
     Scaleform::GFx::Value listNumChildren;
     if (!list.GetMember("numChildren", &listNumChildren)) {
-        REX::DEBUG("GetSelectedIndexFromClips: list numChildren not found");
         return -1;
     }
 
@@ -390,7 +369,6 @@ std::int32_t MainMenuHook::GetSelectedIndexFromClips(RE::MainMenu* a_menu)
     } else if (listNumChildren.IsNumber()) {
         listChildCount = static_cast<std::uint32_t>(listNumChildren.GetNumber());
     }
-    REX::DEBUG("GetSelectedIndexFromClips: list has {} children", listChildCount);
 
     // Find the EntryHolder by iterating through list children
     // EntryHolder is added after border, and contains the entry clips
@@ -421,7 +399,6 @@ std::int32_t MainMenuHook::GetSelectedIndexFromClips(RE::MainMenu* a_menu)
                     if (child.Invoke("getChildAt", &firstChild, firstArgs, 1) && firstChild.IsObject()) {
                         Scaleform::GFx::Value selectedProp;
                         if (firstChild.GetMember("selected", &selectedProp)) {
-                            REX::DEBUG("GetSelectedIndexFromClips: Found EntryHolder at list child {}, has {} entries", i, count);
                             entryHolder = child;
                             foundEntryHolder = true;
                             break;
@@ -433,14 +410,12 @@ std::int32_t MainMenuHook::GetSelectedIndexFromClips(RE::MainMenu* a_menu)
     }
 
     if (!foundEntryHolder) {
-        REX::DEBUG("GetSelectedIndexFromClips: EntryHolder not found in display list");
         return -1;
     }
 
     // Get number of children in EntryHolder
     Scaleform::GFx::Value numChildren;
     if (!entryHolder.GetMember("numChildren", &numChildren)) {
-        REX::DEBUG("GetSelectedIndexFromClips: entryHolder numChildren not found");
         return -1;
     }
 
@@ -450,7 +425,6 @@ std::int32_t MainMenuHook::GetSelectedIndexFromClips(RE::MainMenu* a_menu)
     } else if (numChildren.IsNumber()) {
         childCount = static_cast<std::uint32_t>(numChildren.GetNumber());
     }
-    REX::DEBUG("GetSelectedIndexFromClips: EntryHolder has {} children", childCount);
 
     // Check each child for selected property
     for (std::uint32_t i = 0; i < childCount && i < 20; ++i) {
@@ -460,27 +434,22 @@ std::int32_t MainMenuHook::GetSelectedIndexFromClips(RE::MainMenu* a_menu)
         if (entryHolder.Invoke("getChildAt", &child, args, 1) && child.IsObject()) {
             Scaleform::GFx::Value selected;
             if (child.GetMember("selected", &selected) && selected.IsBoolean()) {
-                REX::DEBUG("GetSelectedIndexFromClips: child {} selected={}", i, selected.GetBoolean());
                 if (selected.GetBoolean()) {
                     // Found selected entry, get its itemIndex
                     Scaleform::GFx::Value itemIndex;
                     if (child.GetMember("itemIndex", &itemIndex)) {
                         if (itemIndex.IsInt()) {
-                            REX::DEBUG("GetSelectedIndexFromClips: found selected at itemIndex={}", itemIndex.GetInt());
                             return itemIndex.GetInt();
                         } else if (itemIndex.IsNumber()) {
-                            REX::DEBUG("GetSelectedIndexFromClips: found selected at itemIndex={}", static_cast<std::int32_t>(itemIndex.GetNumber()));
                             return static_cast<std::int32_t>(itemIndex.GetNumber());
                         }
                     }
-                    REX::DEBUG("GetSelectedIndexFromClips: found selected at clip index {}", i);
                     return static_cast<std::int32_t>(i);
                 }
             }
         }
     }
 
-    REX::DEBUG("GetSelectedIndexFromClips: no selected entry found");
     return -1;
 }
 

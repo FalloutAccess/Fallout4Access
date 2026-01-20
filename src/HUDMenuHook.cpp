@@ -1,7 +1,12 @@
 #include "HUDMenuHook.h"
 #include "SpeechManager.h"
+#include "LocalizationHelper.h"
 #include <SRAL.h>
 #include <RE/H/HUDMenu.h>
+#include <RE/F/FavoritesManager.h>
+#include <RE/RTTI.h>
+#include <F4SE/F4SE.h>
+#include <typeinfo>
 
 HUDMenuHook* HUDMenuHook::GetSingleton()
 {
@@ -26,11 +31,27 @@ void HUDMenuHook::Install()
 
     if (hook.Enable()) {
         s_advanceMovieHook = &hook;
-        m_installed = true;
         REX::INFO("HUDMenuHook: AdvanceMovie hook installed successfully");
     } else {
         REX::ERROR("HUDMenuHook: Failed to install AdvanceMovie hook");
     }
+
+    // Hook HUDMenu::OnButtonEvent (BSInputEventUser vtable index 8)
+    // VTABLE::HUDMenu[1] is the BSInputEventUser vtable
+    static REL::HookVFT<void(RE::HUDMenu*, const RE::ButtonEvent*)> buttonHook(
+        VTABLE::HUDMenu[1],
+        8,  // OnButtonEvent is at index 8
+        HookedOnButtonEvent
+    );
+
+    if (buttonHook.Enable()) {
+        s_buttonEventHook = &buttonHook;
+        REX::INFO("HUDMenuHook: OnButtonEvent hook installed successfully");
+    } else {
+        REX::ERROR("HUDMenuHook: Failed to install OnButtonEvent hook");
+    }
+
+    m_installed = true;
 }
 
 void HUDMenuHook::Uninstall()
@@ -60,6 +81,11 @@ void HUDMenuHook::ResetState()
     m_levelUpStableTime = 0;
     m_levelUpAnnounced = false;
     m_lastSubtitleText.clear();
+    m_quickLootVisible = false;
+    m_lastQuickLootIndex = -1;
+    m_lastQuickLootContainer.clear();
+    m_lastQuickLootItemName.clear();
+    m_quickLootOpeningDone = false;
     m_announcementHistory.clear();
 }
 
@@ -83,12 +109,6 @@ void HUDMenuHook::CheckNotifications(RE::HUDMenu* a_menu)
 {
     if (!a_menu) return;
 
-    // Periodic diagnostic logging (every ~5 seconds at 60fps)
-    static int frameCount = 0;
-    if (++frameCount % 300 == 0) {
-        REX::DEBUG("HUDMenuHook: CheckNotifications running (frame {})", frameCount);
-    }
-
     CheckMessages(a_menu);
     CheckQuestUpdates(a_menu);
     CheckObjectiveUpdates(a_menu);
@@ -96,6 +116,7 @@ void HUDMenuHook::CheckNotifications(RE::HUDMenu* a_menu)
     CheckTutorialText(a_menu);
     CheckLevelUp(a_menu);
     CheckSubtitles(a_menu);
+    CheckQuickLoot(a_menu);
 
     // Clean old entries from deduplication cache periodically
     CleanExpiredAnnouncements();
@@ -110,30 +131,15 @@ void HUDMenuHook::CheckMessages(RE::IMenu* a_menu)
     // Get the Messages_mc object
     Scaleform::GFx::Value messagesClip;
     if (!a_menu->uiMovie->GetVariable(&messagesClip, MESSAGES_MC_PATH)) {
-        static bool loggedOnce = false;
-        if (!loggedOnce) {
-            REX::DEBUG("HUDMenuHook: Failed to get Messages_mc at path: {}", MESSAGES_MC_PATH);
-            loggedOnce = true;
-        }
         return;
     }
     if (!messagesClip.IsObject()) {
-        static bool loggedOnce = false;
-        if (!loggedOnce) {
-            REX::DEBUG("HUDMenuHook: Messages_mc is not an object, type={}", static_cast<int>(messagesClip.GetType()));
-            loggedOnce = true;
-        }
         return;
     }
 
     // Get ShownMessageArray - this is a Vector.<HUDMessageItem>
     Scaleform::GFx::Value shownArray;
     if (!messagesClip.GetMember("ShownMessageArray", &shownArray)) {
-        static bool loggedOnce = false;
-        if (!loggedOnce) {
-            REX::DEBUG("HUDMenuHook: Failed to get ShownMessageArray member");
-            loggedOnce = true;
-        }
         return;
     }
 
@@ -149,12 +155,6 @@ void HUDMenuHook::CheckMessages(RE::IMenu* a_menu)
             } else if (lengthVal.IsInt()) {
                 count = static_cast<std::uint32_t>(lengthVal.GetInt());
             }
-        }
-    } else {
-        static bool loggedOnce = false;
-        if (!loggedOnce) {
-            REX::DEBUG("HUDMenuHook: ShownMessageArray is not array/object, type={}", static_cast<int>(shownArray.GetType()));
-            loggedOnce = true;
         }
     }
 
@@ -179,12 +179,6 @@ void HUDMenuHook::CheckMessages(RE::IMenu* a_menu)
                 }
             }
         }
-    }
-
-    // Periodic logging of message counts (every ~5 seconds)
-    static int msgCheckCount = 0;
-    if (++msgCheckCount % 300 == 0) {
-        REX::DEBUG("HUDMenuHook: Messages shown={}, queued={}, lastCount={}", count, queueCount, m_lastMessageCount);
     }
 
     // Check shown messages for new entries
@@ -620,4 +614,707 @@ void HUDMenuHook::CleanExpiredAnnouncements()
 void HUDMenuHook::SpeakText(const std::string& a_text)
 {
     SpeechManager::GetSingleton()->Speak(a_text);
+}
+
+// ============================================================================
+// Quick Loot (QuickContainerWidget) Accessibility
+// ============================================================================
+
+void HUDMenuHook::CheckQuickLoot(RE::HUDMenu* a_menu)
+{
+    if (!a_menu) return;
+
+    bool currentlyVisible = IsQuickLootVisible(a_menu);
+
+    // Visibility state change: widget appeared
+    if (currentlyVisible && !m_quickLootVisible) {
+        m_quickLootVisible = true;
+        m_quickLootOpeningDone = false;
+        m_lastQuickLootIndex = -1;
+
+        // Announce container + first item (1-frame deferred for Scaleform population)
+        if (auto* taskInterface = F4SE::GetTaskInterface()) {
+            taskInterface->AddTask([this]() {
+                if (!m_quickLootVisible) return;
+                auto ui = RE::UI::GetSingleton();
+                if (!ui) return;
+                auto menu = ui->GetMenu("HUDMenu"sv);
+                if (!menu) return;
+                auto* hudMenu = static_cast<RE::HUDMenu*>(menu.get());
+                AnnounceQuickLootOpened(hudMenu);
+            });
+        }
+    }
+    // Visibility state change: widget disappeared
+    else if (!currentlyVisible && m_quickLootVisible) {
+        m_quickLootVisible = false;
+        m_quickLootOpeningDone = false;
+        // Don't clear m_lastQuickLootContainer - prevents re-announcing same container
+        // Don't announce closing - would be too chatty as player looks around
+    }
+
+    // If visible and opening announcement done, check for item selection changes
+    if (m_quickLootVisible && m_quickLootOpeningDone) {
+        std::int32_t currentIndex = GetQuickLootSelectedIndex(a_menu);
+
+        if (currentIndex >= 0) {
+            auto item = GetQuickLootItemAtIndex(a_menu, currentIndex);
+
+            // Announce if index changed OR if item at same index changed (after taking item)
+            bool indexChanged = (currentIndex != m_lastQuickLootIndex);
+            bool itemChanged = item.IsValid() && (item.name != m_lastQuickLootItemName);
+
+            if (indexChanged || itemChanged) {
+                m_lastQuickLootIndex = currentIndex;
+                m_lastQuickLootItemName = item.name;
+
+                if (item.IsValid()) {
+                    AnnounceQuickLootItem(item);
+                }
+            }
+        }
+    }
+}
+
+bool HUDMenuHook::IsQuickLootVisible(RE::HUDMenu* a_menu)
+{
+    if (!a_menu || !a_menu->uiMovie) return false;
+
+    Scaleform::GFx::Value widget;
+    if (!a_menu->uiMovie->GetVariable(&widget, QUICKLOOT_WIDGET_PATH)) {
+        return false;
+    }
+
+    if (!widget.IsObject()) return false;
+
+    // Check if widget is visible
+    Scaleform::GFx::Value visibleProp;
+    if (widget.GetMember("visible", &visibleProp) && visibleProp.IsBoolean()) {
+        if (!visibleProp.GetBoolean()) return false;
+    }
+
+    // Also check alpha (widget fades in/out)
+    Scaleform::GFx::Value alphaProp;
+    if (widget.GetMember("alpha", &alphaProp)) {
+        double alpha = 0.0;
+        if (alphaProp.IsNumber()) {
+            alpha = alphaProp.GetNumber();
+        } else if (alphaProp.IsInt()) {
+            alpha = static_cast<double>(alphaProp.GetInt());
+        }
+        if (alpha < 0.5) return false;  // Wait until more visible
+    }
+
+    // Check if first item clip is visible (ListItems_mc.ItemText0)
+    // This is more reliable than checking ItemDataA Vector
+    Scaleform::GFx::Value listItems;
+    if (!widget.GetMember("ListItems_mc", &listItems) || !listItems.IsObject()) {
+        return false;
+    }
+
+    Scaleform::GFx::Value itemClip;
+    if (!listItems.GetMember("ItemText0", &itemClip) || !itemClip.IsObject()) {
+        return false;
+    }
+
+    // Check if item clip is visible (means it has data)
+    Scaleform::GFx::Value clipVisible;
+    if (itemClip.GetMember("visible", &clipVisible) && clipVisible.IsBoolean()) {
+        return clipVisible.GetBoolean();
+    }
+
+    return false;
+}
+
+std::int32_t HUDMenuHook::GetQuickLootSelectedIndex(RE::HUDMenu* a_menu)
+{
+    if (!a_menu || !a_menu->uiMovie) return -1;
+
+    Scaleform::GFx::Value widget;
+    if (!a_menu->uiMovie->GetVariable(&widget, QUICKLOOT_WIDGET_PATH) || !widget.IsObject()) {
+        return -1;
+    }
+
+    // Try _selectedIndex first (may be accessible)
+    Scaleform::GFx::Value indexValue;
+    if (widget.GetMember("_selectedIndex", &indexValue)) {
+        if (indexValue.IsInt()) {
+            return indexValue.GetInt();
+        } else if (indexValue.IsNumber()) {
+            return static_cast<std::int32_t>(indexValue.GetNumber());
+        }
+    }
+
+    // Fallback: find selected item by checking each clip's selected property
+    Scaleform::GFx::Value listItems;
+    if (!widget.GetMember("ListItems_mc", &listItems) || !listItems.IsObject()) {
+        return 0;  // Default to first item
+    }
+
+    for (int i = 0; i < 5; ++i) {
+        std::string clipName = "ItemText" + std::to_string(i);
+        Scaleform::GFx::Value itemClip;
+        if (!listItems.GetMember(clipName.c_str(), &itemClip) || !itemClip.IsObject()) {
+            continue;
+        }
+
+        // Check if this clip is selected
+        Scaleform::GFx::Value selectedProp;
+        if (itemClip.GetMember("selected", &selectedProp) && selectedProp.IsBoolean()) {
+            if (selectedProp.GetBoolean()) {
+                return i;
+            }
+        }
+
+        // Also try _selected
+        if (itemClip.GetMember("_selected", &selectedProp) && selectedProp.IsBoolean()) {
+            if (selectedProp.GetBoolean()) {
+                return i;
+            }
+        }
+    }
+
+    return 0;  // Default to first item if none found selected
+}
+
+ItemIdentity HUDMenuHook::GetQuickLootItemAtIndex(RE::HUDMenu* a_menu, std::int32_t a_index)
+{
+    ItemIdentity item;
+    if (!a_menu || !a_menu->uiMovie || a_index < 0 || a_index >= 5) return item;
+
+    Scaleform::GFx::Value widget;
+    if (!a_menu->uiMovie->GetVariable(&widget, QUICKLOOT_WIDGET_PATH) || !widget.IsObject()) {
+        return item;
+    }
+
+    // Get ListItems_mc
+    Scaleform::GFx::Value listItems;
+    if (!widget.GetMember("ListItems_mc", &listItems) || !listItems.IsObject()) {
+        return item;
+    }
+
+    // Get the item clip (ItemText0, ItemText1, etc.)
+    std::string clipName = "ItemText" + std::to_string(a_index);
+    Scaleform::GFx::Value itemClip;
+    if (!listItems.GetMember(clipName.c_str(), &itemClip) || !itemClip.IsObject()) {
+        return item;
+    }
+
+    // Check if clip is visible (has data)
+    Scaleform::GFx::Value clipVisible;
+    if (itemClip.GetMember("visible", &clipVisible) && clipVisible.IsBoolean()) {
+        if (!clipVisible.GetBoolean()) return item;
+    }
+
+    // Get the data property (QuickContainerItemData)
+    Scaleform::GFx::Value data;
+    if (!itemClip.GetMember("data", &data) || !data.IsObject()) {
+        // Fallback: try reading directly from clip's _data
+        if (!itemClip.GetMember("_data", &data) || !data.IsObject()) {
+            return item;
+        }
+    }
+
+    // Extract item properties from data
+    Scaleform::GFx::Value prop;
+
+    // Name (text)
+    if (data.GetMember("text", &prop) && prop.IsString()) {
+        item.name = LocalizationHelper::CleanString(prop.GetString());
+    }
+
+    // Count
+    if (data.GetMember("count", &prop)) {
+        if (prop.IsInt()) {
+            item.count = prop.GetInt();
+        } else if (prop.IsNumber()) {
+            item.count = static_cast<std::int32_t>(prop.GetNumber());
+        } else if (prop.IsUInt()) {
+            item.count = static_cast<std::int32_t>(prop.GetUInt());
+        }
+    }
+
+    // Equip state
+    if (data.GetMember("equipState", &prop)) {
+        if (prop.IsInt()) {
+            item.equipState = prop.GetInt();
+        } else if (prop.IsNumber()) {
+            item.equipState = static_cast<std::int32_t>(prop.GetNumber());
+        } else if (prop.IsUInt()) {
+            item.equipState = static_cast<std::int32_t>(prop.GetUInt());
+        }
+    }
+
+    // Legendary
+    if (data.GetMember("isLegendary", &prop) && prop.IsBoolean()) {
+        item.isLegendary = prop.GetBoolean();
+    }
+
+    // Favorite
+    if (data.GetMember("favorite", &prop)) {
+        if (prop.IsBoolean()) {
+            item.isFavorite = prop.GetBoolean();
+        } else if (prop.IsInt() || prop.IsNumber() || prop.IsUInt()) {
+            int favVal = 0;
+            if (prop.IsInt()) favVal = prop.GetInt();
+            else if (prop.IsNumber()) favVal = static_cast<int>(prop.GetNumber());
+            else if (prop.IsUInt()) favVal = static_cast<int>(prop.GetUInt());
+            item.isFavorite = (favVal > 0);
+        }
+    }
+
+    // Tagged for search
+    if (data.GetMember("taggedForSearch", &prop) && prop.IsBoolean()) {
+        item.isTagged = prop.GetBoolean();
+    }
+
+    return item;
+}
+
+std::string HUDMenuHook::GetQuickLootContainerName(RE::HUDMenu* a_menu)
+{
+    if (!a_menu || !a_menu->uiMovie) return "";
+
+    Scaleform::GFx::Value widget;
+    if (!a_menu->uiMovie->GetVariable(&widget, QUICKLOOT_WIDGET_PATH) || !widget.IsObject()) {
+        return "";
+    }
+
+    // Navigate: ListHeaderAndBracket_mc -> ContainerName_mc -> textField_tf -> text
+    Scaleform::GFx::Value headerHolder;
+    if (!widget.GetMember("ListHeaderAndBracket_mc", &headerHolder) || !headerHolder.IsObject()) {
+        return "";
+    }
+
+    Scaleform::GFx::Value containerName;
+    if (!headerHolder.GetMember("ContainerName_mc", &containerName) || !containerName.IsObject()) {
+        return "";
+    }
+
+    Scaleform::GFx::Value textField;
+    if (!containerName.GetMember("textField_tf", &textField) || !textField.IsObject()) {
+        return "";
+    }
+
+    Scaleform::GFx::Value textValue;
+    if (textField.GetMember("text", &textValue) && textValue.IsString()) {
+        return LocalizationHelper::CleanString(textValue.GetString());
+    }
+
+    return "";
+}
+
+void HUDMenuHook::AnnounceQuickLootOpened(RE::HUDMenu* a_menu)
+{
+    // Don't announce container name - crosshair already announces it
+    // Just announce the first item
+    std::int32_t index = GetQuickLootSelectedIndex(a_menu);
+    if (index >= 0) {
+        auto item = GetQuickLootItemAtIndex(a_menu, index);
+        if (item.IsValid()) {
+            AnnounceQuickLootItem(item);
+            m_lastQuickLootIndex = index;
+            m_lastQuickLootItemName = item.name;
+        }
+    } else {
+        // If no selected index, default to first item (index 0)
+        auto item = GetQuickLootItemAtIndex(a_menu, 0);
+        if (item.IsValid()) {
+            AnnounceQuickLootItem(item);
+            m_lastQuickLootIndex = 0;
+            m_lastQuickLootItemName = item.name;
+        }
+    }
+
+    m_quickLootOpeningDone = true;
+}
+
+void HUDMenuHook::AnnounceQuickLootItem(const ItemIdentity& a_item)
+{
+    // Use standard item announcement format (name, count, flags)
+    std::string announcement = a_item.BuildBasicAnnouncement();
+
+    // Apply deduplication (prevents rapid re-announcements on index glitches)
+    if (ShouldAnnounce(announcement)) {
+        RecordAnnouncement(announcement);
+        SpeakText(announcement);
+    }
+}
+
+// ============================================================================
+// Keyboard Input Hook for Quick Loot Arrow Key Navigation
+// ============================================================================
+
+void HUDMenuHook::HookedOnButtonEvent(RE::HUDMenu* a_this, const RE::ButtonEvent* a_event)
+{
+    auto* hook = GetSingleton();
+
+    // Check for arrow keys when Quick Loot is visible
+    if (a_event && a_event->QJustPressed() && hook->m_quickLootVisible) {
+        auto device = a_event->device.get();
+        auto idCode = a_event->QIDCode();
+
+        // Only handle keyboard input
+        if (device == RE::INPUT_DEVICE::kKeyboard) {
+            // Up arrow (0x26) or Down arrow (0x28)
+            if (idCode == 0x26 || idCode == 0x28) {
+                // IMPORTANT: a_this is BSInputEventUser* at offset 0x10, NOT HUDMenu*
+                // Get the actual HUDMenu from UI system instead
+                auto ui = RE::UI::GetSingleton();
+                if (ui) {
+                    auto menu = ui->GetMenu<RE::HUDMenu>();
+                    if (menu) {
+                        bool isUp = (idCode == 0x26);
+                        hook->HandleQuickLootNavigation(menu.get(), isUp);
+                    }
+                }
+            }
+        }
+    }
+
+    // Always call original OnButtonEvent (pass a_this as-is for correct vtable call)
+    if (s_buttonEventHook) {
+        (*s_buttonEventHook)(a_this, a_event);
+    }
+}
+
+void HUDMenuHook::HandleQuickLootNavigation(RE::HUDMenu* a_menu, bool a_up)
+{
+    if (!a_menu || !m_quickLootVisible) return;
+
+    std::int32_t currentIndex = GetQuickLootSelectedIndex(a_menu);
+    std::int32_t itemCount = GetQuickLootItemCount(a_menu);
+
+    if (itemCount <= 0) {
+        return;
+    }
+
+    // Check boundaries - don't navigate past edges
+    if (a_up && currentIndex <= 0) {
+        return;
+    }
+    if (!a_up && currentIndex >= itemCount - 1) {
+        return;
+    }
+
+    // Calculate new index
+    std::int32_t newIndex = a_up ? currentIndex - 1 : currentIndex + 1;
+
+    // ========================================================================
+    // Update FavoritesManager's selectedClipIndex (C++ authoritative state)
+    // ========================================================================
+    // Memory layout:
+    //   FavoritesManager + 0x1F0 = quickContainerMode (BSTValueEventSink<QuickContainerStateEvent>)
+    //   + 0x08 = eventDataStruct.optionalValue._value (QuickContainerStateData)
+    //   + 0xA8 = selectedClipIndex
+    //   = 0x1F0 + 0x08 + 0xA8 = 0x2A0
+    constexpr std::uintptr_t kSelectedClipIndexOffset = 0x2A0;
+
+    auto* favMgr = RE::FavoritesManager::GetSingleton();
+    if (favMgr) {
+        auto* selectedClipIndexPtr = reinterpret_cast<std::int32_t*>(
+            reinterpret_cast<std::uintptr_t>(favMgr) + kSelectedClipIndexOffset
+        );
+
+        *selectedClipIndexPtr = newIndex;
+    }
+
+    // ========================================================================
+    // Update Scaleform UI (visual state)
+    // ========================================================================
+    if (a_menu->uiMovie) {
+        Scaleform::GFx::Value widget;
+        if (a_menu->uiMovie->GetVariable(&widget, QUICKLOOT_WIDGET_PATH) && widget.IsObject()) {
+            Scaleform::GFx::Value listItems;
+            if (widget.GetMember("ListItems_mc", &listItems) && listItems.IsObject()) {
+                // Set selectedClipIndex on ListItems_mc
+                Scaleform::GFx::Value indexVal(newIndex);
+                listItems.SetMember("selectedClipIndex", indexVal);
+
+                // Try to call UpdateList to refresh visual selection
+                Scaleform::GFx::Value result;
+                Scaleform::GFx::Value args[1] = { true };  // a_updateSelection = true
+                listItems.Invoke("UpdateList", &result, args, 1);
+            }
+        }
+    }
+
+    // Announce the new item immediately
+    auto item = GetQuickLootItemAtIndex(a_menu, newIndex);
+    if (item.IsValid()) {
+        m_lastQuickLootIndex = newIndex;
+        m_lastQuickLootItemName = item.name;
+        AnnounceQuickLootItem(item);
+    }
+}
+
+std::int32_t HUDMenuHook::GetQuickLootItemCount(RE::HUDMenu* a_menu)
+{
+    if (!a_menu || !a_menu->uiMovie) return 0;
+
+    Scaleform::GFx::Value widget;
+    if (!a_menu->uiMovie->GetVariable(&widget, QUICKLOOT_WIDGET_PATH) || !widget.IsObject()) {
+        return 0;
+    }
+
+    // Get ListItems_mc and count visible item clips
+    Scaleform::GFx::Value listItems;
+    if (!widget.GetMember("ListItems_mc", &listItems) || !listItems.IsObject()) {
+        return 0;
+    }
+
+    std::int32_t count = 0;
+    for (int i = 0; i < 5; ++i) {
+        std::string clipName = "ItemText" + std::to_string(i);
+        Scaleform::GFx::Value itemClip;
+        if (!listItems.GetMember(clipName.c_str(), &itemClip) || !itemClip.IsObject()) {
+            break;
+        }
+
+        // Check if clip is visible (has data)
+        Scaleform::GFx::Value clipVisible;
+        if (itemClip.GetMember("visible", &clipVisible) && clipVisible.IsBoolean()) {
+            if (clipVisible.GetBoolean()) {
+                count++;
+            } else {
+                break;  // Items are sequential, stop at first invisible one
+            }
+        }
+    }
+
+    return count;
+}
+
+void HUDMenuHook::SetQuickLootSelection(RE::HUDMenu* a_menu, std::int32_t a_index)
+{
+    if (!a_menu) return;
+
+    std::int32_t currentIndex = GetQuickLootSelectedIndex(a_menu);
+    if (currentIndex == a_index) return;  // Already at target
+
+    // Determine direction
+    bool goingUp = a_index < currentIndex;
+    int steps = std::abs(a_index - currentIndex);
+
+    // Simulate mouse wheel events to navigate
+    for (int i = 0; i < steps; ++i) {
+        SimulateQuickLootScroll(a_menu, goingUp);
+    }
+}
+
+void HUDMenuHook::SimulateQuickLootScroll(RE::HUDMenu* a_menu, bool a_up)
+{
+    if (!a_menu) return;
+
+    // Construct ButtonEvent with ALL required fields properly initialized
+    RE::ButtonEvent event;
+
+    // CRITICAL: Fix vtable pointer to use game's vtable, not our DLL's vtable
+    // Without this, the game crashes when it tries to use virtual functions/RTTI
+    *reinterpret_cast<std::uintptr_t*>(&event) = RE::ButtonEvent::VTABLE[0].address();
+
+    // InputEvent base fields
+    event.device = RE::INPUT_DEVICE::kMouse;
+    event.deviceID = 0;
+    event.eventType = RE::INPUT_EVENT_TYPE::kButton;
+    event.next = nullptr;
+    event.timeCode = 0;
+    event.handled = RE::InputEvent::HANDLED_RESULT::kUnhandled;
+
+    // IDEvent fields
+    event.strUserEvent = a_up ? "QuickContainerUp" : "QuickContainerDown";
+    event.idCode = a_up ? 0x800 : 0x900;  // kWheelUp / kWheelDown
+    event.disabled = false;
+
+    // ButtonEvent fields
+    event.value = 1.0f;        // Pressed
+    event.heldDownSecs = 0.0f; // Just pressed
+
+    // Call the original OnButtonEvent handler
+    // IMPORTANT: The hook is on BSInputEventUser vtable (at offset 0x10 in HUDMenu)
+    // We must pass the BSInputEventUser* interface pointer, not HUDMenu*
+    if (s_buttonEventHook) {
+        auto* inputUser = reinterpret_cast<RE::HUDMenu*>(
+            reinterpret_cast<std::uintptr_t>(a_menu) + 0x10
+        );
+        (*s_buttonEventHook)(inputUser, &event);
+    }
+}
+
+// ============================================================================
+// Debug: Dump Quick Container Input Mappings
+// ============================================================================
+
+// Helper to get RTTI type name from a pointer (returns nullptr if invalid)
+const char* HUDMenuHook::GetRTTITypeName(void* a_ptr)
+{
+    if (!a_ptr) return nullptr;
+
+    __try {
+        void** vtable = *reinterpret_cast<void***>(a_ptr);
+        if (!vtable) return nullptr;
+
+        auto* col = reinterpret_cast<RE::RTTI::CompleteObjectLocator*>(vtable[-1]);
+        if (!col) return nullptr;
+
+        auto* typeDesc = col->typeDescriptor.get();
+        if (!typeDesc) return nullptr;
+
+        return typeDesc->name();
+    }
+    __except(1) {
+        return nullptr;
+    }
+}
+
+void HUDMenuHook::DebugDumpHUDQuickContainer(RE::HUDMenu* a_menu)
+{
+    if (!a_menu) {
+        REX::INFO("HUDMenu is null");
+        return;
+    }
+
+    REX::INFO("=== Searching for HUDQuickContainer in hudObjects ===");
+    REX::INFO("hudObjects count: {}", static_cast<std::uint32_t>(a_menu->hudObjects.size()));
+
+    for (std::uint32_t i = 0; i < a_menu->hudObjects.size(); ++i) {
+        auto& obj = a_menu->hudObjects[i];
+        if (!obj) continue;
+
+        // Get raw pointer
+        void* rawPtr = obj.get();
+        if (!rawPtr) continue;
+
+        const char* typeName = GetRTTITypeName(rawPtr);
+        if (!typeName) continue;
+
+        REX::INFO("hudObjects[{}]: type = {}, addr = 0x{:X}", i, typeName, reinterpret_cast<std::uintptr_t>(rawPtr));
+
+        // Check if this is HUDQuickContainer
+        if (std::string_view(typeName).find("HUDQuickContainer") != std::string_view::npos &&
+            std::string_view(typeName).find("DataModel") == std::string_view::npos) {
+            REX::INFO("*** FOUND HUDQuickContainer at index {} ***", i);
+
+            // Store the pointer for later use
+            m_hudQuickContainerPtr = rawPtr;
+            m_hudQuickContainerIndex = i;
+
+            // Now search for HUDQuickContainerDataModel pointer within HUDQuickContainer
+            REX::INFO("Searching for HUDQuickContainerDataModel pointers in HUDQuickContainer...");
+            auto* bytes = reinterpret_cast<std::uint8_t*>(rawPtr);
+
+            for (std::uint32_t offset = 0; offset < 0x300; offset += 8) {
+                std::uintptr_t potentialPtr = *reinterpret_cast<std::uintptr_t*>(bytes + offset);
+
+                // Check if it looks like a valid pointer (heap range heuristic)
+                if (potentialPtr > 0x10000 && potentialPtr < 0x7FFFFFFFFFFF) {
+                    const char* pointedTypeName = GetRTTITypeName(reinterpret_cast<void*>(potentialPtr));
+                    if (pointedTypeName) {
+                        REX::INFO("  Offset 0x{:X}: ptr -> {} (addr 0x{:X})",
+                            offset, pointedTypeName, potentialPtr);
+
+                        // Check if this is the DataModel
+                        if (std::string_view(pointedTypeName).find("HUDQuickContainerDataModel") != std::string_view::npos) {
+                            REX::INFO("  *** FOUND HUDQuickContainerDataModel at offset 0x{:X}! ***", offset);
+                            m_hudQuickContainerDataModelPtr = reinterpret_cast<void*>(potentialPtr);
+                            m_hudQuickContainerDataModelOffset = offset;
+
+                            // Scan the DataModel for potential selectedClipIndex
+                            REX::INFO("  Scanning DataModel for selectedClipIndex (values 0-4):");
+                            auto* dmBytes = reinterpret_cast<std::uint8_t*>(potentialPtr);
+                            for (std::uint32_t dmOffset = 0; dmOffset < 0x200; dmOffset += 4) {
+                                std::int32_t value = *reinterpret_cast<std::int32_t*>(dmBytes + dmOffset);
+                                if (value >= 0 && value <= 4) {
+                                    REX::INFO("    DataModel offset 0x{:X}: int32 = {}", dmOffset, value);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    REX::INFO("=== End HUDQuickContainer search ===");
+}
+
+void HUDMenuHook::DebugDumpQuickContainerMappings()
+{
+    auto* controlMap = RE::ControlMap::GetSingleton();
+    if (!controlMap) {
+        REX::INFO("ControlMap not available");
+        return;
+    }
+
+    REX::INFO("=== Quick Container Input Mappings (Context 0x19) ===");
+
+    // kQuickContainerMenu context ID is 0x19 (25)
+    constexpr auto kQuickContainerContext = static_cast<RE::UserEvents::INPUT_CONTEXT_ID>(0x19);
+
+    // Test common event names and see what keys they map to
+    const char* testEvents[] = {
+        "Up", "Down", "Left", "Right",
+        "ScrollUp", "ScrollDown",
+        "Previous", "Next",
+        "QuickContainerUp", "QuickContainerDown",
+        "Accept", "Cancel", "Activate",
+        "Select", "Back", "Forward",
+        "PrevPage", "NextPage",
+        "MoveUp", "MoveDown",
+        "XButton", "YButton",
+        "RSUp", "RSDown", "LSUp", "LSDown"
+    };
+
+    for (const char* eventName : testEvents) {
+        auto mouseKey = controlMap->GetMappedKey(
+            eventName,
+            RE::INPUT_DEVICE::kMouse,
+            kQuickContainerContext
+        );
+        auto kbKey = controlMap->GetMappedKey(
+            eventName,
+            RE::INPUT_DEVICE::kKeyboard,
+            kQuickContainerContext
+        );
+        auto gamepadKey = controlMap->GetMappedKey(
+            eventName,
+            RE::INPUT_DEVICE::kGamepad,
+            kQuickContainerContext
+        );
+
+        // 0xFF means unmapped
+        if (mouseKey != 0xFF || kbKey != 0xFF || gamepadKey != 0xFF) {
+            REX::INFO("Event '{}': mouse=0x{:X}, keyboard=0x{:X}, gamepad=0x{:X}",
+                eventName, mouseKey, kbKey, gamepadKey);
+        }
+    }
+
+    // Also check kMain context (0x00) for comparison
+    REX::INFO("=== Main Context (0x00) for comparison ===");
+    constexpr auto kMainContext = static_cast<RE::UserEvents::INPUT_CONTEXT_ID>(0x00);
+
+    for (const char* eventName : testEvents) {
+        auto mouseKey = controlMap->GetMappedKey(
+            eventName,
+            RE::INPUT_DEVICE::kMouse,
+            kMainContext
+        );
+        auto kbKey = controlMap->GetMappedKey(
+            eventName,
+            RE::INPUT_DEVICE::kKeyboard,
+            kMainContext
+        );
+
+        if (mouseKey != 0xFF || kbKey != 0xFF) {
+            REX::INFO("[Main] Event '{}': mouse=0x{:X}, keyboard=0x{:X}",
+                eventName, mouseKey, kbKey);
+        }
+    }
+
+    // Check mouse wheel codes specifically (0x08 = WheelUp, 0x09 = WheelDown)
+    REX::INFO("=== Mouse Wheel Raw Codes ===");
+    REX::INFO("Note: Mouse WheelUp=0x08, WheelDown=0x09 (DirectInput)");
+    REX::INFO("Note: Game may use 264/265 (0x108/0x109) for scroll events");
+
+    REX::INFO("=== End Quick Container Mappings ===");
 }

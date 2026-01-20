@@ -1,5 +1,6 @@
 #include "VATSMenuAccessibility.h"
 #include "SpeechManager.h"
+#include "VATSCallbackHook.h"
 #include "VATSMenuHook.h"
 #include <SRAL.h>
 #include <RE/V/VATS.h>
@@ -27,10 +28,12 @@ void VATSMenuAccessibility::OnVATSMenuOpened()
 
     REX::INFO("VATSMenu opened - initializing accessibility");
 
-    // Tell the hook the menu is open and reset its state
-    // The hook will handle initial target/body part announcement via AdvanceMovie
+    // Tell the hooks the menu is open and reset their state
+    // VATSMenuHook handles initial target/body part announcement via AdvanceMovie
+    // VATSCallbackHook handles target cycling when A/D keys pressed
     VATSMenuHook::GetSingleton()->SetMenuOpen(true);
     VATSMenuHook::GetSingleton()->ResetState();
+    VATSCallbackHook::GetSingleton()->ResetState();
 
     // Announce "VATS" immediately
     SpeakText("VATS");
@@ -104,8 +107,6 @@ void VATSMenuAccessibility::CheckQueuedShots()
 
     int currentQueued = GetQueuedShotCount();
 
-    REX::DEBUG("VATS CheckQueuedShots: current={}, last={}", currentQueued, m_lastQueuedShotCount);
-
     // Only announce when shots are added (count increases)
     if (currentQueued > m_lastQueuedShotCount) {
         m_lastQueuedShotCount = currentQueued;
@@ -160,7 +161,6 @@ std::string VATSMenuAccessibility::GetTargetName()
     if (player && player->commandTarget) {
         const char* name = player->commandTarget->GetDisplayFullName();
         if (name && name[0] != '\0') {
-            REX::DEBUG("VATS GetTargetName (from commandTarget): '{}'", name);
             return std::string(name);
         }
     }
@@ -172,7 +172,6 @@ std::string VATSMenuAccessibility::GetTargetName()
         if (pickRef) {
             const char* name = pickRef->GetDisplayFullName();
             if (name && name[0] != '\0') {
-                REX::DEBUG("VATS GetTargetName (from Console pickRef): '{}'", name);
                 return std::string(name);
             }
         }
@@ -185,7 +184,6 @@ std::string VATSMenuAccessibility::GetTargetName()
         if (targetActor) {
             const char* name = targetActor->GetDisplayFullName();
             if (name && name[0] != '\0') {
-                REX::DEBUG("VATS GetTargetName (from camera): '{}'", name);
                 return std::string(name);
             }
         }
@@ -196,12 +194,10 @@ std::string VATSMenuAccessibility::GetTargetName()
     if (vats && vats->VATSTarget) {
         const char* name = vats->VATSTarget->GetDisplayFullName();
         if (name && name[0] != '\0') {
-            REX::DEBUG("VATS GetTargetName (from VATS): '{}'", name);
             return std::string(name);
         }
     }
 
-    REX::DEBUG("VATS GetTargetName: No target found");
     return "";
 }
 
@@ -215,7 +211,6 @@ std::string VATSMenuAccessibility::GetTargetLevel(RE::IMenu* a_menu)
         if (levelValue.IsString()) {
             std::string level = levelValue.GetString();
             if (!level.empty() && level != "0") {
-                REX::DEBUG("VATS GetTargetLevel (from UI): '{}'", level);
                 return level;
             }
         }
@@ -227,7 +222,6 @@ std::string VATSMenuAccessibility::GetTargetLevel(RE::IMenu* a_menu)
         auto* actor = player->commandTarget->As<RE::Actor>();
         if (actor) {
             auto level = actor->GetLevel();
-            REX::DEBUG("VATS GetTargetLevel (from commandTarget): {}", level);
             return std::to_string(level);
         }
     }
@@ -238,7 +232,6 @@ std::string VATSMenuAccessibility::GetTargetLevel(RE::IMenu* a_menu)
         auto targetActor = camera->cameraTarget.get();
         if (targetActor) {
             auto level = targetActor->GetLevel();
-            REX::DEBUG("VATS GetTargetLevel (from camera target): {}", level);
             return std::to_string(level);
         }
     }
@@ -249,7 +242,6 @@ std::string VATSMenuAccessibility::GetTargetLevel(RE::IMenu* a_menu)
         auto* actor = vats->VATSTarget->As<RE::Actor>();
         if (actor) {
             auto level = actor->GetLevel();
-            REX::DEBUG("VATS GetTargetLevel (from VATS): {}", level);
             return std::to_string(level);
         }
     }
@@ -278,7 +270,6 @@ std::uint32_t VATSMenuAccessibility::GetSelectedPartIndex(RE::IMenu* a_menu)
         }
     }
 
-    REX::DEBUG("VATS GetSelectedPartIndex: Failed to get value from path '{}'", SELECTED_PART_PATH);
     return 0xFFFFFFFF;
 }
 
@@ -289,19 +280,16 @@ bool VATSMenuAccessibility::GetPartAnimationInstance(RE::IMenu* a_menu, std::uin
     // Get PartInfos array
     Scaleform::GFx::Value partInfos;
     if (!a_menu->uiMovie->GetVariable(&partInfos, PART_INFOS_PATH) || !partInfos.IsArray()) {
-        REX::DEBUG("VATS GetPartAnimationInstance: PartInfos not found or not array");
         return false;
     }
 
     if (a_partIndex >= partInfos.GetArraySize()) {
-        REX::DEBUG("VATS GetPartAnimationInstance: Index {} out of bounds (size={})", a_partIndex, partInfos.GetArraySize());
         return false;
     }
 
     // Get the part info at index
     Scaleform::GFx::Value partInfo;
     if (!partInfos.GetElement(a_partIndex, &partInfo) || !partInfo.IsObject()) {
-        REX::DEBUG("VATS GetPartAnimationInstance: Failed to get element at index {}", a_partIndex);
         return false;
     }
 
@@ -309,17 +297,14 @@ bool VATSMenuAccessibility::GetPartAnimationInstance(RE::IMenu* a_menu, std::uin
     Scaleform::GFx::Value graphic, tinted;
 
     if (!partInfo.GetMember("GraphicInstance", &graphic) || !graphic.IsObject()) {
-        REX::DEBUG("VATS GetPartAnimationInstance: GraphicInstance not found");
         return false;
     }
 
     if (!graphic.GetMember("TintedContainer", &tinted) || !tinted.IsObject()) {
-        REX::DEBUG("VATS GetPartAnimationInstance: TintedContainer not found");
         return false;
     }
 
     if (!tinted.GetMember("AnimationInstance", a_outAnim) || !a_outAnim->IsObject()) {
-        REX::DEBUG("VATS GetPartAnimationInstance: AnimationInstance not found");
         return false;
     }
 
@@ -337,18 +322,14 @@ std::string VATSMenuAccessibility::GetPartName(RE::IMenu* a_menu, std::uint32_t 
     Scaleform::GFx::Value nameObj, text;
 
     if (!anim.GetMember("Name", &nameObj) || !nameObj.IsObject()) {
-        REX::DEBUG("VATS GetPartName: Name not found");
         return "";
     }
 
     if (!nameObj.GetMember("text", &text) || !text.IsString()) {
-        REX::DEBUG("VATS GetPartName: text property not found or not string");
         return "";
     }
 
-    std::string name = text.GetString();
-    REX::DEBUG("VATS GetPartName: index={} name='{}'", a_partIndex, name);
-    return name;
+    return text.GetString();
 }
 
 std::string VATSMenuAccessibility::GetPartHitChance(RE::IMenu* a_menu, std::uint32_t a_partIndex)
@@ -362,7 +343,6 @@ std::string VATSMenuAccessibility::GetPartHitChance(RE::IMenu* a_menu, std::uint
     Scaleform::GFx::Value hitChanceObj, text;
 
     if (!anim.GetMember("HitChance", &hitChanceObj) || !hitChanceObj.IsObject()) {
-        REX::DEBUG("VATS GetPartHitChance: HitChance not found");
         return "";
     }
 
@@ -370,9 +350,7 @@ std::string VATSMenuAccessibility::GetPartHitChance(RE::IMenu* a_menu, std::uint
         return "";
     }
 
-    std::string hitChance = text.GetString();
-    REX::DEBUG("VATS GetPartHitChance: index={} hitChance='{}'", a_partIndex, hitChance);
-    return hitChance;
+    return text.GetString();
 }
 
 std::string VATSMenuAccessibility::GetPartHealth(RE::IMenu* a_menu, std::uint32_t a_partIndex)
@@ -386,12 +364,10 @@ std::string VATSMenuAccessibility::GetPartHealth(RE::IMenu* a_menu, std::uint32_
     Scaleform::GFx::Value healthObj, barObj, scaleX;
 
     if (!anim.GetMember("PartHealth", &healthObj) || !healthObj.IsObject()) {
-        REX::DEBUG("VATS GetPartHealth: PartHealth not found");
         return "";
     }
 
     if (!healthObj.GetMember("BarInstance", &barObj) || !barObj.IsObject()) {
-        REX::DEBUG("VATS GetPartHealth: BarInstance not found");
         return "";
     }
 
@@ -405,7 +381,6 @@ std::string VATSMenuAccessibility::GetPartHealth(RE::IMenu* a_menu, std::uint32_
     }
 
     int healthPercent = static_cast<int>(health);
-    REX::DEBUG("VATS GetPartHealth: index={} health={}%", a_partIndex, healthPercent);
     return std::to_string(healthPercent);
 }
 
@@ -450,8 +425,6 @@ float VATSMenuAccessibility::GetAPRemaining()
                 totalQueuedCost += cmd->actionPointCost;
             }
         }
-        REX::DEBUG("VATS GetAPRemaining: currentAP={}, queuedCost={}, remaining={}",
-            currentAP, totalQueuedCost, currentAP - totalQueuedCost);
         return currentAP - totalQueuedCost;
     }
 
@@ -499,7 +472,6 @@ std::string VATSMenuAccessibility::BuildPartAnnouncement(RE::IMenu* a_menu, std:
     std::string health = GetPartHealth(a_menu, a_partIndex);
 
     if (partName.empty()) {
-        REX::DEBUG("VATS BuildPartAnnouncement: No part name for index {}", a_partIndex);
         return "";
     }
 
