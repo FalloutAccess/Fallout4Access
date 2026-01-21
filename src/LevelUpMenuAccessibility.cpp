@@ -1,6 +1,7 @@
 #include "LevelUpMenuAccessibility.h"
 #include "LevelUpMenuHook.h"
 #include "SpeechManager.h"
+#include "LocalizationHelper.h"
 #include <Scaleform/G/GFx_Value.h>
 
 using Scaleform::GFx::Value;
@@ -94,7 +95,7 @@ void LevelUpMenuAccessibility::AnnounceConfirmation(bool a_confirming)
     if (!m_isOpen) return;
 
     if (a_confirming) {
-        SpeakText("Confirming perk selection");
+        SpeakText(LocalizationHelper::Translate("$F4A_confirming_perk"));
     }
 }
 
@@ -102,7 +103,7 @@ std::string LevelUpMenuAccessibility::BuildMenuOpenAnnouncement(RE::IMenu* a_men
 {
     if (!a_menu || !a_menu->uiMovie) return "";
 
-    std::string announcement = "Level Up";
+    std::string announcement = LocalizationHelper::Translate("$F4A_levelup");
 
     // Get player level
     Value levelValue;
@@ -117,7 +118,7 @@ std::string LevelUpMenuAccessibility::BuildMenuOpenAnnouncement(RE::IMenu* a_men
         }
 
         if (level > 0) {
-            announcement += ", Level " + std::to_string(level);
+            announcement += ", " + LocalizationHelper::Translate("$F4A_level") + " " + std::to_string(level);
         }
     }
 
@@ -134,10 +135,10 @@ std::string LevelUpMenuAccessibility::BuildMenuOpenAnnouncement(RE::IMenu* a_men
         }
 
         if (perkPoints > 0) {
-            announcement += ", " + std::to_string(perkPoints) + " perk point";
-            if (perkPoints != 1) {
-                announcement += "s";
-            }
+            std::string perkPointStr = (perkPoints == 1)
+                ? LocalizationHelper::Translate("$F4A_perk_point")
+                : LocalizationHelper::Translate("$F4A_perk_points");
+            announcement += ", " + std::to_string(perkPoints) + " " + perkPointStr;
         }
     }
 
@@ -155,7 +156,7 @@ std::string LevelUpMenuAccessibility::BuildSelectionAnnouncement(RE::IMenu* a_me
     if (!a_menu->uiMovie->GetVariable(&selectedPerk, SELECTED_PERK_PATH) || !selectedPerk.IsObject()) {
         // If no selected perk, just announce position
         announcement = GetColumnName(a_col);
-        announcement += " column, row " + std::to_string(a_row + 1);
+        announcement += " " + LocalizationHelper::Translate("$F4A_column");
         return announcement;
     }
 
@@ -169,7 +170,7 @@ std::string LevelUpMenuAccessibility::BuildSelectionAnnouncement(RE::IMenu* a_me
     }
 
     // Add column name (SPECIAL stat)
-    announcement += ", " + std::string(GetColumnName(a_col)) + " column";
+    announcement += ", " + std::string(GetColumnName(a_col)) + " " + LocalizationHelper::Translate("$F4A_column");
 
     // Get rank info by reading star states
     RankInfo rankInfo = GetRankInfoFromStars(a_menu);
@@ -178,13 +179,16 @@ std::string LevelUpMenuAccessibility::BuildSelectionAnnouncement(RE::IMenu* a_me
         // Multi-rank perk - show rank info
         // Note: We can't reliably track viewed rank when using Alt/Ctrl
         // So we show owned count instead of trying to say if current rank is owned
-        announcement += ", " + std::to_string(rankInfo.ownedRanks) + " of " + std::to_string(rankInfo.maxRank) + " ranks owned";
+        announcement += ", " + std::to_string(rankInfo.ownedRanks) + " " +
+            LocalizationHelper::Translate("$F4A_of") + " " +
+            std::to_string(rankInfo.maxRank) + " " +
+            LocalizationHelper::Translate("$F4A_ranks_owned");
     } else if (rankInfo.maxRank == 1) {
         // Single-rank perk - check if owned
         Value ownedValue;
         if (selectedPerk.GetMember("owned", &ownedValue) && ownedValue.IsBoolean()) {
             if (ownedValue.GetBoolean()) {
-                announcement += ", owned";
+                announcement += ", " + LocalizationHelper::Translate("$F4A_owned");
             }
         }
     } else {
@@ -192,7 +196,7 @@ std::string LevelUpMenuAccessibility::BuildSelectionAnnouncement(RE::IMenu* a_me
         Value ownedValue;
         if (selectedPerk.GetMember("owned", &ownedValue) && ownedValue.IsBoolean()) {
             if (ownedValue.GetBoolean()) {
-                announcement += ", owned";
+                announcement += ", " + LocalizationHelper::Translate("$F4A_owned");
             }
         }
     }
@@ -201,7 +205,7 @@ std::string LevelUpMenuAccessibility::BuildSelectionAnnouncement(RE::IMenu* a_me
     Value availableValue;
     if (selectedPerk.GetMember("available", &availableValue) && availableValue.IsBoolean()) {
         if (!availableValue.GetBoolean()) {
-            announcement += ", unavailable";
+            announcement += ", " + LocalizationHelper::Translate("$F4A_unavailable");
         }
     }
 
@@ -257,6 +261,27 @@ std::string LevelUpMenuAccessibility::BuildSelectionAnnouncement(RE::IMenu* a_me
 
 const char* LevelUpMenuAccessibility::GetColumnName(std::uint32_t a_col)
 {
+    // Use game's ActorValue singleton to get localized SPECIAL names
+    RE::ActorValue* av = RE::ActorValue::GetSingleton();
+    if (av) {
+        RE::ActorValueInfo* info = nullptr;
+        switch (a_col) {
+            case 0: info = av->strength; break;
+            case 1: info = av->perception; break;
+            case 2: info = av->endurance; break;
+            case 3: info = av->charisma; break;
+            case 4: info = av->intelligence; break;
+            case 5: info = av->agility; break;
+            case 6: info = av->luck; break;
+        }
+        if (info) {
+            const char* name = info->GetFullName();
+            if (name && name[0] != '\0') {
+                return name;
+            }
+        }
+    }
+    // Fallback to hardcoded names if lookup fails
     if (a_col < 7) {
         return SPECIAL_NAMES[a_col];
     }
