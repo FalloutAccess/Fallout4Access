@@ -1422,10 +1422,10 @@ void HUDMenuHook::CallNativeQuickContainerUp(void* a_dataModel)
 {
     if (!a_dataModel) return;
 
-    // QuickContainerUp is at RVA 0xa0aa70 (from Ghidra: FUN_140a0aa70)
+    // QuickContainerUp - Address Library ID 2221655 (discovered from RVA 0xa0aa70)
     // Function signature: void __fastcall QuickContainerUp(HUDQuickContainerDataModel* this)
     using QuickContainerUpFunc = void(__fastcall*)(void*);
-    static REL::Relocation<QuickContainerUpFunc> quickContainerUp{ REL::Offset(0xa0aa70) };
+    static REL::Relocation<QuickContainerUpFunc> quickContainerUp{ REL::ID(2221655) };
 
     quickContainerUp(a_dataModel);
 }
@@ -1434,10 +1434,10 @@ void HUDMenuHook::CallNativeQuickContainerDown(void* a_dataModel)
 {
     if (!a_dataModel) return;
 
-    // QuickContainerDown is at RVA 0xa0aab0 (from Ghidra: FUN_140a0aab0)
+    // QuickContainerDown - Address Library ID 2221656 (discovered from RVA 0xa0aab0)
     // Function signature: void __fastcall QuickContainerDown(HUDQuickContainerDataModel* this)
     using QuickContainerDownFunc = void(__fastcall*)(void*);
-    static REL::Relocation<QuickContainerDownFunc> quickContainerDown{ REL::Offset(0xa0aab0) };
+    static REL::Relocation<QuickContainerDownFunc> quickContainerDown{ REL::ID(2221656) };
 
     quickContainerDown(a_dataModel);
 }
