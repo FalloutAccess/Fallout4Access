@@ -13,7 +13,6 @@
 #include <RE/F/FavoritesManager.h>
 #include <RE/M/MenuControls.h>
 #include <RE/RTTI.h>
-#include <REL/Offset2ID.h>
 #include <F4SE/F4SE.h>
 #include <typeinfo>
 
@@ -1440,67 +1439,4 @@ void HUDMenuHook::CallNativeQuickContainerDown(void* a_dataModel)
     static REL::Relocation<QuickContainerDownFunc> quickContainerDown{ REL::ID(2221656) };
 
     quickContainerDown(a_dataModel);
-}
-
-void HUDMenuHook::DiscoverAddressLibraryIDs()
-{
-    // Use Offset2ID to discover Address Library IDs for our hardcoded RVAs
-    // These IDs can then be contributed to CommonLibF4
-    auto* offset2id = REL::Offset2ID::GetSingleton();
-    if (!offset2id) {
-        REX::INFO("Offset2ID singleton not available");
-        return;
-    }
-
-    // Offset2ID needs to be explicitly loaded from IDDB
-    // Try both v2 and v5 formats (one will work depending on Address Library version)
-    if (offset2id->size() == 0) {
-        try {
-            offset2id->load_v2();
-            REX::INFO("Offset2ID: Loaded using v2 format");
-        } catch (...) {
-            // v2 failed, try v5
-        }
-    }
-    if (offset2id->size() == 0) {
-        try {
-            offset2id->load_v5();
-            REX::INFO("Offset2ID: Loaded using v5 format");
-        } catch (...) {
-            // v5 also failed
-        }
-    }
-    if (offset2id->size() == 0) {
-        REX::INFO("Offset2ID: Failed to load - Address Library may not be installed");
-        return;
-    }
-
-    REX::INFO("=== Address Library ID Discovery ===");
-    REX::INFO("Offset2ID database has {} entries", offset2id->size());
-
-    // HUDDataModel singleton pointer (RVA 0x32694E8)
-    try {
-        auto singletonID = offset2id->get_id(0x32694E8);
-        REX::INFO("HUDDataModel singleton (0x32694E8) -> ID: {}", singletonID);
-    } catch (...) {
-        REX::INFO("HUDDataModel singleton (0x32694E8) -> NOT FOUND in Address Library");
-    }
-
-    // QuickContainerUp function (RVA 0xa0aa70)
-    try {
-        auto upID = offset2id->get_id(0xa0aa70);
-        REX::INFO("QuickContainerUp (0xa0aa70) -> ID: {}", upID);
-    } catch (...) {
-        REX::INFO("QuickContainerUp (0xa0aa70) -> NOT FOUND in Address Library");
-    }
-
-    // QuickContainerDown function (RVA 0xa0aab0)
-    try {
-        auto downID = offset2id->get_id(0xa0aab0);
-        REX::INFO("QuickContainerDown (0xa0aab0) -> ID: {}", downID);
-    } catch (...) {
-        REX::INFO("QuickContainerDown (0xa0aab0) -> NOT FOUND in Address Library");
-    }
-
-    REX::INFO("=== End Address Library ID Discovery ===");
 }

@@ -3,7 +3,6 @@
 #include "ContainerMenuAccessibility.h"
 #include "CrosshairAccessibility.h"
 #include "ExamineMenuHook.h"
-#include "HUDMenuHook.h"
 #include "HUDMessageHook.h"
 #include "ItemStatFormatter.h"
 #include "LevelUpMenuHook.h"
@@ -24,9 +23,6 @@ void OnF4SEMessage(F4SE::MessagingInterface::Message* a_msg)
 
         // Load damage type translations
         ItemStatFormatter::LoadTranslations();
-
-        // Discover Address Library IDs for hardcoded RVAs (for contributing to CommonLibF4)
-        HUDMenuHook::GetSingleton()->DiscoverAddressLibraryIDs();
     }
 }
 

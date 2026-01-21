@@ -25,9 +25,6 @@ public:
     // Called by HUDNotificationAccessibility when HUD opens/closes
     void SetHUDOpen(bool a_open) { m_hudOpen = a_open; }
 
-    // Discover Address Library IDs for hardcoded RVAs (for contributing to CommonLibF4)
-    void DiscoverAddressLibraryIDs();
-
 private:
     HUDMenuHook() = default;
     ~HUDMenuHook() = default;
