@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pch.h"
+#include "ItemIdentity.h"
 #include <REL/Hook.h>
 #include <unordered_map>
 
@@ -35,6 +36,9 @@ private:
     // The hooked AdvanceMovie function
     static void HookedAdvanceMovie(RE::HUDMenu* a_this, float a_timeDelta, std::uint64_t a_time);
 
+    // The hooked OnButtonEvent function (for keyboard input)
+    static void HookedOnButtonEvent(RE::HUDMenu* a_this, const RE::ButtonEvent* a_event);
+
     // State checking - called after original AdvanceMovie
     void CheckNotifications(RE::HUDMenu* a_menu);
 
@@ -46,6 +50,28 @@ private:
     void CheckTutorialText(RE::IMenu* a_menu);
     void CheckLevelUp(RE::IMenu* a_menu);
     void CheckSubtitles(RE::IMenu* a_menu);
+
+    // Quick Loot (QuickContainerWidget) tracking
+    void CheckQuickLoot(RE::HUDMenu* a_menu);
+    bool IsQuickLootVisible(RE::HUDMenu* a_menu);
+    std::int32_t GetQuickLootSelectedIndex(RE::HUDMenu* a_menu);
+    void SetQuickLootSelectedIndex(RE::HUDMenu* a_menu, std::int32_t a_index);
+    ItemIdentity GetQuickLootItemAtIndex(RE::HUDMenu* a_menu, std::int32_t a_index);
+    std::string GetQuickLootContainerName(RE::HUDMenu* a_menu);
+    void AnnounceQuickLootOpened(RE::HUDMenu* a_menu);
+    void AnnounceQuickLootItem(const ItemIdentity& a_item);
+
+    // Quick Loot keyboard navigation (arrow keys)
+    void HandleQuickLootNavigation(RE::HUDMenu* a_menu, bool a_up);
+    std::int32_t GetQuickLootItemCount(RE::HUDMenu* a_menu);
+    void SetQuickLootSelection(RE::HUDMenu* a_menu, std::int32_t a_index);
+    void SimulateQuickLootScroll(RE::HUDMenu* a_menu, bool a_up);
+
+    // Debug: dump Quick Container input mappings to discover user event names
+    void DebugDumpQuickContainerMappings();
+
+    // Debug: find and examine HUDQuickContainer in hudObjects
+    void DebugDumpHUDQuickContainer(RE::HUDMenu* a_menu);
 
     // Deduplication - only announce each unique message once per session
     bool ShouldAnnounce(const std::string& a_text);
@@ -83,6 +109,29 @@ private:
     // Subtitle tracking
     std::string m_lastSubtitleText;
 
+    // Quick Loot tracking
+    bool m_quickLootVisible = false;
+    std::int32_t m_lastQuickLootIndex = -1;
+    std::string m_lastQuickLootContainer;
+    std::string m_lastQuickLootItemName;  // Track item name to detect changes after taking items
+    bool m_quickLootOpeningDone = false;
+
+    // HUDQuickContainer discovery (for direct state manipulation)
+    void* m_hudQuickContainerPtr = nullptr;
+    std::uint32_t m_hudQuickContainerIndex = 0;
+    void* m_hudQuickContainerDataModelPtr = nullptr;
+    std::uint32_t m_hudQuickContainerDataModelOffset = 0;
+
+    // Helper to get RTTI type name from a pointer
+    const char* GetRTTITypeName(void* a_ptr);
+
+    // Find and cache the HUDQuickContainerDataModel pointer
+    void* FindQuickContainerDataModel(RE::HUDMenu* a_menu);
+
+    // Call the game's native QuickContainerUp/Down functions
+    void CallNativeQuickContainerUp(void* a_dataModel);
+    void CallNativeQuickContainerDown(void* a_dataModel);
+
     // Deduplication: text -> last_spoken_time_ms
     std::unordered_map<std::string, std::uint64_t> m_announcementHistory;
     static constexpr std::uint64_t kDeduplicationWindowMs = 2000;  // 2 seconds
@@ -100,6 +149,10 @@ private:
     static constexpr const char* SUBTITLE_TEXT_PATH = "root.BottomCenterGroup_mc.SubtitleText_mc.SubtitleText_tf.text";
     static constexpr const char* SPEAKER_NAME_PATH = "root.BottomCenterGroup_mc.SubtitleText_mc.SpeakerName_tf.text";
 
-    // The vtable hook
+    // Quick Loot paths (QuickContainerWidget is in CenterGroup_mc)
+    static constexpr const char* QUICKLOOT_WIDGET_PATH = "root.CenterGroup_mc.QuickContainerWidget_mc";
+
+    // The vtable hooks
     static inline REL::HookVFT<void(RE::HUDMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::HookVFT<void(RE::HUDMenu*, const RE::ButtonEvent*)>* s_buttonEventHook = nullptr;
 };

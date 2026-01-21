@@ -22,6 +22,13 @@ public:
     // Called by VATSMenuAccessibility when menu opens/closes
     void SetMenuOpen(bool a_open) { m_menuOpen = a_open; }
 
+    // Data extraction - public for use by VATSCallbackHook
+    std::string GetCurrentTargetName();
+    std::uint32_t GetCurrentBodyPart(RE::IMenu* a_menu);
+    float GetTargetHealthPercent();
+    bool IsTargetLegendary();
+    bool IsTargetDangerous();
+
 private:
     VATSMenuHook() = default;
     ~VATSMenuHook() = default;
@@ -38,16 +45,6 @@ private:
     void CheckTargetChange(RE::IMenu* a_menu);
     void CheckBodyPartChange(RE::IMenu* a_menu);
 
-    // Data extraction
-    std::string GetCurrentTargetName();
-    std::uint32_t GetCurrentBodyPart(RE::IMenu* a_menu);
-    float GetTargetHealthPercent();
-    float GetTargetDistance();
-    std::string GetTargetLevel(RE::IMenu* a_menu);
-
-    // Helper to get target actor from multiple sources
-    RE::Actor* GetTargetActor();
-
     // State
     bool m_installed = false;
     bool m_menuOpen = false;
@@ -60,7 +57,6 @@ private:
 
     // Scaleform paths for VATSMenu
     static constexpr const char* SELECTED_PART_PATH = "root.MenuInstance.SelectedPart";
-    static constexpr const char* TARGET_LEVEL_PATH = "root.MenuInstance.ResistancesInstance.Level.text";
 
     // The vtable hook
     static inline REL::HookVFT<void(RE::IMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;

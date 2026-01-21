@@ -4,6 +4,7 @@
 #include "HUDNotificationAccessibility.h"
 #include "PipBoyMenuAccessibility.h"
 #include "ExamineMenuAccessibility.h"
+#include "ContainerMenuAccessibility.h"
 
 class MenuAccessibility :
     public RE::BSTEventSink<RE::MenuOpenCloseEvent>,
@@ -34,15 +35,11 @@ private:
     void OnMenuOpened(const RE::BSFixedString& a_menuName);
     void OnMenuClosed(const RE::BSFixedString& a_menuName);
     void SpeakText(const std::string& a_text, bool a_interrupt = false);
-    void SpeakMessageBox(RE::IMenu* a_menu);
-    void SpeakMessageBoxFromScaleform(RE::IMenu* a_menu);
-    void ScheduleMessageBoxRead(int a_framesRemaining);
 
     // Menu tracking
     bool m_mainMenuOpen = false;
     bool m_pauseMenuOpen = false;
     bool m_messageBoxOpen = false;
-    std::atomic<bool> m_messageBoxSpoken{ false };
     bool m_dialogueMenuOpen = false;
     bool m_specialMenuOpen = false;
     bool m_terminalMenuOpen = false;
@@ -50,5 +47,7 @@ private:
     bool m_hudMenuOpen = false;
     bool m_pipBoyMenuOpen = false;
     bool m_examineMenuOpen = false;
+    bool m_containerMenuOpen = false;
+    bool m_levelUpMenuOpen = false;
     bool m_inputHandlerRegistered = false;
 };

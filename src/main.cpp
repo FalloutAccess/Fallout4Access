@@ -1,12 +1,16 @@
 #include "pch.h"
 #include "AutoWalk.h"
+#include "ContainerMenuAccessibility.h"
 #include "CrosshairAccessibility.h"
 #include "ExamineMenuHook.h"
 #include "HUDMessageHook.h"
 #include "ItemStatFormatter.h"
+#include "LevelUpMenuHook.h"
 #include "MenuAccessibility.h"
+#include "MessageBoxMenuHook.h"
 #include "ObjectScanner.h"
 #include "SpeechManager.h"
+#include "VATSCallbackHook.h"
 #include "VATSMenuHook.h"
 #include <SRAL.h>
 
@@ -62,8 +66,18 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
     // Install ExamineMenu hook for workbench accessibility
     ExamineMenuHook::GetSingleton()->Install();
 
-    // Install VATSMenu hook for VATS accessibility
+    // Install VATSMenu hooks for VATS accessibility
     VATSMenuHook::GetSingleton()->Install();
+    VATSCallbackHook::GetSingleton()->Install();
+
+    // Install ContainerMenu hook for looting accessibility
+    ContainerMenuAccessibility::GetSingleton()->Install();
+
+    // Install LevelUpMenu hook for perk selection accessibility
+    LevelUpMenuHook::GetSingleton()->Install();
+
+    // Install MessageBoxMenu hook for dialog accessibility
+    MessageBoxMenuHook::GetSingleton()->Install();
 
     // Note: CrosshairAccessibility is registered in OnF4SEMessage when game data is ready
     // because it needs PlayerCharacter to be available

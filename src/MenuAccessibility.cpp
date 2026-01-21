@@ -1,4 +1,5 @@
 #include "MenuAccessibility.h"
+#include "ContextualInfoAnnouncer.h"
 #include "MainMenuHook.h"
 #include "LocalizationHelper.h"
 #include "SpeechManager.h"
@@ -8,9 +9,10 @@
 #include "SPECIALMenuAccessibility.h"
 #include "TerminalMenuAccessibility.h"
 #include "VATSMenuAccessibility.h"
+#include "ContainerMenuAccessibility.h"
+#include "LevelUpMenuAccessibility.h"
+#include "MessageBoxMenuHook.h"
 #include <SRAL.h>
-#include <RE/M/MessageBoxMenu.h>
-#include <RE/M/MessageBoxData.h>
 
 MenuAccessibility* MenuAccessibility::GetSingleton()
 {
@@ -46,7 +48,7 @@ RE::BSEventNotifyControl MenuAccessibility::ProcessEvent(
 bool MenuAccessibility::ShouldHandleEvent(const RE::InputEvent*)
 {
     // Only handle events when a tracked menu is open
-    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen || m_examineMenuOpen;
+    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen || m_examineMenuOpen || m_levelUpMenuOpen;
 }
 
 void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
@@ -127,6 +129,13 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
                 }
                 // Confirmation dialog: MainMenuHook handles this per-frame
             });
+        }
+    }
+
+    // Q key to switch between container and player inventory in ContainerMenu
+    if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x51) {  // Q key
+        if (m_containerMenuOpen) {
+            ContainerMenuAccessibility::GetSingleton()->SwitchSides();
         }
     }
 
@@ -258,6 +267,11 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
         }
     }
 
+    // H key - contextual info (combat stats in menus for now, extensible for menu-specific info later)
+    if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x48) {  // VK_H
+        REX::INFO("MenuAccessibility: H pressed, announcing combat stats");
+        ContextualInfoAnnouncer::GetSingleton()->AnnounceCombatStats();
+    }
 }
 
 void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
@@ -287,9 +301,9 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
         MainMenuHook::GetSingleton()->SetPauseMenuOpen(true);
     } else if (a_menuName == "MessageBoxMenu"sv) {
         m_messageBoxOpen = true;
-        m_messageBoxSpoken = false;
-        // Schedule retries - MessageBoxData may take several frames to initialize
-        ScheduleMessageBoxRead(10);
+        REX::INFO("MessageBoxMenu opened");
+        MessageBoxMenuHook::GetSingleton()->ResetState();
+        MessageBoxMenuHook::GetSingleton()->SetMenuOpen(true);
     } else if (a_menuName == "DialogueMenu"sv) {
         m_dialogueMenuOpen = true;
         DialogueMenuAccessibility::GetSingleton()->OnDialogueMenuOpened();
@@ -321,6 +335,14 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
         m_examineMenuOpen = true;
         REX::INFO("ExamineMenu opened");
         ExamineMenuAccessibility::GetSingleton()->OnExamineMenuOpened();
+    } else if (a_menuName == "ContainerMenu"sv) {
+        m_containerMenuOpen = true;
+        REX::INFO("ContainerMenu opened");
+        ContainerMenuAccessibility::GetSingleton()->OnContainerMenuOpened();
+    } else if (a_menuName == "LevelUpMenu"sv) {
+        m_levelUpMenuOpen = true;
+        REX::INFO("LevelUpMenu opened");
+        LevelUpMenuAccessibility::GetSingleton()->OnLevelUpMenuOpened();
     }
 }
 
@@ -336,7 +358,8 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
         MainMenuHook::GetSingleton()->SetPauseMenuOpen(false);
     } else if (a_menuName == "MessageBoxMenu"sv) {
         m_messageBoxOpen = false;
-        m_messageBoxSpoken = false;
+        REX::INFO("MessageBoxMenu closed");
+        MessageBoxMenuHook::GetSingleton()->SetMenuOpen(false);
     } else if (a_menuName == "DialogueMenu"sv) {
         m_dialogueMenuOpen = false;
         DialogueMenuAccessibility::GetSingleton()->OnDialogueMenuClosed();
@@ -360,6 +383,14 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
         m_examineMenuOpen = false;
         REX::INFO("ExamineMenu closed");
         ExamineMenuAccessibility::GetSingleton()->OnExamineMenuClosed();
+    } else if (a_menuName == "ContainerMenu"sv) {
+        m_containerMenuOpen = false;
+        REX::INFO("ContainerMenu closed");
+        ContainerMenuAccessibility::GetSingleton()->OnContainerMenuClosed();
+    } else if (a_menuName == "LevelUpMenu"sv) {
+        m_levelUpMenuOpen = false;
+        REX::INFO("LevelUpMenu closed");
+        LevelUpMenuAccessibility::GetSingleton()->OnLevelUpMenuClosed();
     }
 }
 
@@ -375,179 +406,8 @@ void MenuAccessibility::SpeakText(const std::string& a_text, bool a_interrupt)
 // NOTE: CheckForConfirmationDialog and DumpScaleformChildren removed
 // Confirmation dialogs are now detected per-frame by MainMenuHook
 
-void MenuAccessibility::ScheduleMessageBoxRead(int a_maxRetries)
-{
-    // Use a background thread with real sleep delays
-    // F4SE task interface executes tasks too quickly for proper delays
-    std::thread([this, a_maxRetries]() {
-        for (int i = 0; i < a_maxRetries && m_messageBoxOpen; i++) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
-            if (!m_messageBoxOpen) break;
-
-            // Schedule the actual check on the main thread (Scaleform requires main thread)
-            if (auto* taskInterface = F4SE::GetTaskInterface()) {
-                taskInterface->AddTask([this, i]() {
-                    if (!m_messageBoxOpen) return;
-                    if (m_messageBoxSpoken) return;  // Already spoken
-
-                    auto ui = RE::UI::GetSingleton();
-                    if (!ui) return;
-
-                    auto menu = ui->GetMenu("MessageBoxMenu"sv);
-                    if (!menu || !menu->uiMovie) return;
-
-                    // Try multiple Scaleform paths to find the right one
-                    const char* listPaths[] = {
-                        "root.List_mc.entryList",
-                        "root.Menu_mc.List_mc.entryList",
-                        "root.MessageBox_mc.List_mc.entryList",
-                        "root.MenuObj.List_mc.entryList"
-                    };
-
-                    for (const char* path : listPaths) {
-                        Scaleform::GFx::Value entryList;
-                        if (menu->uiMovie->GetVariable(&entryList, path)) {
-                            REX::DEBUG("MessageBoxMenu: path '{}' exists, IsArray={}, size={}",
-                                path, entryList.IsArray(),
-                                entryList.IsArray() ? entryList.GetArraySize() : 0);
-                            if (entryList.IsArray() && entryList.GetArraySize() > 0) {
-                                REX::DEBUG("MessageBoxMenu: Scaleform data ready after {} attempts at '{}'", i + 1, path);
-                                SpeakMessageBoxFromScaleform(menu.get());
-                                m_messageBoxSpoken = true;
-                                return;
-                            }
-                        }
-                    }
-
-                    // Log what we can find at root level
-                    if (i == 0) {
-                        Scaleform::GFx::Value root;
-                        if (menu->uiMovie->GetVariable(&root, "root")) {
-                            REX::DEBUG("MessageBoxMenu: root exists, IsObject={}", root.IsObject());
-                        }
-                    }
-                });
-            }
-        }
-
-        // Final warning if we didn't find it
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        if (m_messageBoxOpen && !m_messageBoxSpoken) {
-            REX::WARN("MessageBoxMenu: gave up waiting for currentMessage after {} retries", a_maxRetries);
-        }
-    }).detach();
-}
-
-void MenuAccessibility::SpeakMessageBox(RE::IMenu* a_menu)
-{
-    REX::DEBUG("SpeakMessageBox: entering");
-
-    if (!a_menu) {
-        REX::DEBUG("SpeakMessageBox: menu is null");
-        return;
-    }
-
-    auto* msgBoxMenu = static_cast<RE::MessageBoxMenu*>(a_menu);
-    if (!msgBoxMenu->currentMessage) {
-        REX::WARN("MessageBoxMenu has no currentMessage");
-        return;
-    }
-
-    auto* msgData = msgBoxMenu->currentMessage;
-    REX::DEBUG("SpeakMessageBox: msgData at {:p}", static_cast<void*>(msgData));
-
-    // Check if buttonText array is populated - if empty, data may not be fully ready
-    // Use capacity check as a safer way to verify the array is initialized
-    if (msgData->buttonText.empty()) {
-        REX::DEBUG("SpeakMessageBox: buttonText is empty, data may not be ready");
-        return;
-    }
-
-    REX::DEBUG("SpeakMessageBox: buttonText has {} entries", msgData->buttonText.size());
-
-    // Build the message to speak
-    std::string speechText;
-
-    // Add header if present - check c_str() is not null
-    REX::DEBUG("SpeakMessageBox: checking headerText");
-    if (msgData->headerText.size() > 0 && msgData->headerText.c_str() != nullptr) {
-        speechText += msgData->headerText.c_str();
-        speechText += ". ";
-    }
-
-    // Add body text
-    REX::DEBUG("SpeakMessageBox: checking bodyText");
-    if (msgData->bodyText.size() > 0 && msgData->bodyText.c_str() != nullptr) {
-        speechText += msgData->bodyText.c_str();
-    }
-
-    // Add button options
-    REX::DEBUG("SpeakMessageBox: adding button options");
-    speechText += ". ";
-    for (std::uint32_t i = 0; i < msgData->buttonText.size(); ++i) {
-        if (i > 0) {
-            speechText += ", ";
-        }
-        if (msgData->buttonText[i].c_str() != nullptr) {
-            speechText += msgData->buttonText[i].c_str();
-        }
-    }
-
-    REX::INFO("MessageBox: header='{}' body='{}' buttons={}",
-        msgData->headerText.c_str() ? msgData->headerText.c_str() : "(null)",
-        msgData->bodyText.c_str() ? msgData->bodyText.c_str() : "(null)",
-        msgData->buttonText.size());
-
-    if (!speechText.empty()) {
-        SpeakText(LocalizationHelper::CleanString(speechText));
-    }
-}
-
-void MenuAccessibility::SpeakMessageBoxFromScaleform(RE::IMenu* a_menu)
-{
-    if (!a_menu || !a_menu->uiMovie) {
-        return;
-    }
-
-    std::string speechText;
-
-    // Get body text from Body_tf.text
-    Scaleform::GFx::Value bodyText;
-    if (a_menu->uiMovie->GetVariable(&bodyText, "root.Body_tf.text") && bodyText.IsString()) {
-        std::string body = bodyText.GetString();
-        if (!body.empty()) {
-            speechText += body;
-        }
-    }
-
-    // Get button list from List_mc.entryList
-    Scaleform::GFx::Value entryList;
-    if (a_menu->uiMovie->GetVariable(&entryList, "root.List_mc.entryList") && entryList.IsArray()) {
-        std::uint32_t count = entryList.GetArraySize();
-        if (count > 0) {
-            speechText += ". ";
-            for (std::uint32_t i = 0; i < count; ++i) {
-                Scaleform::GFx::Value entry;
-                if (entryList.GetElement(i, &entry) && entry.IsObject()) {
-                    Scaleform::GFx::Value textValue;
-                    if (entry.GetMember("text", &textValue) && textValue.IsString()) {
-                        if (i > 0) {
-                            speechText += ", ";
-                        }
-                        speechText += textValue.GetString();
-                    }
-                }
-            }
-        }
-    }
-
-    REX::INFO("MessageBox (Scaleform): body='{}' buttons found", speechText);
-
-    if (!speechText.empty()) {
-        SpeakText(LocalizationHelper::CleanString(speechText));
-    }
-}
+// NOTE: ScheduleMessageBoxRead, SpeakMessageBox, SpeakMessageBoxFromScaleform removed
+// MessageBox accessibility is now handled by MessageBoxMenuHook per-frame
 
 // NOTE: IsMenuPanelVisible and TryAnnounceMenu removed
 // Panel visibility and menu announcements are now handled by MainMenuHook per-frame

@@ -1,9 +1,17 @@
 #include "HUDMenuHook.h"
 #include "SpeechManager.h"
 #include "LocalizationHelper.h"
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+#undef ERROR
+
 #include <SRAL.h>
 #include <RE/H/HUDMenu.h>
 #include <RE/F/FavoritesManager.h>
+#include <RE/M/MenuControls.h>
 #include <RE/RTTI.h>
 #include <F4SE/F4SE.h>
 #include <typeinfo>
@@ -651,6 +659,10 @@ void HUDMenuHook::CheckQuickLoot(RE::HUDMenu* a_menu)
         m_quickLootOpeningDone = false;
         // Don't clear m_lastQuickLootContainer - prevents re-announcing same container
         // Don't announce closing - would be too chatty as player looks around
+
+        // Clear cached DataModel pointer (will be different for next container)
+        m_hudQuickContainerDataModelPtr = nullptr;
+        m_hudQuickContainerPtr = nullptr;
     }
 
     // If visible and opening announcement done, check for item selection changes
@@ -775,6 +787,24 @@ std::int32_t HUDMenuHook::GetQuickLootSelectedIndex(RE::HUDMenu* a_menu)
     }
 
     return 0;  // Default to first item if none found selected
+}
+
+void HUDMenuHook::SetQuickLootSelectedIndex(RE::HUDMenu* a_menu, std::int32_t a_index)
+{
+    if (!a_menu || !a_menu->uiMovie || a_index < 0) return;
+
+    Scaleform::GFx::Value widget;
+    if (!a_menu->uiMovie->GetVariable(&widget, QUICKLOOT_WIDGET_PATH) || !widget.IsObject()) {
+        return;
+    }
+
+    // Set _selectedIndex on the widget (Value constructor takes int32_t)
+    Scaleform::GFx::Value indexValue(a_index);
+    widget.SetMember("_selectedIndex", indexValue);
+
+    // Call InvalidateData to force UI update
+    Scaleform::GFx::Value result;
+    widget.Invoke("InvalidateData", &result, nullptr, 0);
 }
 
 ItemIdentity HUDMenuHook::GetQuickLootItemAtIndex(RE::HUDMenu* a_menu, std::int32_t a_index)
@@ -982,69 +1012,46 @@ void HUDMenuHook::HandleQuickLootNavigation(RE::HUDMenu* a_menu, bool a_up)
 {
     if (!a_menu || !m_quickLootVisible) return;
 
-    std::int32_t currentIndex = GetQuickLootSelectedIndex(a_menu);
-    std::int32_t itemCount = GetQuickLootItemCount(a_menu);
-
-    if (itemCount <= 0) {
+    // Find the DataModel and call native functions
+    // Native functions handle all bounds checking and scrolling internally
+    void* dataModel = FindQuickContainerDataModel(a_menu);
+    if (!dataModel) {
+        REX::ERROR("HUDMenuHook: DataModel not found, cannot navigate");
+        m_hudQuickContainerDataModelPtr = nullptr;  // Clear cache to force retry on next attempt
         return;
     }
 
-    // Check boundaries - don't navigate past edges
-    if (a_up && currentIndex <= 0) {
-        return;
-    }
-    if (!a_up && currentIndex >= itemCount - 1) {
-        return;
+    if (a_up) {
+        CallNativeQuickContainerUp(dataModel);
+    } else {
+        CallNativeQuickContainerDown(dataModel);
     }
 
-    // Calculate new index
-    std::int32_t newIndex = a_up ? currentIndex - 1 : currentIndex + 1;
+    // Capture current state by value to avoid race conditions with main thread
+    std::string previousItemName = m_lastQuickLootItemName;
 
-    // ========================================================================
-    // Update FavoritesManager's selectedClipIndex (C++ authoritative state)
-    // ========================================================================
-    // Memory layout:
-    //   FavoritesManager + 0x1F0 = quickContainerMode (BSTValueEventSink<QuickContainerStateEvent>)
-    //   + 0x08 = eventDataStruct.optionalValue._value (QuickContainerStateData)
-    //   + 0xA8 = selectedClipIndex
-    //   = 0x1F0 + 0x08 + 0xA8 = 0x2A0
-    constexpr std::uintptr_t kSelectedClipIndexOffset = 0x2A0;
+    // Defer announcement to next frame to allow Scaleform to update
+    if (auto* taskInterface = F4SE::GetTaskInterface()) {
+        taskInterface->AddTask([this, previousItemName]() {
+            if (!m_quickLootVisible) return;
 
-    auto* favMgr = RE::FavoritesManager::GetSingleton();
-    if (favMgr) {
-        auto* selectedClipIndexPtr = reinterpret_cast<std::int32_t*>(
-            reinterpret_cast<std::uintptr_t>(favMgr) + kSelectedClipIndexOffset
-        );
+            auto ui = RE::UI::GetSingleton();
+            if (!ui) return;
 
-        *selectedClipIndexPtr = newIndex;
-    }
+            auto menu = ui->GetMenu<RE::HUDMenu>();
+            if (!menu) return;
 
-    // ========================================================================
-    // Update Scaleform UI (visual state)
-    // ========================================================================
-    if (a_menu->uiMovie) {
-        Scaleform::GFx::Value widget;
-        if (a_menu->uiMovie->GetVariable(&widget, QUICKLOOT_WIDGET_PATH) && widget.IsObject()) {
-            Scaleform::GFx::Value listItems;
-            if (widget.GetMember("ListItems_mc", &listItems) && listItems.IsObject()) {
-                // Set selectedClipIndex on ListItems_mc
-                Scaleform::GFx::Value indexVal(newIndex);
-                listItems.SetMember("selectedClipIndex", indexVal);
+            // Read the current selection from Scaleform (now updated)
+            std::int32_t currentIndex = GetQuickLootSelectedIndex(menu.get());
+            if (currentIndex < 0) return;
 
-                // Try to call UpdateList to refresh visual selection
-                Scaleform::GFx::Value result;
-                Scaleform::GFx::Value args[1] = { true };  // a_updateSelection = true
-                listItems.Invoke("UpdateList", &result, args, 1);
+            auto item = GetQuickLootItemAtIndex(menu.get(), currentIndex);
+            if (item.IsValid() && item.name != previousItemName) {
+                m_lastQuickLootIndex = currentIndex;
+                m_lastQuickLootItemName = item.name;
+                AnnounceQuickLootItem(item);
             }
-        }
-    }
-
-    // Announce the new item immediately
-    auto item = GetQuickLootItemAtIndex(a_menu, newIndex);
-    if (item.IsValid()) {
-        m_lastQuickLootIndex = newIndex;
-        m_lastQuickLootItemName = item.name;
-        AnnounceQuickLootItem(item);
+        });
     }
 }
 
@@ -1146,21 +1153,39 @@ void HUDMenuHook::SimulateQuickLootScroll(RE::HUDMenu* a_menu, bool a_up)
 // ============================================================================
 
 // Helper to get RTTI type name from a pointer (returns nullptr if invalid)
+// Uses IsBadReadPtr to validate memory before dereferencing to avoid crashes
+// from third-party mods with non-standard RTTI structures
 const char* HUDMenuHook::GetRTTITypeName(void* a_ptr)
 {
     if (!a_ptr) return nullptr;
 
     __try {
+        // Validate we can read the vtable pointer
+        if (IsBadReadPtr(a_ptr, sizeof(void*))) return nullptr;
+
         void** vtable = *reinterpret_cast<void***>(a_ptr);
         if (!vtable) return nullptr;
+
+        // Validate we can read vtable[-1] (the COL pointer)
+        if (IsBadReadPtr(vtable - 1, sizeof(void*))) return nullptr;
 
         auto* col = reinterpret_cast<RE::RTTI::CompleteObjectLocator*>(vtable[-1]);
         if (!col) return nullptr;
 
+        // Validate we can read the COL structure
+        if (IsBadReadPtr(col, sizeof(RE::RTTI::CompleteObjectLocator))) return nullptr;
+
         auto* typeDesc = col->typeDescriptor.get();
         if (!typeDesc) return nullptr;
 
-        return typeDesc->name();
+        // Validate we can read the type descriptor
+        if (IsBadReadPtr(typeDesc, sizeof(RE::RTTI::TypeDescriptor))) return nullptr;
+
+        // Validate the name pointer (it's embedded in the struct, but check the first char)
+        const char* name = typeDesc->name();
+        if (IsBadReadPtr(name, 1)) return nullptr;
+
+        return name;
     }
     __except(1) {
         return nullptr;
@@ -1317,4 +1342,84 @@ void HUDMenuHook::DebugDumpQuickContainerMappings()
     REX::INFO("Note: Game may use 264/265 (0x108/0x109) for scroll events");
 
     REX::INFO("=== End Quick Container Mappings ===");
+}
+
+// ============================================================================
+// Native Game Function Calls for Quick Container Navigation
+// ============================================================================
+
+void* HUDMenuHook::FindQuickContainerDataModel([[maybe_unused]] RE::HUDMenu* a_menu)
+{
+    // Helper lambda for exact RTTI type matching (MSVC format: .?AVClassName@@)
+    auto isValidRTTI = [](const char* typeName) -> bool {
+        if (!typeName) return false;
+        std::string_view name(typeName);
+        // MSVC RTTI format: ".?AVHUDQuickContainerDataModel@@" or similar with namespaces
+        return name.find(".?AVHUDQuickContainerDataModel@") != std::string_view::npos;
+    };
+
+    // Return cached pointer if still valid
+    if (m_hudQuickContainerDataModelPtr) {
+        const char* typeName = GetRTTITypeName(m_hudQuickContainerDataModelPtr);
+        if (isValidRTTI(typeName)) {
+            return m_hudQuickContainerDataModelPtr;
+        }
+        m_hudQuickContainerDataModelPtr = nullptr;
+    }
+
+    // Access via HUDDataModel singleton (RVA 0x32694E8)
+    // HUDQuickContainerDataModel is embedded at offset 0x38 from HUDDataModel
+    static REL::Relocation<void**> hudDataModelSingleton{ REL::Offset(0x32694E8) };
+
+    void* hudDataModel = *hudDataModelSingleton;
+    if (!hudDataModel) {
+        REX::DEBUG("HUDMenuHook: HUDDataModel singleton is null");
+        return nullptr;
+    }
+
+    // Validate pointer range (basic sanity check for valid heap/module address)
+    std::uintptr_t hudDataModelAddr = reinterpret_cast<std::uintptr_t>(hudDataModel);
+    if (hudDataModelAddr < 0x10000 || hudDataModelAddr > 0x7FFFFFFFFFFF) {
+        REX::DEBUG("HUDMenuHook: HUDDataModel pointer out of valid range: 0x{:X}", hudDataModelAddr);
+        return nullptr;
+    }
+
+    // HUDQuickContainerDataModel is at HUDDataModel + 0x38
+    void* dataModel = reinterpret_cast<void*>(hudDataModelAddr + 0x38);
+
+    // Verify via RTTI with exact type matching
+    const char* typeName = GetRTTITypeName(dataModel);
+    if (isValidRTTI(typeName)) {
+        m_hudQuickContainerDataModelPtr = dataModel;
+        REX::INFO("HUDMenuHook: Found HUDQuickContainerDataModel via singleton at 0x{:X}",
+            reinterpret_cast<std::uintptr_t>(dataModel));
+        return dataModel;
+    }
+
+    REX::DEBUG("HUDMenuHook: RTTI verification failed for DataModel at HUDDataModel+0x38");
+    return nullptr;
+}
+
+void HUDMenuHook::CallNativeQuickContainerUp(void* a_dataModel)
+{
+    if (!a_dataModel) return;
+
+    // QuickContainerUp is at RVA 0xa0aa70 (from Ghidra: FUN_140a0aa70)
+    // Function signature: void __fastcall QuickContainerUp(HUDQuickContainerDataModel* this)
+    using QuickContainerUpFunc = void(__fastcall*)(void*);
+    static REL::Relocation<QuickContainerUpFunc> quickContainerUp{ REL::Offset(0xa0aa70) };
+
+    quickContainerUp(a_dataModel);
+}
+
+void HUDMenuHook::CallNativeQuickContainerDown(void* a_dataModel)
+{
+    if (!a_dataModel) return;
+
+    // QuickContainerDown is at RVA 0xa0aab0 (from Ghidra: FUN_140a0aab0)
+    // Function signature: void __fastcall QuickContainerDown(HUDQuickContainerDataModel* this)
+    using QuickContainerDownFunc = void(__fastcall*)(void*);
+    static REL::Relocation<QuickContainerDownFunc> quickContainerDown{ REL::Offset(0xa0aab0) };
+
+    quickContainerDown(a_dataModel);
 }
