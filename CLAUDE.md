@@ -178,7 +178,6 @@ Menu list:                root.TerminalBase_mc.MenuItemList_mc (BSScrollingList)
 
 Hacking mode:
   - HackingAttempts_tf.text (string) "X ATTEMPT(S) LEFT"
-  - ResponseLog_tf.text   (string) previous guess results
 
 Terminal modes (RE::TerminalMenu::Mode):
   - kInit (0), kHack (1), kLogin (2), kList (3)
@@ -258,6 +257,179 @@ HUD Notifications:        root.HUDNotificationsGroup_mc
     - LeveUpTextClip.textField.text (string) level up text (note: "LeveUp" typo in game)
   - TutorialText_mc       tutorial popup
     - TutorialText_tf.text (string) tutorial message
+
+Quickloot widget:         root.CenterGroup_mc.QuickContainerWidget_mc
+  - _selectedIndex        (int) current selection
+  - ListItems_mc          container for item clips
+    - ItemText0..N        (MovieClip) individual item entries
+      - visible           (bool) whether clip is shown
+      - selected          (bool) whether item is selected
+      - data              (object) item data with properties:
+        - text            (string) item name
+        - count           (int) stack count
+        - equipState      (int) 0=unequipped, >0=equipped
+        - isLegendary     (bool) has legendary effects
+        - favorite        (int) quickkey slot
+        - taggedForSearch (bool) tagged for component search
+  - ListHeaderAndBracket_mc.ContainerName_mc.textField_tf.text (string) container name
+
+Enemy health meter:       root.TopCenterGroup_mc.EnemyHealthMeter_mc
+  - DisplayText_tf.text   (string) enemy name
+  - LegendaryIcon_mc.visible (bool) is legendary enemy
+  - SkullIcon_mc.visible  (bool) is skull (high level) enemy
+  - MeterBar_mc.Percent   (number) health percentage
+```
+
+### Known Scaleform Paths (ContainerMenu.swf)
+
+```
+Side selection:           root.containerIsSelected (bool) true=container, false=player
+
+Container side:           root.ContainerInventory_mc
+  - ContainerListHeader   header with container name
+    - headerText          (string) container name
+    - textField.text      (string) alternative text access
+  - ContainerList_mc      (BSScrollingList) container items
+    - selectedIndex       (int) current selection
+    - entryList           (array) items
+
+Player side:              root.PlayerInventory_mc
+  - PlayerListHeader      header with player inventory label
+    - headerText          (string) header text
+  - PlayerList_mc         (BSScrollingList) player items
+    - selectedIndex       (int) current selection
+    - entryList           (array) items
+
+Item card:                root.ItemCard_mc
+  - InfoObj               (array) stat entries (same format as Pip-Boy)
+
+Sort button:              root.SortButton
+  - ButtonText            (string) current sort mode
+
+Pickpocket mode:          root.PickpocketInfo_mc
+  - visible               (bool) whether pickpocket UI is shown
+  - Percent_tf.text       (string) success chance percentage
+
+Entry properties (entryList[i]):
+  - text                  (string) item name
+  - count                 (int) stack count
+  - equipState            (int) 0=unequipped, >0=equipped
+  - isLegendary           (bool) has legendary effects
+  - favorite              (int) quickkey slot
+  - taggedForSearch       (bool) tagged for component search
+```
+
+### Known Scaleform Paths (DialogueMenu.swf)
+
+```
+NPC name:                 root.name_tf.text (string)
+
+Dialogue list:            root.List_mc (BSScrollingList)
+  - alpha                 (number) visibility (0 when hidden)
+  - selectedIndex         (int) current selection
+  - entryList             (array) dialogue options
+
+Entry properties (entryList[i]):
+  - text                  (string) dialogue option text
+  - challengeLevel        (int) speech check difficulty (0=none)
+  - challengeResult       (int) success/fail result
+  - said                  (bool) already selected this option
+  - isBarterOption        (bool) opens barter menu
+  - isInventoryOption     (bool) opens inventory
+  - endsScene             (bool) ends conversation
+```
+
+### Known Scaleform Paths (ExamineMenu.swf)
+
+```
+Item name:                root.ItemName_tf.text (string)
+
+Inventory list:           root.InventoryBase_mc.InventoryList_mc
+  - selectedIndex         (int) current selection
+  - entryList             (array) items to examine
+
+Mod slots:                root.ModSlotBase_mc
+  - SlotsLabel_tf.text    (string) "MOD SLOTS" label
+  - ModSlotList_mc        (BSScrollingList) available mod slots
+    - selectedIndex       (int) current selection
+    - entryList           (array) mod slots
+
+Mod description:          root.ModDescriptionBase_mc.ModDescription_tf.text (string)
+
+Item card:                root.ItemCardList_mc.InfoObj (array)
+  - Same format as Pip-Boy/Container item cards
+
+Legendary description:    root.LegendaryItemDescription_tf.text (string)
+
+Entry properties for mods (entryList[i]):
+  - text                  (string) mod name
+  - currentMod            (bool) currently installed
+  - hasRequired           (bool) has required materials
+
+Entry properties for items (entryList[i]):
+  - text                  (string) item name
+  - count                 (int) stack count
+  - equipState            (int) equipped state
+  - isLegendary           (bool) has legendary effects
+  - bestInClass           (bool) best item of this type
+```
+
+### Known Scaleform Paths (LevelUpMenu.swf)
+
+```
+Perk grid:                root.Menu_mc.GridView_mc (PerkGrid instance)
+
+Selected perk:            root.Menu_mc.GridView_mc.selectedPerkEntry (object)
+  - text                  (string) perk name
+  - description           (string) perk description
+  - displayRank           (int) current viewing rank
+  - displayMaxRank        (int) maximum rank available
+  - owned                 (bool) player has this perk
+  - available             (bool) can be purchased
+
+Selected perk clip:       root.Menu_mc.GridView_mc.selectedPerkClip
+  - row                   (int) grid row (0-9 for SPECIAL stats)
+  - col                   (int) grid column (rank level)
+
+Player info:
+  - root.Menu_mc.playerLevel  (int) current player level
+  - root.Menu_mc.perkCount    (int) available perk points
+
+Rank viewing:             root.Menu_mc._ViewingRankOffset (int)
+Description text:         root.Menu_mc._SelectionDesc (string)
+```
+
+### Known Scaleform Paths (SPECIALMenu.swf)
+
+```
+SPECIAL list:             root.Menu_mc.List_mc (BSScrollingList)
+  - selectedIndex         (int) current selection (0-6 for S.P.E.C.I.A.L.)
+  - entryList             (array) SPECIAL stats
+
+Points counter:           root.Menu_mc.PointCounter_tf.text (string)
+Description:              root.Menu_mc.Description_tf.text (string)
+
+Entry properties (entryList[i]):
+  - text                  (string) stat name (Strength, Perception, etc.)
+  - value                 (int) current stat value (1-10)
+```
+
+### Known Scaleform Paths (VATSMenu.swf)
+
+```
+Menu instance:            root.MenuInstance (main container)
+
+Selected body part:       root.MenuInstance.SelectedPart (int) index
+
+Part info array:          root.MenuInstance.PartInfos (array)
+  Each entry contains:
+  - GraphicInstance.TintedContainer.AnimationInstance
+    - Name.text           (string) body part name
+    - HitChance.text      (string) hit chance percentage
+    - PartHealth.BarInstance.scaleX (number) health bar scale
+
+Target resistances:       root.MenuInstance.ResistancesInstance
+  - Level.text            (string) target level
 ```
 
 ### Input Key Codes
