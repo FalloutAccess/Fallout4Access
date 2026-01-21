@@ -13,6 +13,7 @@
 #include <RE/F/FavoritesManager.h>
 #include <RE/M/MenuControls.h>
 #include <RE/RTTI.h>
+#include <REL/Offset2ID.h>
 #include <F4SE/F4SE.h>
 #include <typeinfo>
 
@@ -1350,12 +1351,12 @@ void HUDMenuHook::DebugDumpQuickContainerMappings()
 
 void* HUDMenuHook::FindQuickContainerDataModel([[maybe_unused]] RE::HUDMenu* a_menu)
 {
-    // Helper lambda for exact RTTI type matching (MSVC format: .?AVClassName@@)
+    // Helper lambda for RTTI type matching
     auto isValidRTTI = [](const char* typeName) -> bool {
         if (!typeName) return false;
         std::string_view name(typeName);
-        // MSVC RTTI format: ".?AVHUDQuickContainerDataModel@@" or similar with namespaces
-        return name.find(".?AVHUDQuickContainerDataModel@") != std::string_view::npos;
+        // Check for both mangled (.?AV...) and demangled (class ...) formats
+        return name.find("HUDQuickContainerDataModel") != std::string_view::npos;
     };
 
     // Return cached pointer if still valid
@@ -1367,9 +1368,10 @@ void* HUDMenuHook::FindQuickContainerDataModel([[maybe_unused]] RE::HUDMenu* a_m
         m_hudQuickContainerDataModelPtr = nullptr;
     }
 
-    // Access via HUDDataModel singleton (RVA 0x32694E8)
+    // Access via HUDDataModel singleton using Address Library ID 4801904
+    // (discovered via Offset2ID from RVA 0x32694E8)
     // HUDQuickContainerDataModel is embedded at offset 0x38 from HUDDataModel
-    static REL::Relocation<void**> hudDataModelSingleton{ REL::Offset(0x32694E8) };
+    static REL::Relocation<void**> hudDataModelSingleton{ REL::ID(4801904) };
 
     void* hudDataModel = *hudDataModelSingleton;
     if (!hudDataModel) {
@@ -1384,6 +1386,15 @@ void* HUDMenuHook::FindQuickContainerDataModel([[maybe_unused]] RE::HUDMenu* a_m
         return nullptr;
     }
 
+    // Check RTTI of HUDDataModel itself first
+    const char* hudDataModelTypeName = GetRTTITypeName(hudDataModel);
+    static bool loggedOnce = false;
+    if (!loggedOnce) {
+        REX::INFO("HUDMenuHook: HUDDataModel at 0x{:X}, RTTI: {}",
+            hudDataModelAddr, hudDataModelTypeName ? hudDataModelTypeName : "null");
+        loggedOnce = true;
+    }
+
     // HUDQuickContainerDataModel is at HUDDataModel + 0x38
     void* dataModel = reinterpret_cast<void*>(hudDataModelAddr + 0x38);
 
@@ -1394,6 +1405,13 @@ void* HUDMenuHook::FindQuickContainerDataModel([[maybe_unused]] RE::HUDMenu* a_m
         REX::INFO("HUDMenuHook: Found HUDQuickContainerDataModel via singleton at 0x{:X}",
             reinterpret_cast<std::uintptr_t>(dataModel));
         return dataModel;
+    }
+
+    // Log what type we actually got (once)
+    static bool loggedTypeMismatch = false;
+    if (!loggedTypeMismatch && typeName) {
+        REX::INFO("HUDMenuHook: At HUDDataModel+0x38, got RTTI: {}", typeName);
+        loggedTypeMismatch = true;
     }
 
     REX::DEBUG("HUDMenuHook: RTTI verification failed for DataModel at HUDDataModel+0x38");
@@ -1422,4 +1440,67 @@ void HUDMenuHook::CallNativeQuickContainerDown(void* a_dataModel)
     static REL::Relocation<QuickContainerDownFunc> quickContainerDown{ REL::Offset(0xa0aab0) };
 
     quickContainerDown(a_dataModel);
+}
+
+void HUDMenuHook::DiscoverAddressLibraryIDs()
+{
+    // Use Offset2ID to discover Address Library IDs for our hardcoded RVAs
+    // These IDs can then be contributed to CommonLibF4
+    auto* offset2id = REL::Offset2ID::GetSingleton();
+    if (!offset2id) {
+        REX::INFO("Offset2ID singleton not available");
+        return;
+    }
+
+    // Offset2ID needs to be explicitly loaded from IDDB
+    // Try both v2 and v5 formats (one will work depending on Address Library version)
+    if (offset2id->size() == 0) {
+        try {
+            offset2id->load_v2();
+            REX::INFO("Offset2ID: Loaded using v2 format");
+        } catch (...) {
+            // v2 failed, try v5
+        }
+    }
+    if (offset2id->size() == 0) {
+        try {
+            offset2id->load_v5();
+            REX::INFO("Offset2ID: Loaded using v5 format");
+        } catch (...) {
+            // v5 also failed
+        }
+    }
+    if (offset2id->size() == 0) {
+        REX::INFO("Offset2ID: Failed to load - Address Library may not be installed");
+        return;
+    }
+
+    REX::INFO("=== Address Library ID Discovery ===");
+    REX::INFO("Offset2ID database has {} entries", offset2id->size());
+
+    // HUDDataModel singleton pointer (RVA 0x32694E8)
+    try {
+        auto singletonID = offset2id->get_id(0x32694E8);
+        REX::INFO("HUDDataModel singleton (0x32694E8) -> ID: {}", singletonID);
+    } catch (...) {
+        REX::INFO("HUDDataModel singleton (0x32694E8) -> NOT FOUND in Address Library");
+    }
+
+    // QuickContainerUp function (RVA 0xa0aa70)
+    try {
+        auto upID = offset2id->get_id(0xa0aa70);
+        REX::INFO("QuickContainerUp (0xa0aa70) -> ID: {}", upID);
+    } catch (...) {
+        REX::INFO("QuickContainerUp (0xa0aa70) -> NOT FOUND in Address Library");
+    }
+
+    // QuickContainerDown function (RVA 0xa0aab0)
+    try {
+        auto downID = offset2id->get_id(0xa0aab0);
+        REX::INFO("QuickContainerDown (0xa0aab0) -> ID: {}", downID);
+    } catch (...) {
+        REX::INFO("QuickContainerDown (0xa0aab0) -> NOT FOUND in Address Library");
+    }
+
+    REX::INFO("=== End Address Library ID Discovery ===");
 }
