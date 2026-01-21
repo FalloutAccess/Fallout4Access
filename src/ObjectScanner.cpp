@@ -1,5 +1,6 @@
 #include "ObjectScanner.h"
 #include "AutoWalk.h"
+#include "ContextualInfoAnnouncer.h"
 #include "SpeechManager.h"
 #include <SRAL.h>
 #include <algorithm>
@@ -7,7 +8,9 @@
 #include <REX/W32/USER32.h>
 #include <RE/P/PipboyDataManager.h>
 #include <RE/P/PowerArmor.h>
+#include <RE/T/TES.h>
 #include <RE/T/TESFurniture.h>
+#include <RE/G/GridCellArray.h>
 
 // Static storage for singleton
 static RE::PlayerControlsData s_dummyData{};
@@ -86,19 +89,29 @@ void ObjectScanner::OnButtonEvent(const RE::ButtonEvent* a_event)
         }
     }
 
+    // Check if Shift is held using REX::W32 (returns negative if key is down)
+    bool shiftHeld = REX::W32::GetKeyState(REX::W32::VK_SHIFT) < 0;
+
     if (idCode == NUMPAD_5) {
         REX::INFO("ObjectScanner: Numpad 5 pressed, scanning...");
         ScanAndAnnounce();
     } else if (idCode == PAGE_DOWN) {
-        REX::INFO("ObjectScanner: Page Down pressed");
-        SelectNext();
+        if (shiftHeld) {
+            REX::INFO("ObjectScanner: Shift+Page Down pressed, next category");
+            NextCategory();
+        } else {
+            REX::INFO("ObjectScanner: Page Down pressed");
+            SelectNext();
+        }
     } else if (idCode == PAGE_UP) {
-        REX::INFO("ObjectScanner: Page Up pressed");
-        SelectPrevious();
+        if (shiftHeld) {
+            REX::INFO("ObjectScanner: Shift+Page Up pressed, previous category");
+            PreviousCategory();
+        } else {
+            REX::INFO("ObjectScanner: Page Up pressed");
+            SelectPrevious();
+        }
     } else if (idCode == HOME) {
-        // Check if Shift is held using REX::W32 (returns negative if key is down)
-        bool shiftHeld = REX::W32::GetKeyState(REX::W32::VK_SHIFT) < 0;
-
         if (shiftHeld) {
             // Toggle: if already walking, stop; otherwise start walking
             if (AutoWalk::GetSingleton()->IsWalking()) {
@@ -115,8 +128,11 @@ void ObjectScanner::OnButtonEvent(const RE::ButtonEvent* a_event)
             AnnounceCurrentObject();
         }
     } else if (idCode == END_KEY) {
-        REX::INFO("ObjectScanner: End pressed, cycling category");
-        CycleCategory();
+        REX::INFO("ObjectScanner: End pressed, cycling subcategory");
+        CycleSubcategory();
+    } else if (idCode == H_KEY) {
+        REX::INFO("ObjectScanner: H pressed, announcing combat stats");
+        ContextualInfoAnnouncer::GetSingleton()->AnnounceCombatStats();
     }
 }
 
@@ -141,14 +157,55 @@ void ObjectScanner::ScanIfNeeded()
     }
 }
 
-void ObjectScanner::CycleCategory()
+void ObjectScanner::NextCategory()
 {
-    int next = (static_cast<int>(m_currentCategory) + 1) % static_cast<int>(ScanCategory::COUNT);
-    m_currentCategory = static_cast<ScanCategory>(next);
+    ScanCategory startCategory = m_currentCategory;
+    int categoryCount = static_cast<int>(ScanCategory::COUNT);
 
-    // Clear cached objects to force rescan with new filter
-    m_scannedObjects.clear();
-    m_currentIndex = -1;
+    // Try each category until we find one with objects (or cycle back to start)
+    for (int i = 0; i < categoryCount; ++i) {
+        int next = (static_cast<int>(m_currentCategory) + 1) % categoryCount;
+        m_currentCategory = static_cast<ScanCategory>(next);
+        m_currentSubcategory = ScanSubcategory::All;
+
+        // Clear and rescan
+        m_scannedObjects.clear();
+        m_currentIndex = -1;
+        ScanObjects();
+
+        // If we found objects or we're back to start, stop
+        if (!m_scannedObjects.empty() || m_currentCategory == startCategory) {
+            break;
+        }
+    }
+
+    SpeakText(GetCategoryName(m_currentCategory));
+}
+
+void ObjectScanner::PreviousCategory()
+{
+    ScanCategory startCategory = m_currentCategory;
+    int categoryCount = static_cast<int>(ScanCategory::COUNT);
+
+    // Try each category until we find one with objects (or cycle back to start)
+    for (int i = 0; i < categoryCount; ++i) {
+        int prev = static_cast<int>(m_currentCategory) - 1;
+        if (prev < 0) {
+            prev = categoryCount - 1;
+        }
+        m_currentCategory = static_cast<ScanCategory>(prev);
+        m_currentSubcategory = ScanSubcategory::All;
+
+        // Clear and rescan
+        m_scannedObjects.clear();
+        m_currentIndex = -1;
+        ScanObjects();
+
+        // If we found objects or we're back to start, stop
+        if (!m_scannedObjects.empty() || m_currentCategory == startCategory) {
+            break;
+        }
+    }
 
     SpeakText(GetCategoryName(m_currentCategory));
 }
@@ -160,6 +217,7 @@ const char* ObjectScanner::GetCategoryName(ScanCategory a_category)
         case ScanCategory::NPCs: return "NPCs";
         case ScanCategory::Doors: return "Doors";
         case ScanCategory::Containers: return "Containers";
+        case ScanCategory::Items: return "Items";
         case ScanCategory::Activators: return "Activators";
         case ScanCategory::QuestMarkers: return "Quest Markers";
         case ScanCategory::Corpses: return "Corpses";
@@ -167,6 +225,99 @@ const char* ObjectScanner::GetCategoryName(ScanCategory a_category)
         case ScanCategory::Companions: return "Companions";
         case ScanCategory::PowerArmor: return "Power Armor";
         default: return "Unknown";
+    }
+}
+
+void ObjectScanner::CycleSubcategory()
+{
+    // Only cycle if current category has subcategories
+    if (!HasSubcategories(m_currentCategory)) {
+        SpeakText("No subcategories");
+        return;
+    }
+
+    // Cycle through: All -> Seats -> Other -> All
+    int next = (static_cast<int>(m_currentSubcategory) + 1) % static_cast<int>(ScanSubcategory::COUNT);
+    m_currentSubcategory = static_cast<ScanSubcategory>(next);
+
+    // Clear cached objects to force rescan with new filter
+    m_scannedObjects.clear();
+    m_currentIndex = -1;
+
+    SpeakText(GetSubcategoryName(m_currentSubcategory));
+}
+
+bool ObjectScanner::HasSubcategories(ScanCategory a_category)
+{
+    // Currently only Activators has subcategories
+    return a_category == ScanCategory::Activators;
+}
+
+const char* ObjectScanner::GetSubcategoryName(ScanSubcategory a_subcategory)
+{
+    switch (a_subcategory) {
+        case ScanSubcategory::All: return "All";
+        case ScanSubcategory::Seats: return "Seats";
+        case ScanSubcategory::Other: return "Other";
+        default: return "Unknown";
+    }
+}
+
+bool ObjectScanner::IsSittableFurniture(RE::TESObjectREFR* a_ref)
+{
+    if (!a_ref) return false;
+
+    auto* baseObj = a_ref->GetObjectReference();
+    if (!baseObj) return false;
+
+    // Must be furniture
+    if (baseObj->GetFormType() != RE::ENUM_FORM_ID::kFURN) return false;
+
+    auto* furniture = static_cast<RE::TESFurniture*>(baseObj);
+
+    // Skip workbenches - they're not sittable furniture
+    if (furniture->wbData.type != RE::WorkbenchData::Type::kNone) {
+        return false;
+    }
+
+    // Animation type flags (from xEdit/Creation Kit documentation)
+    constexpr std::uint32_t kAnimSit = 0x01;    // Bit 0: Sit animation
+    constexpr std::uint32_t kAnimSleep = 0x02;  // Bit 1: Sleep/Lay animation
+
+    // Check furniture markers for sit or sleep animations
+    for (const auto& marker : furniture->markersArray) {
+        if (marker.allowedAnimations & (kAnimSit | kAnimSleep)) {
+            return true;
+        }
+    }
+
+    // Also check entry point data for sit/sleep flags
+    for (const auto& entry : furniture->entryPointDataArray) {
+        if (entry.flags & (kAnimSit | kAnimSleep)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool ObjectScanner::MatchesSubcategory(RE::TESObjectREFR* a_ref, ScanSubcategory a_subcategory)
+{
+    if (a_subcategory == ScanSubcategory::All) return true;
+    if (!a_ref) return false;
+
+    // Subcategories only apply to Activators currently
+    if (m_currentCategory != ScanCategory::Activators) return true;
+
+    bool isSeat = IsSittableFurniture(a_ref);
+
+    switch (a_subcategory) {
+        case ScanSubcategory::Seats:
+            return isSeat;
+        case ScanSubcategory::Other:
+            return !isSeat;
+        default:
+            return true;
     }
 }
 
@@ -305,6 +456,18 @@ bool ObjectScanner::MatchesCategory(RE::TESObjectREFR* a_ref, ScanCategory a_cat
         case ScanCategory::Containers:
             return formType == RE::ENUM_FORM_ID::kCONT;
 
+        case ScanCategory::Items:
+            // Takeable items - weapons, armor, ammo, aid, misc, books, keys, notes
+            return formType == RE::ENUM_FORM_ID::kWEAP ||
+                   formType == RE::ENUM_FORM_ID::kARMO ||
+                   formType == RE::ENUM_FORM_ID::kAMMO ||
+                   formType == RE::ENUM_FORM_ID::kALCH ||
+                   formType == RE::ENUM_FORM_ID::kMISC ||
+                   formType == RE::ENUM_FORM_ID::kBOOK ||
+                   formType == RE::ENUM_FORM_ID::kKEYM ||
+                   formType == RE::ENUM_FORM_ID::kNOTE ||
+                   formType == RE::ENUM_FORM_ID::kINGR;
+
         case ScanCategory::Activators:
             return formType == RE::ENUM_FORM_ID::kACTI ||
                    formType == RE::ENUM_FORM_ID::kTACT ||
@@ -403,12 +566,6 @@ void ObjectScanner::ScanObjects()
         return;
     }
 
-    auto* cell = player->GetParentCell();
-    if (!cell) {
-        REX::WARN("ObjectScanner: Player has no parent cell");
-        return;
-    }
-
     RE::NiPoint3 playerPos = player->GetPosition();
 
     // Store scan position for rescan detection
@@ -426,22 +583,74 @@ void ObjectScanner::ScanObjects()
     };
     std::vector<TempObject> tempObjects;
 
-    for (auto& refPtr : cell->references) {
-        auto* ref = refPtr.get();
-        if (!ref) continue;
-        if (ref == player) continue;
+    // Lambda to scan a single cell's references
+    auto scanCell = [&](RE::TESObjectCELL* cell) {
+        if (!cell) return;
 
-        // Filter by interactability and category
-        if (!IsInteractable(ref)) continue;
-        if (!MatchesCategory(ref, m_currentCategory)) continue;
+        // Only scan fully attached cells
+        if (cell->cellState == RE::TESObjectCELL::CELL_STATE::kAttached) {
+            for (auto& refPtr : cell->references) {
+                auto* ref = refPtr.get();
+                if (!ref) continue;
+                if (ref == player) continue;
 
-        RE::NiPoint3 objPos = ref->GetPosition();
-        float distSq = playerPos.GetSquaredDistance(objPos);
+                // Filter by interactability, category, and subcategory
+                if (!IsInteractable(ref)) continue;
+                if (!MatchesCategory(ref, m_currentCategory)) continue;
+                if (!MatchesSubcategory(ref, m_currentSubcategory)) continue;
 
-        const char* name = ref->GetDisplayFullName();
-        if (!name || name[0] == '\0') continue;
+                RE::NiPoint3 objPos = ref->GetPosition();
+                float distSq = playerPos.GetSquaredDistance(objPos);
 
-        tempObjects.push_back({ref, name, std::sqrt(distSq)});
+                const char* name = ref->GetDisplayFullName();
+                if (!name || name[0] == '\0') continue;
+
+                tempObjects.push_back({ref, name, std::sqrt(distSq)});
+            }
+        }
+    };
+
+    // Get TES singleton for cell grid access
+    auto* tes = RE::TES::GetSingleton();
+    if (!tes) {
+        REX::WARN("ObjectScanner: No TES singleton");
+        return;
+    }
+
+    // Check if player is in an interior
+    if (tes->interiorCell) {
+        // Interior: scan single cell
+        scanCell(tes->interiorCell);
+        REX::INFO("ObjectScanner: Scanned interior cell");
+    } else {
+        // Exterior: scan all loaded grid cells
+        auto* gridCells = tes->gridCells;
+        if (gridCells) {
+            std::uint32_t dimension = gridCells->dimension;
+            std::uint32_t cellsScanned = 0;
+
+            for (std::uint32_t x = 0; x < dimension; ++x) {
+                for (std::uint32_t y = 0; y < dimension; ++y) {
+                    auto* gridCell = gridCells->Get(x, y);
+                    if (gridCell && gridCell->cell) {
+                        scanCell(gridCell->cell);
+                        cellsScanned++;
+                    }
+                }
+            }
+            REX::INFO("ObjectScanner: Scanned {} exterior cells ({}x{} grid)",
+                cellsScanned, dimension, dimension);
+        } else {
+            // Fallback to parent cell if grid not available
+            auto* cell = player->GetParentCell();
+            if (cell) {
+                scanCell(cell);
+                REX::INFO("ObjectScanner: Fallback to parent cell scan");
+            } else {
+                REX::WARN("ObjectScanner: No cells available to scan");
+                return;
+            }
+        }
     }
 
     // Sort by distance (closest first)
@@ -459,7 +668,7 @@ void ObjectScanner::ScanObjects()
         m_currentIndex = 0;
     }
 
-    REX::INFO("ObjectScanner: Scanned {} {}",
+    REX::INFO("ObjectScanner: Found {} {}",
         m_scannedObjects.size(), GetCategoryName(m_currentCategory));
 }
 
@@ -708,12 +917,6 @@ void ObjectScanner::ScanCompanions()
         return;
     }
 
-    auto* cell = player->GetParentCell();
-    if (!cell) {
-        REX::WARN("ObjectScanner: Player has no parent cell");
-        return;
-    }
-
     RE::NiPoint3 playerPos = player->GetPosition();
     m_lastScanPosition = playerPos;
 
@@ -728,29 +931,56 @@ void ObjectScanner::ScanCompanions()
     };
     std::vector<TempCompanion> tempCompanions;
 
-    // Scan all actors in the cell and check if they're following the player
-    for (auto& refPtr : cell->references) {
-        auto* ref = refPtr.get();
-        if (!ref || ref == player) continue;
-        if (ref->IsDeleted() || ref->IsDisabled()) continue;
+    // Lambda to scan a cell for companions
+    auto scanCellForCompanions = [&](RE::TESObjectCELL* cell) {
+        if (!cell) return;
+        if (cell->cellState != RE::TESObjectCELL::CELL_STATE::kAttached) return;
 
-        // Check if this is an actor
-        if (!ref->Is(RE::ENUM_FORM_ID::kACHR)) continue;
+        for (auto& refPtr : cell->references) {
+            auto* ref = refPtr.get();
+            if (!ref || ref == player) continue;
+            if (ref->IsDeleted() || ref->IsDisabled()) continue;
 
-        auto* actor = ref->As<RE::Actor>();
-        if (!actor) continue;
-        if (actor->IsDead(false)) continue;  // Skip dead actors
+            // Check if this is an actor
+            if (!ref->Is(RE::ENUM_FORM_ID::kACHR)) continue;
 
-        // Check if this actor is following the player (companion check)
-        if (!actor->IsFollowing()) continue;
+            auto* actor = ref->As<RE::Actor>();
+            if (!actor) continue;
+            if (actor->IsDead(false)) continue;  // Skip dead actors
 
-        const char* name = actor->GetDisplayFullName();
-        if (!name || name[0] == '\0') continue;
+            // Check if this actor is following the player (companion check)
+            if (!actor->IsFollowing()) continue;
 
-        float dist = playerPos.GetDistance(actor->GetPosition());
+            const char* name = actor->GetDisplayFullName();
+            if (!name || name[0] == '\0') continue;
 
-        tempCompanions.push_back({actor, name, dist});
-        REX::INFO("ObjectScanner: Found companion '{}' dist={:.0f}", name, dist);
+            float dist = playerPos.GetDistance(actor->GetPosition());
+
+            tempCompanions.push_back({actor, name, dist});
+            REX::INFO("ObjectScanner: Found companion '{}' dist={:.0f}", name, dist);
+        }
+    };
+
+    // Get TES singleton for cell grid access
+    auto* tes = RE::TES::GetSingleton();
+    if (!tes) {
+        REX::WARN("ObjectScanner: No TES singleton");
+        return;
+    }
+
+    // Scan appropriate cells
+    if (tes->interiorCell) {
+        scanCellForCompanions(tes->interiorCell);
+    } else if (tes->gridCells) {
+        std::uint32_t dimension = tes->gridCells->dimension;
+        for (std::uint32_t x = 0; x < dimension; ++x) {
+            for (std::uint32_t y = 0; y < dimension; ++y) {
+                auto* gridCell = tes->gridCells->Get(x, y);
+                if (gridCell && gridCell->cell) {
+                    scanCellForCompanions(gridCell->cell);
+                }
+            }
+        }
     }
 
     // Sort by distance (closest first)
@@ -813,10 +1043,11 @@ void ObjectScanner::ScanPowerArmor()
         }
     }
 
-    // Scan cell for furniture with power armor keyword
-    auto* cell = player->GetParentCell();
-    if (cell) {
-        auto* paKeyword = RE::PowerArmor::GetArmorKeyword();
+    // Lambda to scan a cell for power armor
+    auto* paKeyword = RE::PowerArmor::GetArmorKeyword();
+    auto scanCellForPowerArmor = [&](RE::TESObjectCELL* cell) {
+        if (!cell) return;
+        if (cell->cellState != RE::TESObjectCELL::CELL_STATE::kAttached) return;
 
         for (auto& refPtr : cell->references) {
             auto* ref = refPtr.get();
@@ -850,6 +1081,24 @@ void ObjectScanner::ScanPowerArmor()
 
                     tempPowerArmor.push_back({ref, displayName, dist});
                     REX::INFO("ObjectScanner: Found power armor frame '{}' dist={:.0f}", displayName, dist);
+                }
+            }
+        }
+    };
+
+    // Get TES singleton for cell grid access
+    auto* tes = RE::TES::GetSingleton();
+    if (tes) {
+        if (tes->interiorCell) {
+            scanCellForPowerArmor(tes->interiorCell);
+        } else if (tes->gridCells) {
+            std::uint32_t dimension = tes->gridCells->dimension;
+            for (std::uint32_t x = 0; x < dimension; ++x) {
+                for (std::uint32_t y = 0; y < dimension; ++y) {
+                    auto* gridCell = tes->gridCells->Get(x, y);
+                    if (gridCell && gridCell->cell) {
+                        scanCellForPowerArmor(gridCell->cell);
+                    }
                 }
             }
         }

@@ -9,6 +9,7 @@ enum class ScanCategory {
     NPCs,
     Doors,
     Containers,
+    Items,
     Activators,
     QuestMarkers,
     Corpses,
@@ -16,6 +17,14 @@ enum class ScanCategory {
     Companions,
     PowerArmor,
     COUNT  // For cycling
+};
+
+// Subcategories for filtering within a main category
+enum class ScanSubcategory {
+    All,      // No subcategory filtering
+    Seats,    // Sittable furniture (for Activators)
+    Other,    // Non-seat activators (for Activators)
+    COUNT
 };
 
 class ObjectScanner : public RE::PlayerInputHandler
@@ -55,8 +64,16 @@ private:
     void WalkToCurrentObject();
 
     // Categories
-    void CycleCategory();
+    void NextCategory();
+    void PreviousCategory();
     bool MatchesCategory(RE::TESObjectREFR* a_ref, ScanCategory a_category);
+
+    // Subcategories
+    void CycleSubcategory();
+    bool HasSubcategories(ScanCategory a_category);
+    bool MatchesSubcategory(RE::TESObjectREFR* a_ref, ScanSubcategory a_subcategory);
+    const char* GetSubcategoryName(ScanSubcategory a_subcategory);
+    bool IsSittableFurniture(RE::TESObjectREFR* a_ref);
     bool IsInteractable(RE::TESObjectREFR* a_ref);
     bool IsContainerEmpty(RE::TESObjectREFR* a_ref);
     const char* GetCategoryName(ScanCategory a_category);
@@ -87,6 +104,7 @@ private:
 
     // Category filtering
     ScanCategory m_currentCategory = ScanCategory::All;
+    ScanSubcategory m_currentSubcategory = ScanSubcategory::All;
 
     bool m_registered = false;
 
@@ -98,5 +116,6 @@ private:
     static constexpr std::uint32_t PAGE_UP = 0x21;
     static constexpr std::uint32_t PAGE_DOWN = 0x22;
     static constexpr std::uint32_t HOME = 0x24;
-    static constexpr std::uint32_t END_KEY = 0x23;
+    static constexpr std::uint32_t END_KEY = 0x23;  // VK_END - Subcategory cycling
+    static constexpr std::uint32_t H_KEY = 0x48;    // VK_H - Combat stats announcement
 };
