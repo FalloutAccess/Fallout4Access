@@ -2,6 +2,7 @@
 #include "AutoWalk.h"
 #include "ContainerMenuAccessibility.h"
 #include "CrosshairAccessibility.h"
+#include "DialogueMenuHook.h"
 #include "ExamineMenuHook.h"
 #include "HUDMessageHook.h"
 #include "ItemStatFormatter.h"
@@ -78,6 +79,9 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 
     // Install MessageBoxMenu hook for dialog accessibility
     MessageBoxMenuHook::GetSingleton()->Install();
+
+    // Install DialogueMenu hook for NPC conversation accessibility
+    DialogueMenuHook::GetSingleton()->Install();
 
     // Note: CrosshairAccessibility is registered in OnF4SEMessage when game data is ready
     // because it needs PlayerCharacter to be available

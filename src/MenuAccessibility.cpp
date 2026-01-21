@@ -5,7 +5,7 @@
 #include "SpeechManager.h"
 #include "SettingsMenuAccessibility.h"
 #include "SaveLoadMenuAccessibility.h"
-#include "DialogueMenuAccessibility.h"
+#include "DialogueMenuHook.h"
 #include "SPECIALMenuAccessibility.h"
 #include "TerminalMenuAccessibility.h"
 #include "VATSMenuAccessibility.h"
@@ -111,9 +111,7 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
                 // Settings/SaveLoad: Keystroke-triggered checks for selection
                 SettingsMenuAccessibility::GetSingleton()->CheckSelection(m_mainMenuOpen, m_pauseMenuOpen);
                 SaveLoadMenuAccessibility::GetSingleton()->CheckSelection(m_mainMenuOpen, m_pauseMenuOpen);
-                if (m_dialogueMenuOpen) {
-                    DialogueMenuAccessibility::GetSingleton()->CheckSelection();
-                }
+                // DialogueMenu: AdvanceMovie hook handles selection tracking per-frame
                 if (m_specialMenuOpen) {
                     SPECIALMenuAccessibility::GetSingleton()->CheckSelection(m_mainMenuOpen, m_pauseMenuOpen);
                 }
@@ -306,7 +304,7 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
         MessageBoxMenuHook::GetSingleton()->SetMenuOpen(true);
     } else if (a_menuName == "DialogueMenu"sv) {
         m_dialogueMenuOpen = true;
-        DialogueMenuAccessibility::GetSingleton()->OnDialogueMenuOpened();
+        DialogueMenuHook::GetSingleton()->OnDialogueMenuOpened();
     } else if (a_menuName == "SPECIALMenu"sv) {
         m_specialMenuOpen = true;
         REX::INFO("SPECIALMenu opened");
@@ -362,7 +360,7 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
         MessageBoxMenuHook::GetSingleton()->SetMenuOpen(false);
     } else if (a_menuName == "DialogueMenu"sv) {
         m_dialogueMenuOpen = false;
-        DialogueMenuAccessibility::GetSingleton()->OnDialogueMenuClosed();
+        DialogueMenuHook::GetSingleton()->OnDialogueMenuClosed();
     } else if (a_menuName == "SPECIALMenu"sv) {
         m_specialMenuOpen = false;
         SPECIALMenuAccessibility::GetSingleton()->Reset();
