@@ -35,6 +35,7 @@ void MessageBoxMenuHook::ResetState()
     m_lastSelection = -1;
     m_buttonCount = 0;
     m_initialAnnouncementDone = false;
+    m_framesSinceOpen = 0;
 }
 
 void MessageBoxMenuHook::HookedAdvanceMovie(RE::MessageBoxMenu* a_this, float a_timeDelta, std::uint64_t a_time)
@@ -47,8 +48,11 @@ void MessageBoxMenuHook::HookedAdvanceMovie(RE::MessageBoxMenu* a_this, float a_
     // Then check for state changes
     auto* hook = GetSingleton();
     if (hook->m_menuOpen) {
-        // Do initial announcement if not done yet
-        if (!hook->m_initialAnnouncementDone) {
+        // Track frames for retry logic
+        hook->m_framesSinceOpen++;
+
+        // Do initial announcement if not done yet (retry until success or max frames)
+        if (!hook->m_initialAnnouncementDone && hook->m_framesSinceOpen <= MAX_RETRY_FRAMES) {
             hook->AnnounceMessageBox();
         }
         // Check for selection changes
@@ -59,15 +63,19 @@ void MessageBoxMenuHook::HookedAdvanceMovie(RE::MessageBoxMenu* a_this, float a_
 void MessageBoxMenuHook::AnnounceMessageBox()
 {
     auto ui = RE::UI::GetSingleton();
-    if (!ui) return;
+    if (!ui) {
+        return;
+    }
 
     auto menu = ui->GetMenu("MessageBoxMenu"sv);
-    if (!menu || !menu->uiMovie) return;
+    if (!menu || !menu->uiMovie) {
+        return;
+    }
 
-    // Get body text
+    // Get body text from Scaleform
     std::string bodyText = GetBodyText(menu.get());
 
-    // Get button count
+    // Get button count from Scaleform
     m_buttonCount = GetButtonCount(menu.get());
 
     // Get selected index
@@ -84,10 +92,10 @@ void MessageBoxMenuHook::AnnounceMessageBox()
         if (!announcement.empty()) {
             announcement += ". ";
         }
-        announcement += std::to_string(m_buttonCount) + " button";
-        if (m_buttonCount != 1) {
-            announcement += "s";
-        }
+        std::string buttonWord = (m_buttonCount == 1)
+            ? LocalizationHelper::Translate("$F4A_button")
+            : LocalizationHelper::Translate("$F4A_buttons");
+        announcement += std::to_string(m_buttonCount) + " " + buttonWord;
 
         // Announce selected button
         if (selectedIndex >= 0) {
@@ -102,8 +110,8 @@ void MessageBoxMenuHook::AnnounceMessageBox()
     if (!announcement.empty()) {
         SpeakText(announcement);
         m_initialAnnouncementDone = true;
-        REX::INFO("MessageBoxMenu: Announced - body='{}' buttons={} selected={}",
-            bodyText, m_buttonCount, selectedIndex);
+    } else if (m_framesSinceOpen >= MAX_RETRY_FRAMES) {
+        m_initialAnnouncementDone = true;  // Stop retrying
     }
 }
 

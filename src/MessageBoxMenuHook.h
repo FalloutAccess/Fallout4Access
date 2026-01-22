@@ -52,10 +52,12 @@ private:
     bool m_initialAnnouncementDone = false;
     std::int32_t m_lastSelection = -1;
     std::int32_t m_buttonCount = 0;
+    std::int32_t m_framesSinceOpen = 0;  // Track frames for delayed data population
+    static constexpr std::int32_t MAX_RETRY_FRAMES = 10;  // Retry for ~166ms at 60fps
 
-    // Scaleform paths (from SWF analysis)
-    static constexpr const char* BODY_TEXT_PATH = "root.Body_tf.text";
-    static constexpr const char* LIST_PATH = "root.List_mc";
+    // Scaleform paths (from SWF analysis - Menu_mc is the stage instance)
+    static constexpr const char* BODY_TEXT_PATH = "root.Menu_mc.Body_tf.text";
+    static constexpr const char* LIST_PATH = "root.Menu_mc.List_mc";
 
     // The vtable hook
     static inline REL::HookVFT<void(RE::MessageBoxMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
