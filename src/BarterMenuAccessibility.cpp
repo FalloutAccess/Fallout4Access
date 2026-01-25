@@ -112,8 +112,8 @@ void BarterMenuAccessibility::HookedOnButtonEvent(RE::BarterMenu* a_this, const 
         auto device = a_event->device.get();
         auto idCode = a_event->QIDCode();
 
-        if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x51) {  // Q key
-            REX::INFO("BarterMenu: Q key pressed, switching sides");
+        if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x46) {  // F key
+            REX::INFO("BarterMenu: F key pressed, switching sides");
             hook->SwitchSides();
             // Don't return - still call original to let menu process normally
         }

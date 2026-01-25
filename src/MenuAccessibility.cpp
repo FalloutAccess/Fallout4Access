@@ -131,8 +131,8 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
         }
     }
 
-    // Q key to switch between container/vendor and player inventory
-    if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x51) {  // Q key
+    // F key to switch between container/vendor and player inventory
+    if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x46) {  // F key
         if (m_containerMenuOpen) {
             ContainerMenuAccessibility::GetSingleton()->SwitchSides();
         }

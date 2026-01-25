@@ -117,8 +117,8 @@ void ContainerMenuAccessibility::HookedOnButtonEvent(RE::ContainerMenu* a_this, 
         auto device = a_event->device.get();
         auto idCode = a_event->QIDCode();
 
-        if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x51) {  // Q key
-            REX::INFO("ContainerMenu: Q key pressed, switching sides");
+        if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x46) {  // F key
+            REX::INFO("ContainerMenu: F key pressed, switching sides");
             hook->SwitchSides();
             // Don't return - still call original to let menu process normally
         }
