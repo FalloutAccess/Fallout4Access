@@ -194,6 +194,55 @@ Entry properties (entryList[i]):
   - taggedForSearch       (bool) tagged for component search
 ```
 
+## BarterMenu.swf
+
+```
+BarterMenu extends ContainerMenu, sharing the same base structure.
+
+Side selection:           root.containerIsSelected (bool) true=vendor, false=player
+
+Vendor side:              root.ContainerInventory_mc
+  - ContainerListHeader   header with vendor name
+    - headerText          (string) vendor name
+    - textField.text      (string) alternative text access
+  - ContainerList_mc      (BSScrollingList) vendor items
+    - selectedIndex       (int) current selection
+    - entryList           (array) items
+  - VendorCaps_tf.text    (string) vendor's available caps
+
+Player side:              root.PlayerInventory_mc
+  - PlayerListHeader      header with player inventory label
+    - headerText          (string) header text
+  - PlayerList_mc         (BSScrollingList) player items
+    - selectedIndex       (int) current selection
+    - entryList           (array) items
+  - PlayerCaps_tf.text    (string) player's available caps
+
+Caps transfer display:    root.CapsTransferInfo_mc
+  - visible               (bool) whether transfer info is shown
+  - TransferCaps_tf.text  (string) cost/profit amount
+  - TotalCost_tf.text     (string) "$TOTAL COST" label
+  - CapsArrowLeft_mc.visible   (bool) gaining caps (selling)
+  - CapsArrowRight_mc.visible  (bool) spending caps (buying)
+
+Trade validity:           root.bIsValidTrade (bool) whether trade can be executed
+
+Item card:                root.ItemCard_mc
+  - InfoObj               (array) stat entries (same format as Pip-Boy)
+
+Sort button:              root.SortButton
+  - ButtonText            (string) current sort mode
+
+Entry properties (entryList[i]):
+  - text                  (string) item name
+  - count                 (int) total stack count
+  - barterCount           (int) quantity marked for trade (neg=selling, pos=buying)
+  - equipState            (int) 0=unequipped, >0=equipped
+  - isLegendary           (bool) has legendary effects
+  - favorite              (int) quickkey slot
+  - taggedForSearch       (bool) tagged for component search
+```
+
 ## DialogueMenu.swf
 
 ```

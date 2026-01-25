@@ -4,7 +4,9 @@
 #include "HUDNotificationAccessibility.h"
 #include "PipBoyMenuAccessibility.h"
 #include "ExamineMenuAccessibility.h"
+#include "BarterMenuAccessibility.h"
 #include "ContainerMenuAccessibility.h"
+#include "LoadingMenuHook.h"
 
 class MenuAccessibility :
     public RE::BSTEventSink<RE::MenuOpenCloseEvent>,
@@ -48,6 +50,8 @@ private:
     bool m_pipBoyMenuOpen = false;
     bool m_examineMenuOpen = false;
     bool m_containerMenuOpen = false;
+    bool m_barterMenuOpen = false;
     bool m_levelUpMenuOpen = false;
+    bool m_loadingMenuOpen = false;
     bool m_inputHandlerRegistered = false;
 };

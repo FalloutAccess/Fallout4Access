@@ -9,6 +9,7 @@
 #include "SPECIALMenuAccessibility.h"
 #include "TerminalMenuAccessibility.h"
 #include "VATSMenuAccessibility.h"
+#include "BarterMenuAccessibility.h"
 #include "ContainerMenuAccessibility.h"
 #include "LevelUpMenuAccessibility.h"
 #include "MessageBoxMenuHook.h"
@@ -130,10 +131,13 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
         }
     }
 
-    // Q key to switch between container and player inventory in ContainerMenu
+    // Q key to switch between container/vendor and player inventory
     if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x51) {  // Q key
         if (m_containerMenuOpen) {
             ContainerMenuAccessibility::GetSingleton()->SwitchSides();
+        }
+        if (m_barterMenuOpen) {
+            BarterMenuAccessibility::GetSingleton()->SwitchSides();
         }
     }
 
@@ -337,10 +341,20 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
         m_containerMenuOpen = true;
         REX::INFO("ContainerMenu opened");
         ContainerMenuAccessibility::GetSingleton()->OnContainerMenuOpened();
+    } else if (a_menuName == "BarterMenu"sv) {
+        m_barterMenuOpen = true;
+        REX::INFO("BarterMenu opened");
+        BarterMenuAccessibility::GetSingleton()->OnBarterMenuOpened();
     } else if (a_menuName == "LevelUpMenu"sv) {
         m_levelUpMenuOpen = true;
         REX::INFO("LevelUpMenu opened");
         LevelUpMenuAccessibility::GetSingleton()->OnLevelUpMenuOpened();
+    } else if (a_menuName == "LoadingMenu"sv) {
+        m_loadingMenuOpen = true;
+        REX::INFO("LoadingMenu opened");
+        LoadingMenuHook::GetSingleton()->Install();
+        LoadingMenuHook::GetSingleton()->ResetState();
+        LoadingMenuHook::GetSingleton()->SetMenuOpen(true);
     }
 }
 
@@ -385,10 +399,18 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
         m_containerMenuOpen = false;
         REX::INFO("ContainerMenu closed");
         ContainerMenuAccessibility::GetSingleton()->OnContainerMenuClosed();
+    } else if (a_menuName == "BarterMenu"sv) {
+        m_barterMenuOpen = false;
+        REX::INFO("BarterMenu closed");
+        BarterMenuAccessibility::GetSingleton()->OnBarterMenuClosed();
     } else if (a_menuName == "LevelUpMenu"sv) {
         m_levelUpMenuOpen = false;
         REX::INFO("LevelUpMenu closed");
         LevelUpMenuAccessibility::GetSingleton()->OnLevelUpMenuClosed();
+    } else if (a_menuName == "LoadingMenu"sv) {
+        m_loadingMenuOpen = false;
+        REX::INFO("LoadingMenu closed");
+        LoadingMenuHook::GetSingleton()->SetMenuOpen(false);
     }
 }
 
