@@ -1,10 +1,12 @@
 #include "ObjectScanner.h"
+#include "AutoAimAccessibility.h"
 #include "AutoWalk.h"
 #include "ContextualInfoAnnouncer.h"
 #include "SpeechManager.h"
 #include <SRAL.h>
 #include <algorithm>
 #include <cmath>
+#include <set>
 #include <REX/W32/USER32.h>
 #include <RE/P/PipboyDataManager.h>
 #include <RE/P/PowerArmor.h>
@@ -53,6 +55,9 @@ bool ObjectScanner::ShouldHandleEvent(const RE::InputEvent* a_event)
 {
     // Check AutoWalk arrival on every input event (frequent update)
     AutoWalk::GetSingleton()->Update();
+
+    // Check for auto-aim on ironsights
+    AutoAimAccessibility::GetSingleton()->Update();
 
     if (!a_event) return false;
 
@@ -236,7 +241,8 @@ void ObjectScanner::CycleSubcategory()
         return;
     }
 
-    // Cycle through: All -> Seats -> Other -> All
+    // Cycle through: All -> TypeA -> TypeB -> All
+    // TypeA/TypeB meaning depends on category (see GetSubcategoryName)
     int next = (static_cast<int>(m_currentSubcategory) + 1) % static_cast<int>(ScanSubcategory::COUNT);
     m_currentSubcategory = static_cast<ScanSubcategory>(next);
 
@@ -249,17 +255,36 @@ void ObjectScanner::CycleSubcategory()
 
 bool ObjectScanner::HasSubcategories(ScanCategory a_category)
 {
-    // Currently only Activators has subcategories
-    return a_category == ScanCategory::Activators;
+    return a_category == ScanCategory::Activators ||
+           a_category == ScanCategory::Containers ||
+           a_category == ScanCategory::Doors;
 }
 
 const char* ObjectScanner::GetSubcategoryName(ScanSubcategory a_subcategory)
 {
-    switch (a_subcategory) {
-        case ScanSubcategory::All: return "All";
-        case ScanSubcategory::Seats: return "Seats";
-        case ScanSubcategory::Other: return "Other";
-        default: return "Unknown";
+    // Return context-aware names based on current category
+    if (m_currentCategory == ScanCategory::Containers) {
+        switch (a_subcategory) {
+            case ScanSubcategory::All: return "All";
+            case ScanSubcategory::TypeA: return "Non-empty";
+            case ScanSubcategory::TypeB: return "Empty";
+            default: return "Unknown";
+        }
+    } else if (m_currentCategory == ScanCategory::Doors) {
+        switch (a_subcategory) {
+            case ScanSubcategory::All: return "All";
+            case ScanSubcategory::TypeA: return "Locked";
+            case ScanSubcategory::TypeB: return "All";  // No separate unlocked filter
+            default: return "Unknown";
+        }
+    } else {
+        // Activators (default)
+        switch (a_subcategory) {
+            case ScanSubcategory::All: return "All";
+            case ScanSubcategory::TypeA: return "Furniture";
+            case ScanSubcategory::TypeB: return "Other";
+            default: return "Unknown";
+        }
     }
 }
 
@@ -306,19 +331,35 @@ bool ObjectScanner::MatchesSubcategory(RE::TESObjectREFR* a_ref, ScanSubcategory
     if (a_subcategory == ScanSubcategory::All) return true;
     if (!a_ref) return false;
 
-    // Subcategories only apply to Activators currently
-    if (m_currentCategory != ScanCategory::Activators) return true;
-
-    bool isSeat = IsSittableFurniture(a_ref);
-
-    switch (a_subcategory) {
-        case ScanSubcategory::Seats:
-            return isSeat;
-        case ScanSubcategory::Other:
-            return !isSeat;
-        default:
-            return true;
+    // Container subcategories: TypeA=NonEmpty, TypeB=Empty
+    if (m_currentCategory == ScanCategory::Containers) {
+        bool isEmpty = IsContainerEmpty(a_ref);
+        switch (a_subcategory) {
+            case ScanSubcategory::TypeA: return !isEmpty;  // Non-empty
+            case ScanSubcategory::TypeB: return isEmpty;   // Empty
+            default: return true;
+        }
     }
+
+    // Door subcategories: TypeA=Locked only
+    if (m_currentCategory == ScanCategory::Doors) {
+        if (a_subcategory == ScanSubcategory::TypeA) {
+            return IsDoorLocked(a_ref);  // Locked filter
+        }
+        return true;  // All or TypeB shows all doors
+    }
+
+    // Activator subcategories: TypeA=Furniture, TypeB=Other
+    if (m_currentCategory == ScanCategory::Activators) {
+        bool isFurniture = IsSittableFurniture(a_ref);
+        switch (a_subcategory) {
+            case ScanSubcategory::TypeA: return isFurniture;
+            case ScanSubcategory::TypeB: return !isFurniture;
+            default: return true;
+        }
+    }
+
+    return true;
 }
 
 const char* ObjectScanner::GetMarkerTypeName(RE::MARKER_TYPE a_type)
@@ -540,6 +581,26 @@ bool ObjectScanner::IsContainerEmpty(RE::TESObjectREFR* a_ref)
     return totalItems == 0;
 }
 
+bool ObjectScanner::IsDoorLocked(RE::TESObjectREFR* a_ref)
+{
+    if (!a_ref) return false;
+
+    RE::REFR_LOCK* lock = a_ref->GetLock();
+    if (!lock) return false;
+
+    RE::LOCK_LEVEL lockLevel = lock->GetLockLevel(a_ref);
+    return lockLevel != RE::LOCK_LEVEL::kUnlocked;
+}
+
+bool ObjectScanner::IsDoorOpen(RE::TESObjectREFR* a_ref)
+{
+    if (!a_ref) return false;
+
+    RE::BGSOpenCloseForm::OPEN_STATE state = RE::BGSOpenCloseForm::GetOpenState(a_ref);
+    return state == RE::BGSOpenCloseForm::OPEN_STATE::kOpen ||
+           state == RE::BGSOpenCloseForm::OPEN_STATE::kOpening;
+}
+
 void ObjectScanner::ScanObjects()
 {
     auto* player = RE::PlayerCharacter::GetSingleton();
@@ -683,72 +744,65 @@ void ObjectScanner::ScanQuestMarkers()
     RE::NiPoint3 playerPos = player->GetPosition();
     m_lastScanPosition = playerPos;
 
+    // Log player position and cell info for debugging
+    auto* playerCell = player->GetParentCell();
+    REX::INFO("ObjectScanner: Player position: ({:.0f}, {:.0f}, {:.0f})", playerPos.x, playerPos.y, playerPos.z);
+    if (playerCell) {
+        REX::INFO("ObjectScanner: Player cell: {} (interior={})",
+            playerCell->GetFullName() ? playerCell->GetFullName() : "unnamed",
+            playerCell->IsInterior());
+        if (!playerCell->IsInterior() && playerCell->worldSpace) {
+            REX::INFO("ObjectScanner: Player worldspace: {}",
+                playerCell->worldSpace->GetFullName() ? playerCell->worldSpace->GetFullName() : "unnamed");
+        }
+    }
+
     m_scannedObjects.clear();
     m_currentIndex = -1;
 
+    // Track already-added references to avoid duplicates
+    std::set<RE::TESObjectREFR*> addedRefs;
+
     // Get PipboyDataManager for the authoritative quest marker data
     auto* pipboyData = RE::PipboyDataManager::GetSingleton();
+    if (!pipboyData) {
+        REX::WARN("ObjectScanner: No PipboyDataManager singleton");
+        return;
+    }
 
-    // Use worldQuestMarkers which contains the currently tracked quest marker(s)
-    // This is what the game uses to show markers on the Pip-Boy map
-    if (pipboyData) {
-        auto& worldMarkers = pipboyData->mapData.worldQuestMarkers;
-        REX::INFO("ObjectScanner: worldQuestMarkers has {} entries", worldMarkers.size());
+    // 1. Scan door proxy markers (exit doors when objective is outside current cell)
+    // Only add door markers if player is in interior AND there are world quest markers
+    // (indicating the objective is outside the current cell)
+    auto& doorHandles = pipboyData->mapData.doorRefHandles;
+    auto& worldMarkers = pipboyData->mapData.worldQuestMarkers;
+    bool isInterior = playerCell && playerCell->IsInterior();
+    bool hasWorldObjectives = !worldMarkers.empty();
 
-        for (const auto& [refHandle, pipboyObj] : worldMarkers) {
-            if (!refHandle) continue;
+    REX::INFO("ObjectScanner: doorRefHandles has {} entries (interior={}, hasWorldObj={})",
+        doorHandles.size(), isInterior, hasWorldObjectives);
 
-            auto refPtr = refHandle.get();
+    // Door markers are only relevant when in interior with objectives outside
+    if (isInterior && hasWorldObjectives) {
+        for (std::uint32_t i = 0; i < doorHandles.size(); ++i) {
+            auto handle = doorHandles[i];
+            if (!handle) continue;
+
+            auto refPtr = handle.get();
             if (!refPtr || !refPtr.get()) continue;
 
             auto* ref = refPtr.get();
             if (ref->IsDeleted() || ref->IsDisabled()) continue;
 
-            // Get position from the reference
             RE::NiPoint3 pos = ref->GetPosition();
             if (!IsValidPosition(pos)) continue;
 
-            // Try to find which objective this marker belongs to
-            // by checking if any quest's aliases point to this reference
-            std::string markerName;
-            for (const auto& instancedObj : player->objectives) {
-                if (!instancedObj.objective) continue;
-                if (instancedObj.enstanceState != RE::QUEST_OBJECTIVE_STATE::kDisplayed) continue;
-
-                auto* quest = instancedObj.objective->ownerQuest;
-                if (!quest) continue;
-
-                // Check if any alias in this quest points to our marker ref
-                bool foundMatch = false;
-                for (const auto* alias : quest->aliases) {
-                    if (!alias) continue;
-
-                    RE::ObjectRefHandle aliasHandle;
-                    quest->GetAliasedRef(&aliasHandle, alias->aliasID);
-
-                    if (aliasHandle) {
-                        auto aliasRefPtr = aliasHandle.get();
-                        if (aliasRefPtr && aliasRefPtr.get() == ref) {
-                            // Found the objective that owns this marker
-                            const char* objText = instancedObj.objective->displayText.c_str();
-                            if (objText && objText[0] != '\0') {
-                                markerName = objText;
-                            }
-                            foundMatch = true;
-                            REX::INFO("ObjectScanner: Matched marker to objective '{}'", markerName);
-                            break;
-                        }
-                    }
-                }
-                if (foundMatch) break;
-            }
-
-            // Fall back to reference name if no objective match found
+            // Try to find objective name for this door marker
+            std::string markerName = FindObjectiveName(ref, player);
             if (markerName.empty()) {
                 const char* name = ref->GetDisplayFullName();
-                markerName = (name && name[0] != '\0') ? name : "Quest Marker";
-                REX::INFO("ObjectScanner: No objective match, using ref name '{}'", markerName);
+                markerName = (name && name[0] != '\0') ? name : "Exit";
             }
+            markerName += " (Quest)";  // Indicate this is a quest-related door
 
             ScannedObject obj;
             obj.ref = ref;
@@ -757,16 +811,103 @@ void ObjectScanner::ScanQuestMarkers()
             obj.virtualPos = pos;
 
             m_scannedObjects.push_back(obj);
-            REX::INFO("ObjectScanner: Added quest marker: '{}' at ({}, {}, {})",
-                markerName, pos.x, pos.y, pos.z);
+            addedRefs.insert(ref);
+            REX::INFO("ObjectScanner: Added door marker: '{}'", markerName);
         }
+    }
+
+    // 2. Scan local quest markers (objectives in current interior)
+    auto& localMarkers = pipboyData->mapData.localQuestMarkers;
+    REX::INFO("ObjectScanner: localQuestMarkers has {} entries", localMarkers.size());
+
+    for (const auto& [refHandle, pipboyObj] : localMarkers) {
+        if (!refHandle) continue;
+
+        auto refPtr = refHandle.get();
+        if (!refPtr || !refPtr.get()) continue;
+
+        auto* ref = refPtr.get();
+        if (ref->IsDeleted() || ref->IsDisabled()) continue;
+
+        // Skip if already added
+        if (addedRefs.contains(ref)) continue;
+
+        RE::NiPoint3 pos = ref->GetPosition();
+        if (!IsValidPosition(pos)) continue;
+
+        // Use objective-matching logic
+        std::string markerName = FindObjectiveName(ref, player);
+        if (markerName.empty()) {
+            const char* name = ref->GetDisplayFullName();
+            markerName = (name && name[0] != '\0') ? name : "Quest Marker";
+        }
+
+        ScannedObject obj;
+        obj.ref = ref;
+        obj.name = markerName;
+        obj.isVirtual = false;
+        obj.virtualPos = pos;
+
+        m_scannedObjects.push_back(obj);
+        addedRefs.insert(ref);
+        REX::INFO("ObjectScanner: Added local quest marker: '{}' at ({:.0f}, {:.0f}, {:.0f})",
+            markerName, pos.x, pos.y, pos.z);
+    }
+
+    // 3. Scan world quest markers (objectives in world/exterior)
+    // worldMarkers already declared above
+    REX::INFO("ObjectScanner: worldQuestMarkers has {} entries", worldMarkers.size());
+
+    for (const auto& [refHandle, pipboyObj] : worldMarkers) {
+        if (!refHandle) continue;
+
+        auto refPtr = refHandle.get();
+        if (!refPtr || !refPtr.get()) continue;
+
+        auto* ref = refPtr.get();
+        if (ref->IsDeleted() || ref->IsDisabled()) continue;
+
+        // Skip if already added
+        if (addedRefs.contains(ref)) continue;
+
+        // Get position from the reference
+        RE::NiPoint3 pos = ref->GetPosition();
+        if (!IsValidPosition(pos)) continue;
+
+        // Note: We intentionally do NOT filter by cell or base object here.
+        // Quest markers often point to distant/unloaded areas where:
+        // - refCell will be NULL (cell not loaded)
+        // - baseObj may be NULL
+        // The position data is still valid and we want to show these markers.
+
+        // Use objective-matching logic
+        std::string markerName = FindObjectiveName(ref, player);
+        if (markerName.empty()) {
+            const char* name = ref->GetDisplayFullName();
+            markerName = (name && name[0] != '\0') ? name : "Quest Marker";
+        }
+
+        ScannedObject obj;
+        obj.ref = ref;
+        obj.name = markerName;
+        obj.isVirtual = false;
+        obj.virtualPos = pos;
+
+        m_scannedObjects.push_back(obj);
+        addedRefs.insert(ref);
+        REX::INFO("ObjectScanner: Added world quest marker: '{}' at ({:.0f}, {:.0f}, {:.0f})",
+            markerName, pos.x, pos.y, pos.z);
     }
 
     if (!m_scannedObjects.empty()) {
         m_currentIndex = 0;
     }
 
-    REX::INFO("ObjectScanner: Found {} quest markers", m_scannedObjects.size());
+    REX::INFO("ObjectScanner: Found {} quest markers (door={}, local={}, world={})",
+        m_scannedObjects.size(),
+        doorHandles.size(),
+        localMarkers.size(),
+        worldMarkers.size());
 }
 
 void ObjectScanner::ScanCompassMarkers()
@@ -1153,6 +1294,21 @@ void ObjectScanner::ScanAndAnnounce()
                 objName += " (empty)";
             }
         }
+        // Add status for doors (only if locked or closed)
+        else if (baseObj && baseObj->GetFormType() == RE::ENUM_FORM_ID::kDOOR) {
+            bool isLocked = IsDoorLocked(firstObj.ref);
+            bool isOpen = IsDoorOpen(firstObj.ref);
+            // Only add suffix if there's something notable (locked or closed)
+            if (isLocked || !isOpen) {
+                std::string status;
+                if (isLocked) status = "locked";
+                if (!isOpen) {
+                    if (!status.empty()) status += ", ";
+                    status += "closed";
+                }
+                objName += " (" + status + ")";
+            }
+        }
     }
 
     // Add marker type for locations
@@ -1235,6 +1391,21 @@ void ObjectScanner::AnnounceCurrentObject()
                 announcement += " (empty)";
             }
         }
+        // Add status for doors (only if locked or closed)
+        else if (baseObj && baseObj->GetFormType() == RE::ENUM_FORM_ID::kDOOR) {
+            bool isLocked = IsDoorLocked(obj.ref);
+            bool isOpen = IsDoorOpen(obj.ref);
+            // Only add suffix if there's something notable (locked or closed)
+            if (isLocked || !isOpen) {
+                std::string status;
+                if (isLocked) status = "locked";
+                if (!isOpen) {
+                    if (!status.empty()) status += ", ";
+                    status += "closed";
+                }
+                announcement += " (" + status + ")";
+            }
+        }
     }
 
     // Add marker type for locations
@@ -1281,7 +1452,13 @@ void ObjectScanner::LookAtCurrentObject()
         if (!obj.ref || obj.ref->IsDeleted() || obj.ref->IsDisabled()) {
             return;
         }
-        obj.ref->GetObjectCenter(targetCenter);
+        // Check base object exists (quest markers may have null base objects)
+        if (!obj.ref->GetObjectReference()) {
+            REX::WARN("ObjectScanner: Object '{}' has null base object, using position fallback", obj.name);
+            targetCenter = obj.ref->GetPosition();
+        } else {
+            obj.ref->GetObjectCenter(targetCenter);
+        }
     }
 
     // Calculate direction from eye to target
@@ -1319,6 +1496,42 @@ float ObjectScanner::GetDistanceToPosition(const RE::NiPoint3& a_pos)
 bool ObjectScanner::IsValidPosition(const RE::NiPoint3& a_pos)
 {
     return a_pos.x != 0.0f || a_pos.y != 0.0f || a_pos.z != 0.0f;
+}
+
+std::string ObjectScanner::FindObjectiveName(RE::TESObjectREFR* a_ref, RE::PlayerCharacter* a_player)
+{
+    if (!a_ref || !a_player) return "";
+
+    // Try to find which objective this marker belongs to
+    // by checking if any quest's aliases point to this reference
+    for (const auto& instancedObj : a_player->objectives) {
+        if (!instancedObj.objective) continue;
+        if (instancedObj.enstanceState != RE::QUEST_OBJECTIVE_STATE::kDisplayed) continue;
+
+        auto* quest = instancedObj.objective->ownerQuest;
+        if (!quest) continue;
+
+        // Check if any alias in this quest points to our marker ref
+        for (const auto* alias : quest->aliases) {
+            if (!alias) continue;
+
+            RE::ObjectRefHandle aliasHandle;
+            quest->GetAliasedRef(&aliasHandle, alias->aliasID);
+
+            if (aliasHandle) {
+                auto aliasRefPtr = aliasHandle.get();
+                if (aliasRefPtr && aliasRefPtr.get() == a_ref) {
+                    // Found the objective that owns this marker
+                    const char* objText = instancedObj.objective->displayText.c_str();
+                    if (objText && objText[0] != '\0') {
+                        return objText;
+                    }
+                }
+            }
+        }
+    }
+
+    return "";
 }
 
 float ObjectScanner::GetDistanceToScannedObject(const ScannedObject& a_obj)
@@ -1365,6 +1578,11 @@ void ObjectScanner::WalkToCurrentObject()
         return;
     }
 
+    // Check base object exists (quest markers may have null base objects)
+    if (!obj.ref->GetObjectReference()) {
+        REX::WARN("ObjectScanner: Object '{}' has null base object", obj.name);
+    }
+
     SpeakText("Walking to " + obj.name);
 
     // Capture reference for arrival callback (avoids stale m_currentIndex)
@@ -1377,7 +1595,12 @@ void ObjectScanner::WalkToCurrentObject()
                 RE::NiPoint3 eyePos, eyeDir;
                 player->GetEyeVector(eyePos, eyeDir, true);
                 RE::NiPoint3 targetCenter;
-                targetRef->GetObjectCenter(targetCenter);
+                // Check base object exists before calling GetObjectCenter
+                if (targetRef->GetObjectReference()) {
+                    targetRef->GetObjectCenter(targetCenter);
+                } else {
+                    targetCenter = targetRef->GetPosition();
+                }
                 RE::NiPoint3 direction = targetCenter - eyePos;
                 float yaw = std::atan2(direction.x, direction.y);
                 float horizontalDist = std::sqrt(direction.x * direction.x + direction.y * direction.y);

@@ -20,10 +20,13 @@ enum class ScanCategory {
 };
 
 // Subcategories for filtering within a main category
+// Generic names that are interpreted based on current category:
+// - Activators: TypeA=Furniture, TypeB=Other
+// - Containers: TypeA=NonEmpty, TypeB=Empty
 enum class ScanSubcategory {
-    All,      // No subcategory filtering
-    Seats,    // Sittable furniture (for Activators)
-    Other,    // Non-seat activators (for Activators)
+    All,    // No subcategory filtering
+    TypeA,  // Category-specific filter A
+    TypeB,  // Category-specific filter B
     COUNT
 };
 
@@ -76,6 +79,8 @@ private:
     bool IsSittableFurniture(RE::TESObjectREFR* a_ref);
     bool IsInteractable(RE::TESObjectREFR* a_ref);
     bool IsContainerEmpty(RE::TESObjectREFR* a_ref);
+    bool IsDoorLocked(RE::TESObjectREFR* a_ref);
+    bool IsDoorOpen(RE::TESObjectREFR* a_ref);
     const char* GetCategoryName(ScanCategory a_category);
     const char* GetMarkerTypeName(RE::MARKER_TYPE a_type);
 
@@ -93,6 +98,7 @@ private:
     float GetDistanceToPosition(const RE::NiPoint3& a_pos);
     bool IsValidPosition(const RE::NiPoint3& a_pos);
     float GetDistanceToScannedObject(const ScannedObject& a_obj);
+    std::string FindObjectiveName(RE::TESObjectREFR* a_ref, RE::PlayerCharacter* a_player);
     void SpeakNoObjectsNearby();
     void SpeakText(const std::string& a_text);
 
