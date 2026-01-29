@@ -1,5 +1,6 @@
 #pragma once
 #include "pch.h"
+#include <RE/B/BGSSoundDescriptorForm.h>
 
 class AutoAimAccessibility
 {
@@ -11,6 +12,7 @@ public:
 
     void SetEnabled(bool a_enabled) { m_enabled = a_enabled; }
     bool IsEnabled() const { return m_enabled; }
+    void SetLOSSoundInstanceID(std::uint32_t a_id) { m_losSoundInstanceID = a_id; }
 
 private:
     AutoAimAccessibility() = default;
@@ -32,6 +34,14 @@ private:
     bool IsLockedTargetValid();
     void UpdateTracking();  // Called from Update() while in ironsights
 
+    // LOS checking
+    bool HasLineOfSight(RE::Actor* a_target);
+    float CalculateTargetScore(RE::Actor* a_actor);  // Distance with LOS penalty
+
+    // Audio
+    void StartLOSSound();
+    void StopLOSSound();
+
     RE::GUN_STATE m_lastGunState = RE::GUN_STATE::kRelaxed;
     bool m_enabled = true;
     bool m_initialized = false;
@@ -41,6 +51,13 @@ private:
     bool m_isTracking = false;             // Whether actively tracking
     std::uint32_t m_trackingFrameCount = 0; // Frame counter for rate limiting
 
+    // LOS audio state (Papyrus VM playback)
+    RE::BGSSoundDescriptorForm* m_losSoundForm = nullptr;
+    std::uint32_t m_losSoundInstanceID = 0;
+    bool m_losSoundPlaying = false;
+    bool m_targetHasLOS = false;
+
     static constexpr float MAX_TARGET_DISTANCE = 5000.0f;
     static constexpr std::uint32_t TRACK_UPDATE_INTERVAL = 60;  // ~1 update/sec at 60fps
+    static constexpr float NO_LOS_PENALTY = 3.0f;  // 3x distance for no-LOS targets
 };

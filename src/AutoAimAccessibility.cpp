@@ -1,7 +1,21 @@
 #include "AutoAimAccessibility.h"
 #include "SpeechManager.h"
 #include <RE/P/ProcessLists.h>
+#include <RE/P/PlayerCharacter.h>
+#include <RE/V/VATS.h>
+#include <RE/U/UIUtils.h>
+#include <RE/T/TESDataHandler.h>
+#include <RE/G/GameScript.h>
+#include <RE/B/BSScript_IVirtualMachine.h>
+#include <RE/B/BSScriptUtil.h>
+#include <RE/B/BSScript_IStackCallbackFunctor.h>
+#include <RE/B/BSScript_Variable.h>
 #include <cmath>
+
+// IStackCallbackFunctor dtor is declared non-inline in CommonLibF4 but has no
+// .cpp definition — it normally lives in the game binary.  Provide a trivial
+// definition so our derived LOSSoundCallback can link.
+RE::BSScript::IStackCallbackFunctor::~IStackCallbackFunctor() = default;
 
 static AutoAimAccessibility* s_singleton = nullptr;
 
@@ -28,6 +42,18 @@ void AutoAimAccessibility::Update()
     // Skip if in menu mode
     auto* ui = RE::UI::GetSingleton();
     if (ui && ui->menuMode) {
+        return;
+    }
+
+    // Skip if in VATS - let VATS handle targeting
+    // Check both menu open and playback mode (executing attacks)
+    auto* vats = RE::VATS::GetSingleton();
+    bool inVATS = (ui && ui->GetMenuOpen("VATSMenu")) ||
+                  (vats && vats->mode == RE::VATS::VATS_MODE_ENUM::kPlayback);
+    if (inVATS) {
+        if (m_isTracking) {
+            StopTracking();
+        }
         return;
     }
 
@@ -61,16 +87,26 @@ void AutoAimAccessibility::Update()
 
 void AutoAimAccessibility::OnEnterIronsights()
 {
+    REX::INFO("AutoAimAccessibility: Entered ironsights, searching for hostiles...");
     RE::Actor* nearestHostile = FindNearestHostileActor();
 
     if (nearestHostile) {
+        REX::INFO("AutoAimAccessibility: Found hostile target");
         LockTarget(nearestHostile);
         RotateToTarget(nearestHostile);
         AnnounceTarget(nearestHostile);
         m_isTracking = true;
         m_trackingFrameCount = 0;
+
+        // Start LOS sound if we have line of sight
+        m_targetHasLOS = HasLineOfSight(nearestHostile);
+        if (m_targetHasLOS) {
+            REX::INFO("AutoAimAccessibility: Has LOS, playing sound");
+            StartLOSSound();
+        }
+    } else {
+        REX::INFO("AutoAimAccessibility: No hostile targets found");
     }
-    // If no enemies found, remain silent per plan
 }
 
 RE::Actor* AutoAimAccessibility::FindNearestHostileActor()
@@ -89,8 +125,8 @@ RE::Actor* AutoAimAccessibility::FindNearestHostileActor()
         return nullptr;
     }
 
-    RE::Actor* nearestActor = nullptr;
-    float nearestDistance = MAX_TARGET_DISTANCE;
+    RE::Actor* bestActor = nullptr;
+    float bestScore = MAX_TARGET_DISTANCE * NO_LOS_PENALTY;  // Worst possible score
 
     for (const auto& handle : hostileActors) {
         if (!handle) continue;
@@ -101,14 +137,14 @@ RE::Actor* AutoAimAccessibility::FindNearestHostileActor()
         RE::Actor* actor = actorPtr.get();
         if (!IsValidTarget(actor)) continue;
 
-        float distance = CalculateDistanceToActor(actor);
-        if (distance < nearestDistance) {
-            nearestDistance = distance;
-            nearestActor = actor;
+        float score = CalculateTargetScore(actor);
+        if (score < bestScore) {
+            bestScore = score;
+            bestActor = actor;
         }
     }
 
-    return nearestActor;
+    return bestActor;
 }
 
 bool AutoAimAccessibility::IsValidTarget(RE::Actor* a_actor)
@@ -186,9 +222,11 @@ void AutoAimAccessibility::LockTarget(RE::Actor* a_target)
 
 void AutoAimAccessibility::StopTracking()
 {
+    StopLOSSound();
     m_lockedTargetHandle = RE::ActorHandle();
     m_isTracking = false;
     m_trackingFrameCount = 0;
+    m_targetHasLOS = false;
 }
 
 bool AutoAimAccessibility::IsLockedTargetValid()
@@ -212,6 +250,7 @@ void AutoAimAccessibility::UpdateTracking()
     // Check if target still valid
     if (!IsLockedTargetValid()) {
         SpeechManager::GetSingleton()->Speak("Target lost");
+        StopLOSSound();
         StopTracking();
         return;
     }
@@ -219,5 +258,122 @@ void AutoAimAccessibility::UpdateTracking()
     // Re-aim at target (no announcement - silent tracking)
     auto ptr = m_lockedTargetHandle.get();
     RE::Actor* target = ptr.get();
+
+    // Check LOS and update sound
+    bool hasLOS = HasLineOfSight(target);
+    if (hasLOS && !m_losSoundPlaying) {
+        StartLOSSound();
+    } else if (!hasLOS && m_losSoundPlaying) {
+        StopLOSSound();
+    }
+    m_targetHasLOS = hasLOS;
+
     RotateToTarget(target);
+}
+
+bool AutoAimAccessibility::HasLineOfSight(RE::Actor* a_target)
+{
+    auto* player = RE::PlayerCharacter::GetSingleton();
+    if (!player || !a_target) return false;
+
+    bool pickPerformed = false;
+    return player->HasLOSToTarget(a_target, &pickPerformed);
+}
+
+float AutoAimAccessibility::CalculateTargetScore(RE::Actor* a_actor)
+{
+    float distance = CalculateDistanceToActor(a_actor);
+    bool hasLOS = HasLineOfSight(a_actor);
+
+    // Targets without LOS get penalty (higher score = lower priority)
+    return hasLOS ? distance : (distance * NO_LOS_PENALTY);
+}
+
+class LOSSoundCallback : public RE::BSScript::IStackCallbackFunctor
+{
+public:
+    LOSSoundCallback(AutoAimAccessibility* a_owner) : m_owner(a_owner) {}
+
+    void CallQueued() override {}
+    void CallCanceled() override {}
+    void StartMultiDispatch() override {}
+    void EndMultiDispatch() override {}
+    void operator()(RE::BSScript::Variable a_result) override
+    {
+        if (a_result.is<std::int32_t>()) {
+            auto id = RE::BSScript::get<std::int32_t>(a_result);
+            if (id > 0) {
+                m_owner->SetLOSSoundInstanceID(static_cast<std::uint32_t>(id));
+            }
+        }
+    }
+    bool CanSave() override { return false; }
+
+private:
+    AutoAimAccessibility* m_owner;
+};
+
+void AutoAimAccessibility::StartLOSSound()
+{
+    if (m_losSoundPlaying) return;
+
+    // Cache SNDR form lookup
+    if (!m_losSoundForm) {
+        m_losSoundForm = RE::TESDataHandler::GetSingleton()->LookupForm<RE::BGSSoundDescriptorForm>(
+            0x006C57, "fallout4access.esp");
+        if (!m_losSoundForm) {
+            REX::ERROR("AutoAimAccessibility: SNDR form 0x006C57 not found in fallout4access.esp");
+            return;
+        }
+    }
+
+    auto* gameVM = RE::GameVM::GetSingleton();
+    if (!gameVM) return;
+    auto vm = gameVM->GetVM();
+    if (!vm) return;
+
+    auto* player = RE::PlayerCharacter::GetSingleton();
+    if (!player) return;
+
+    // Call F4A:SoundHelper.PlaySound(formID, player) via Papyrus VM
+    // Pass form ID as int to avoid C++ PackVariable crash on SNDR forms
+    auto callback = RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor>(
+        new LOSSoundCallback(this));
+
+    bool dispatched = vm->DispatchStaticCall(
+        RE::BSFixedString("F4A:SoundHelper"),
+        RE::BSFixedString("PlaySound"),
+        callback,
+        static_cast<std::int32_t>(m_losSoundForm->GetFormID()),
+        static_cast<RE::TESObjectREFR*>(player));
+
+    if (dispatched) {
+        m_losSoundPlaying = true;
+    } else {
+        REX::ERROR("AutoAimAccessibility: DispatchStaticCall PlaySound failed");
+    }
+}
+
+void AutoAimAccessibility::StopLOSSound()
+{
+    if (!m_losSoundPlaying) return;
+
+    if (m_losSoundInstanceID != 0) {
+        auto* gameVM = RE::GameVM::GetSingleton();
+        if (gameVM) {
+            auto vm = gameVM->GetVM();
+            if (vm) {
+                vm->DispatchStaticCall(
+                    RE::BSFixedString("F4A:SoundHelper"),
+                    RE::BSFixedString("StopSound"),
+                    nullptr,
+                    static_cast<std::int32_t>(m_losSoundInstanceID));
+
+                REX::INFO("AutoAimAccessibility: LOS sound stopped (instance={})", m_losSoundInstanceID);
+            }
+        }
+    }
+
+    m_losSoundPlaying = false;
+    m_losSoundInstanceID = 0;
 }
