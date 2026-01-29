@@ -1,4 +1,5 @@
 #include "PipBoyDataPage.h"
+#include "PipBoyCallbackHook.h"
 
 void PipBoyDataPage::OnPageActivated()
 {
@@ -24,6 +25,7 @@ void PipBoyDataPage::OnPageActivated()
 void PipBoyDataPage::OnPageDeactivated()
 {
     REX::INFO("PipBoyDataPage: Deactivated");
+    PipBoyCallbackHook::GetSingleton()->ClearQuestState();
 }
 
 void PipBoyDataPage::CheckSelection()
@@ -34,19 +36,22 @@ void PipBoyDataPage::CheckSelection()
     auto menu = ui->GetMenu("PipboyMenu"sv);
     if (!menu) return;
 
-    // First check if tab changed
+    // Check if tab changed
     auto currentTab = GetCurrentTab(menu.get());
     if (currentTab >= 0 && currentTab != m_lastTab) {
         m_lastTab = currentTab;
-        m_lastSelection = -1;  // Reset selection on tab change
+        m_lastSelection = -1;
+        // Clear quest state when leaving Quests tab
+        if (currentTab != static_cast<std::int32_t>(Tab::Quests)) {
+            PipBoyCallbackHook::GetSingleton()->ClearQuestState();
+        }
         SpeakText(GetTabName(currentTab));
         return;
     }
 
-    // TODO: Data page selection tracking requires accessing the loaded page's List_mc
-    // which is different from the main dataObj. This needs further investigation
-    // of the Pipboy_DataPage.swf structure.
-    REX::DEBUG("PipBoyDataPage: Tab={} - selection tracking not yet implemented", currentTab);
+    // Quest/Workshop/Stats selection is handled by PipBoyCallbackHook callbacks.
+    // The game's onQuestSelection/onWorkshopSelection callbacks fire on navigation,
+    // which the hook intercepts and announces.
 }
 
 void PipBoyDataPage::CheckTabChange()
@@ -60,7 +65,11 @@ void PipBoyDataPage::CheckTabChange()
     auto currentTab = GetCurrentTab(menu.get());
     if (currentTab >= 0 && currentTab != m_lastTab) {
         m_lastTab = currentTab;
-        m_lastSelection = -1;  // Reset selection on tab change
+        m_lastSelection = -1;
+        // Clear quest state when leaving Quests tab
+        if (currentTab != static_cast<std::int32_t>(Tab::Quests)) {
+            PipBoyCallbackHook::GetSingleton()->ClearQuestState();
+        }
         SpeakText(GetTabName(currentTab));
     }
 }
@@ -70,34 +79,7 @@ void PipBoyDataPage::Reset()
     m_announced = false;
     m_lastSelection = -1;
     m_lastTab = -1;
-}
-
-// TODO: Quest, Workshop, and Stats data retrieval methods need to be updated
-// to use the dataObj approach. For now they are stubbed out.
-
-PipBoyDataPage::QuestInfo PipBoyDataPage::GetQuestInfo(RE::IMenu*, std::int32_t)
-{
-    return QuestInfo();
-}
-
-PipBoyDataPage::WorkshopInfo PipBoyDataPage::GetWorkshopInfo(RE::IMenu*, std::int32_t)
-{
-    return WorkshopInfo();
-}
-
-std::string PipBoyDataPage::GetStatInfo(RE::IMenu*, std::int32_t)
-{
-    return "";
-}
-
-std::string PipBoyDataPage::BuildQuestAnnouncement(const QuestInfo& a_quest)
-{
-    return a_quest.text;
-}
-
-std::string PipBoyDataPage::BuildWorkshopAnnouncement(const WorkshopInfo& a_workshop)
-{
-    return a_workshop.text;
+    PipBoyCallbackHook::GetSingleton()->ClearQuestState();
 }
 
 const char* PipBoyDataPage::GetTabName(std::int32_t a_tabIndex)

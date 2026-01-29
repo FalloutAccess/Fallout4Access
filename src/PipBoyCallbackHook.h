@@ -29,7 +29,15 @@ public:
         m_lastAnnouncedValue = 0.0f;
         m_lastAnnouncedQuestIndex = -1;
         m_lastAnnouncedTime = {};
+        ClearQuestState();
     }
+
+    // Check if quest summary display state changed and announce accordingly.
+    // Returns true if state changed. Called from Data page on non-navigation key presses.
+    bool CheckSummaryStateChange();
+
+    // Clear quest-specific state (when leaving Quests tab or Data page)
+    void ClearQuestState();
 
 private:
     PipBoyCallbackHook() = default;
@@ -39,8 +47,11 @@ private:
     PipBoyCallbackHook& operator=(const PipBoyCallbackHook&) = delete;
     PipBoyCallbackHook& operator=(PipBoyCallbackHook&&) = delete;
 
-    // The hooked Call function
+    // The hooked Call function (vtable index 1)
     static void HookedCall(RE::PipboyMenu* a_this, const Scaleform::GFx::FunctionHandler::Params& a_params);
+
+    // The hooked AdvanceMovie function (vtable index 4) - checks UI state changes per frame
+    static void HookedAdvanceMovie(RE::PipboyMenu* a_this, float a_timeDelta, std::uint64_t a_time);
 
     // Callback handlers
     void HandleInvItemSelection(const Scaleform::GFx::FunctionHandler::Params& a_params);
@@ -50,8 +61,14 @@ private:
     // Extract and announce inventory item using page reference and InfoObj array
     void AnnounceInventoryItem(const Scaleform::GFx::Value& a_pageRef, const Scaleform::GFx::Value& a_infoObj);
 
-    // Extract and announce quest from callback params
+    // Extract and announce quest name + status from callback params
     void AnnounceQuest(const Scaleform::GFx::Value& a_questEntry);
+
+    // Read and announce quest objectives from the objectives array
+    void AnnounceQuestObjectives(const Scaleform::GFx::Value& a_objectivesList);
+
+    // Robustly read a boolean member from a Scaleform object (handles Number/Int/UInt types)
+    static bool GetBoolMember(const Scaleform::GFx::Value& a_obj, const char* a_name);
 
     // Extract and announce workshop from callback params
     void AnnounceWorkshop(const Scaleform::GFx::Value& a_workshopEntry);
@@ -76,6 +93,14 @@ private:
     std::int32_t m_lastAnnouncedQuestIndex = -1;
     std::chrono::steady_clock::time_point m_lastAnnouncedTime;  // For time-based dedup
 
-    // The vtable hook
+    // Quest state tracking for summary/objectives detection
+    Scaleform::GFx::Value m_questPageRef;        // QuestsTab instance (arg[2] from onQuestSelection)
+    Scaleform::GFx::Value m_objectivesListRef;   // ObjectivesList_mc.entryList array
+    std::string m_currentQuestDescription;       // Current quest's description text
+    std::string m_lastAnnouncedQuestName;        // For deferred objectives dedup
+    bool m_lastShowingSummary = false;            // Last known Description_tf.visible state
+
+    // The vtable hooks
     static inline REL::HookVFT<void(RE::PipboyMenu*, const Scaleform::GFx::FunctionHandler::Params&)>* s_callHook = nullptr;
+    static inline REL::HookVFT<void(RE::PipboyMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
 };

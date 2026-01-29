@@ -36,9 +36,23 @@ void PipBoyCallbackHook::Install()
     if (hook.Enable()) {
         s_callHook = &hook;
         m_installed = true;
-        REX::INFO("PipBoyCallbackHook: Hook installed successfully");
+        REX::INFO("PipBoyCallbackHook: Call hook installed successfully");
     } else {
-        REX::ERROR("PipBoyCallbackHook: Failed to install hook");
+        REX::ERROR("PipBoyCallbackHook: Failed to install Call hook");
+    }
+
+    // Hook PipboyMenu's AdvanceMovie (vtable index 4) for per-frame state detection
+    static REL::HookVFT<void(RE::PipboyMenu*, float, std::uint64_t)> amHook(
+        VTABLE::PipboyMenu[0],
+        4,
+        HookedAdvanceMovie
+    );
+
+    if (amHook.Enable()) {
+        s_advanceMovieHook = &amHook;
+        REX::INFO("PipBoyCallbackHook: AdvanceMovie hook installed successfully");
+    } else {
+        REX::ERROR("PipBoyCallbackHook: Failed to install AdvanceMovie hook");
     }
 }
 
@@ -111,6 +125,17 @@ void PipBoyCallbackHook::HookedCall(RE::PipboyMenu* a_this, const Scaleform::GFx
     }
 }
 
+void PipBoyCallbackHook::HookedAdvanceMovie(RE::PipboyMenu* a_this, float a_timeDelta, std::uint64_t a_time)
+{
+    // Call original first so the game updates its state
+    if (s_advanceMovieHook) {
+        (*s_advanceMovieHook)(a_this, a_timeDelta, a_time);
+    }
+
+    // Check for summary state change (lightweight boolean comparison, no logging)
+    GetSingleton()->CheckSummaryStateChange();
+}
+
 void PipBoyCallbackHook::HandleInvItemSelection(const Scaleform::GFx::FunctionHandler::Params& a_params)
 {
     // arg[0] = selectedIndex (int) - index in filtered list, NOT used directly
@@ -139,16 +164,49 @@ void PipBoyCallbackHook::HandleInvItemSelection(const Scaleform::GFx::FunctionHa
 
 void PipBoyCallbackHook::HandleQuestSelection(const Scaleform::GFx::FunctionHandler::Params& a_params)
 {
-    // arg[0] = objectivesList (Array to be populated)
+    // arg[0] = objectivesList (Array - empty now, populated by original function after we return)
     // arg[1] = selectedQuest (Object with quest data)
-    // arg[2] = page reference (DisplayObject)
+    // arg[2] = page reference (QuestsTab instance)
 
     const auto& questEntry = a_params.args[1];
     if (!questEntry.IsObject()) {
         return;
     }
 
+    // Store page reference for summary state detection
+    if (a_params.argCount > 2 && a_params.args[2].IsObject()) {
+        m_questPageRef = a_params.args[2];
+    }
+
+    // Store objectives array reference (will be populated by original function)
+    m_objectivesListRef = a_params.args[0];
+
+    // Store description for summary mode announcement
+    m_currentQuestDescription.clear();
+    Scaleform::GFx::Value descProp;
+    if (questEntry.GetMember("description", &descProp) && descProp.IsString()) {
+        m_currentQuestDescription = CleanLocalizationString(descProp.GetString());
+    }
+
+    // Reset summary state on new quest selection (game resets _ShowingSummary too)
+    m_lastShowingSummary = false;
+
+    // Announce quest name + status immediately
     AnnounceQuest(questEntry);
+
+    // Defer objectives announcement by 1 frame (game populates objectives after original call)
+    auto* taskInterface = F4SE::GetTaskInterface();
+    if (taskInterface) {
+        Scaleform::GFx::Value storedObjectives = m_objectivesListRef;
+        std::string questName = m_lastAnnouncedQuestName;
+        taskInterface->AddTask([this, storedObjectives, questName]() {
+            // Only announce if still on the same quest (user may have navigated away)
+            if (questName != m_lastAnnouncedQuestName) {
+                return;
+            }
+            AnnounceQuestObjectives(storedObjectives);
+        });
+    }
 }
 
 void PipBoyCallbackHook::HandleWorkshopSelection(const Scaleform::GFx::FunctionHandler::Params& a_params)
@@ -270,69 +328,153 @@ void PipBoyCallbackHook::AnnounceInventoryItem(const Scaleform::GFx::Value& a_pa
 void PipBoyCallbackHook::AnnounceQuest(const Scaleform::GFx::Value& a_questEntry)
 {
     std::string questName;
-    std::string description;
-    bool isActive = false;
-    bool isCompleted = false;
-    bool isDivider = false;
-
-    Scaleform::GFx::Value prop;
-
-    // Check if divider
-    if (a_questEntry.GetMember("isDivider", &prop) && prop.IsBoolean()) {
-        isDivider = prop.GetBoolean();
-    }
+    bool isDivider = GetBoolMember(a_questEntry, "isDivider");
 
     if (isDivider) {
-        // Get divider text
+        // Divider separates active from completed quests - no text in the game
+        Scaleform::GFx::Value prop;
         if (a_questEntry.GetMember("text", &prop) && prop.IsString()) {
             questName = CleanLocalizationString(prop.GetString());
         }
         if (!questName.empty()) {
             SpeakText(questName);
         }
+        m_lastAnnouncedQuestName.clear();
         return;
     }
 
     // Get quest name
+    Scaleform::GFx::Value prop;
     if (a_questEntry.GetMember("text", &prop) && prop.IsString()) {
         questName = CleanLocalizationString(prop.GetString());
-    }
-
-    // Get description
-    if (a_questEntry.GetMember("description", &prop) && prop.IsString()) {
-        description = CleanLocalizationString(prop.GetString());
-    }
-
-    // Get active status
-    if (a_questEntry.GetMember("active", &prop) && prop.IsBoolean()) {
-        isActive = prop.GetBoolean();
-    }
-
-    // Get completed status
-    if (a_questEntry.GetMember("completed", &prop) && prop.IsBoolean()) {
-        isCompleted = prop.GetBoolean();
     }
 
     if (questName.empty()) {
         return;
     }
 
-    // Build announcement
+    m_lastAnnouncedQuestName = questName;
+
+    // Read status fields
+    // Note: "completed" property is undefined on quest objects (game doesn't populate it).
+    // Status is determined by "enabled" (false = done) and "active" (true = tracked).
+    bool isActive = GetBoolMember(a_questEntry, "active");
+    bool isEnabled = GetBoolMember(a_questEntry, "enabled");
+
+    // Build announcement: name + status
     std::string announcement = questName;
 
     if (isActive) {
         announcement += ", active";
-    }
-
-    if (isCompleted) {
+    } else if (!isEnabled) {
         announcement += ", completed";
     }
 
-    if (!description.empty()) {
-        announcement += ". " + description;
+    SpeakText(announcement);
+}
+
+bool PipBoyCallbackHook::GetBoolMember(const Scaleform::GFx::Value& a_obj, const char* a_name)
+{
+    Scaleform::GFx::Value prop;
+    if (a_obj.GetMember(a_name, &prop)) {
+        if (prop.IsBoolean()) return prop.GetBoolean();
+        if (prop.IsNumber()) return prop.GetNumber() != 0.0;
+        if (prop.IsInt()) return prop.GetInt() != 0;
+        if (prop.IsUInt()) return prop.GetUInt() != 0;
+    }
+    return false;
+}
+
+void PipBoyCallbackHook::AnnounceQuestObjectives(const Scaleform::GFx::Value& a_objectivesList)
+{
+    if (!a_objectivesList.IsArray()) {
+        return;
     }
 
-    SpeakText(announcement);
+    std::uint32_t count = a_objectivesList.GetArraySize();
+    if (count == 0) {
+        return;
+    }
+
+    std::string announcement;
+    for (std::uint32_t i = 0; i < count; i++) {
+        Scaleform::GFx::Value entry;
+        if (!a_objectivesList.GetElement(i, &entry) || !entry.IsObject()) {
+            continue;
+        }
+
+        if (GetBoolMember(entry, "isDivider")) {
+            continue;
+        }
+
+        Scaleform::GFx::Value prop;
+        std::string text;
+        if (entry.GetMember("text", &prop) && prop.IsString()) {
+            text = CleanLocalizationString(prop.GetString());
+        }
+        if (text.empty()) {
+            continue;
+        }
+
+        bool completed = GetBoolMember(entry, "completed");
+
+        if (!announcement.empty()) {
+            announcement += ". ";
+        }
+        announcement += text;
+        if (completed) {
+            announcement += ", completed";
+        }
+    }
+
+    if (!announcement.empty()) {
+        SpeakText(announcement);
+    }
+}
+
+bool PipBoyCallbackHook::CheckSummaryStateChange()
+{
+    if (!m_questPageRef.IsObject()) {
+        return false;
+    }
+
+    // Check Description_tf.visible on the QuestsTab page reference
+    Scaleform::GFx::Value descTf;
+    if (!m_questPageRef.GetMember("Description_tf", &descTf) || !descTf.IsObject()) {
+        return false;
+    }
+
+    Scaleform::GFx::Value visibleProp;
+    if (!descTf.GetMember("visible", &visibleProp) || !visibleProp.IsBoolean()) {
+        return false;
+    }
+
+    bool isShowingSummary = visibleProp.GetBoolean();
+
+    if (isShowingSummary != m_lastShowingSummary) {
+        m_lastShowingSummary = isShowingSummary;
+
+        if (isShowingSummary && !m_currentQuestDescription.empty()) {
+            // Summary toggled on - announce description
+            SpeakText(m_currentQuestDescription);
+        } else if (!isShowingSummary && m_objectivesListRef.IsArray()) {
+            // Summary toggled off - re-announce objectives
+            AnnounceQuestObjectives(m_objectivesListRef);
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+void PipBoyCallbackHook::ClearQuestState()
+{
+    m_questPageRef = Scaleform::GFx::Value();
+    m_objectivesListRef = Scaleform::GFx::Value();
+    m_currentQuestDescription.clear();
+    m_lastAnnouncedQuestName.clear();
+    m_lastShowingSummary = false;
 }
 
 void PipBoyCallbackHook::AnnounceWorkshop(const Scaleform::GFx::Value& a_workshopEntry)
