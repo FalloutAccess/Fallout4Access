@@ -1303,7 +1303,7 @@ void ObjectScanner::ScanAndAnnounce()
 
     std::string objName = firstObj.name;
 
-    // Add empty indicator for containers
+    // Add status suffixes based on object type
     if (!firstObj.isVirtual && firstObj.ref) {
         auto* baseObj = firstObj.ref->GetObjectReference();
         if (baseObj && baseObj->GetFormType() == RE::ENUM_FORM_ID::kCONT) {
@@ -1315,7 +1315,6 @@ void ObjectScanner::ScanAndAnnounce()
         else if (baseObj && baseObj->GetFormType() == RE::ENUM_FORM_ID::kDOOR) {
             bool isLocked = IsDoorLocked(firstObj.ref);
             bool isOpen = IsDoorOpen(firstObj.ref);
-            // Only add suffix if there's something notable (locked or closed)
             if (isLocked || !isOpen) {
                 std::string status;
                 if (isLocked) status = "locked";
@@ -1324,6 +1323,12 @@ void ObjectScanner::ScanAndAnnounce()
                     status += "closed";
                 }
                 objName += " (" + status + ")";
+            }
+        }
+        // Add looted indicator for corpses
+        else if (firstObj.ref->Is(RE::ENUM_FORM_ID::kACHR)) {
+            if (CorpseLootTracker::GetSingleton()->IsLooted(firstObj.ref->GetFormID())) {
+                objName += " (looted)";
             }
         }
     }
@@ -1404,7 +1409,7 @@ void ObjectScanner::AnnounceCurrentObject()
     float dist = GetDistanceToScannedObject(obj);
     std::string announcement = obj.name;
 
-    // Add empty indicator for containers
+    // Add status suffixes based on object type
     if (!obj.isVirtual && obj.ref) {
         auto* baseObj = obj.ref->GetObjectReference();
         if (baseObj && baseObj->GetFormType() == RE::ENUM_FORM_ID::kCONT) {
@@ -1416,7 +1421,6 @@ void ObjectScanner::AnnounceCurrentObject()
         else if (baseObj && baseObj->GetFormType() == RE::ENUM_FORM_ID::kDOOR) {
             bool isLocked = IsDoorLocked(obj.ref);
             bool isOpen = IsDoorOpen(obj.ref);
-            // Only add suffix if there's something notable (locked or closed)
             if (isLocked || !isOpen) {
                 std::string status;
                 if (isLocked) status = "locked";
@@ -1425,6 +1429,12 @@ void ObjectScanner::AnnounceCurrentObject()
                     status += "closed";
                 }
                 announcement += " (" + status + ")";
+            }
+        }
+        // Add looted indicator for corpses
+        else if (obj.ref->Is(RE::ENUM_FORM_ID::kACHR)) {
+            if (CorpseLootTracker::GetSingleton()->IsLooted(obj.ref->GetFormID())) {
+                announcement += " (looted)";
             }
         }
     }
