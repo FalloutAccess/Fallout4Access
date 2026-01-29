@@ -3,6 +3,7 @@
 #include "AutoWalk.h"
 #include "BarterMenuAccessibility.h"
 #include "ContainerMenuAccessibility.h"
+#include "CorpseLootTracker.h"
 #include "CrosshairAccessibility.h"
 #include "DialogueMenuHook.h"
 #include "ExamineMenuHook.h"
@@ -26,6 +27,9 @@ void OnF4SEMessage(F4SE::MessagingInterface::Message* a_msg)
         AutoAimAccessibility::GetSingleton()->Initialize();
         CrosshairAccessibility::GetSingleton()->Register();
 
+        // Register corpse loot tracking event sink
+        CorpseLootTracker::GetSingleton()->Register();
+
         // Load damage type translations
         ItemStatFormatter::LoadTranslations();
     }
@@ -39,6 +43,15 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
     auto* messaging = F4SE::GetMessagingInterface();
     if (messaging) {
         messaging->RegisterListener(OnF4SEMessage);
+    }
+
+    // Register cosave serialization for persistent data (corpse loot tracking)
+    auto* serialization = F4SE::GetSerializationInterface();
+    if (serialization) {
+        serialization->SetUniqueID(CorpseLootTracker::kUniqueID);
+        serialization->SetSaveCallback(CorpseLootTracker::OnSave);
+        serialization->SetLoadCallback(CorpseLootTracker::OnLoad);
+        serialization->SetRevertCallback(CorpseLootTracker::OnRevert);
     }
 
     // Initialize SRAL, excluding SAPI to prefer NVDA/JAWS

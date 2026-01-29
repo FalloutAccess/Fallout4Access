@@ -1,4 +1,5 @@
 #include "ContainerMenuAccessibility.h"
+#include "CorpseLootTracker.h"
 #include "SpeechManager.h"
 #include "LocalizationHelper.h"
 #include "ItemStatFormatter.h"
@@ -78,6 +79,16 @@ void ContainerMenuAccessibility::OnContainerMenuOpened()
             if (!menu) return;
 
             auto* containerMenu = static_cast<RE::ContainerMenu*>(menu.get());
+
+            // Mark corpses as looted when their container menu is opened
+            auto refPtr = containerMenu->containerRef.get();
+            if (auto* ref = refPtr.get()) {
+                if (ref->Is(RE::ENUM_FORM_ID::kACHR)) {
+                    if (auto* actor = ref->As<RE::Actor>(); actor && actor->IsDead(false)) {
+                        CorpseLootTracker::GetSingleton()->MarkLooted(ref->GetFormID());
+                    }
+                }
+            }
 
             // Check if pickpocket mode
             m_isPickpocketMode = IsPickpocketMode(containerMenu);

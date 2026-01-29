@@ -2,6 +2,7 @@
 #include "AutoAimAccessibility.h"
 #include "AutoWalk.h"
 #include "ContextualInfoAnnouncer.h"
+#include "CorpseLootTracker.h"
 #include "SpeechManager.h"
 #include <SRAL.h>
 #include <algorithm>
@@ -241,10 +242,15 @@ void ObjectScanner::CycleSubcategory()
         return;
     }
 
-    // Cycle through: All -> TypeA -> TypeB -> All
+    // Cycle through subcategories
     // TypeA/TypeB meaning depends on category (see GetSubcategoryName)
     int next = (static_cast<int>(m_currentSubcategory) + 1) % static_cast<int>(ScanSubcategory::COUNT);
     m_currentSubcategory = static_cast<ScanSubcategory>(next);
+
+    // Doors only has All and Locked (skip TypeB)
+    if (m_currentCategory == ScanCategory::Doors && m_currentSubcategory == ScanSubcategory::TypeB) {
+        m_currentSubcategory = ScanSubcategory::All;
+    }
 
     // Clear cached objects to force rescan with new filter
     m_scannedObjects.clear();
@@ -257,7 +263,8 @@ bool ObjectScanner::HasSubcategories(ScanCategory a_category)
 {
     return a_category == ScanCategory::Activators ||
            a_category == ScanCategory::Containers ||
-           a_category == ScanCategory::Doors;
+           a_category == ScanCategory::Doors ||
+           a_category == ScanCategory::Corpses;
 }
 
 const char* ObjectScanner::GetSubcategoryName(ScanSubcategory a_subcategory)
@@ -275,6 +282,13 @@ const char* ObjectScanner::GetSubcategoryName(ScanSubcategory a_subcategory)
             case ScanSubcategory::All: return "All";
             case ScanSubcategory::TypeA: return "Locked";
             case ScanSubcategory::TypeB: return "All";  // No separate unlocked filter
+            default: return "Unknown";
+        }
+    } else if (m_currentCategory == ScanCategory::Corpses) {
+        switch (a_subcategory) {
+            case ScanSubcategory::All: return "All";
+            case ScanSubcategory::TypeA: return "Unlooted";
+            case ScanSubcategory::TypeB: return "Looted";
             default: return "Unknown";
         }
     } else {
@@ -347,6 +361,16 @@ bool ObjectScanner::MatchesSubcategory(RE::TESObjectREFR* a_ref, ScanSubcategory
             return IsDoorLocked(a_ref);  // Locked filter
         }
         return true;  // All or TypeB shows all doors
+    }
+
+    // Corpse subcategories: TypeA=Unlooted, TypeB=Looted
+    if (m_currentCategory == ScanCategory::Corpses) {
+        bool isLooted = CorpseLootTracker::GetSingleton()->IsLooted(a_ref->GetFormID());
+        switch (a_subcategory) {
+            case ScanSubcategory::TypeA: return !isLooted;  // Unlooted
+            case ScanSubcategory::TypeB: return isLooted;   // Looted
+            default: return true;
+        }
     }
 
     // Activator subcategories: TypeA=Furniture, TypeB=Other
@@ -528,16 +552,10 @@ bool ObjectScanner::IsInteractable(RE::TESObjectREFR* a_ref)
     if (a_ref->IsDeleted() || a_ref->IsDisabled()) return false;
 
     // Check for actors (living NPCs and corpses)
+    // All actors are interactable - looted/unlooted filtering is handled
+    // by MatchesSubcategory() via CorpseLootTracker
     if (a_ref->Is(RE::ENUM_FORM_ID::kACHR)) {
-        if (auto* actor = a_ref->As<RE::Actor>()) {
-            // For dead actors (corpses), exclude if already looted
-            if (actor->IsDead(false)) {
-                if (IsContainerEmpty(a_ref)) {
-                    return false;  // Skip empty corpses
-                }
-            }
-        }
-        return true;  // Living NPCs and non-empty corpses are interactable
+        return true;
     }
 
     auto* baseObj = a_ref->GetObjectReference();
@@ -563,22 +581,30 @@ bool ObjectScanner::IsContainerEmpty(RE::TESObjectREFR* a_ref)
 {
     if (!a_ref) return true;
 
-    // Get the runtime inventory list (tracks actual contents after looting)
+    // Check runtime inventory list first (reflects actual state after looting)
     RE::BGSInventoryList* inventoryList = a_ref->inventoryList;
+    if (inventoryList) {
+        if (inventoryList->data.empty()) return true;
 
-    // If no inventory list exists, container is empty
-    if (!inventoryList) return true;
-
-    // Check if the data array is empty
-    if (inventoryList->data.empty()) return true;
-
-    // Count actual items (entries may exist but have 0 count after looting)
-    std::uint32_t totalItems = 0;
-    for (const auto& item : inventoryList->data) {
-        totalItems += item.GetCount();
+        std::uint32_t totalItems = 0;
+        for (const auto& item : inventoryList->data) {
+            totalItems += item.GetCount();
+        }
+        return totalItems == 0;
     }
 
-    return totalItems == 0;
+    // Runtime inventory not yet created - fall back to base form's TESContainer.
+    // Actors (TESNPC -> TESActorBase -> TESContainer) define default items on
+    // their base form. The runtime inventoryList is lazily created, so corpses
+    // killed off-screen or never accessed may not have one yet.
+    auto* baseObj = a_ref->GetObjectReference();
+    if (baseObj) {
+        if (auto* actorBase = baseObj->As<RE::TESActorBase>()) {
+            return actorBase->numContainerObjects == 0;
+        }
+    }
+
+    return true;
 }
 
 bool ObjectScanner::IsDoorLocked(RE::TESObjectREFR* a_ref)
@@ -588,8 +614,11 @@ bool ObjectScanner::IsDoorLocked(RE::TESObjectREFR* a_ref)
     RE::REFR_LOCK* lock = a_ref->GetLock();
     if (!lock) return false;
 
-    RE::LOCK_LEVEL lockLevel = lock->GetLockLevel(a_ref);
-    return lockLevel != RE::LOCK_LEVEL::kUnlocked;
+    // Bit 0 of flags indicates the lock is currently engaged
+    // GetLockLevel() returns difficulty, not locked state
+    // When you pick a lock, SetLocked(false) clears this flag
+    constexpr std::uint8_t kLockedFlag = 0x01;
+    return (lock->flags & kLockedFlag) != 0;
 }
 
 bool ObjectScanner::IsDoorOpen(RE::TESObjectREFR* a_ref)
@@ -641,8 +670,10 @@ void ObjectScanner::ScanObjects()
         RE::TESObjectREFR* ref;
         std::string name;
         float distance;
+        float zDiff;  // Vertical difference from player (positive = above)
     };
     std::vector<TempObject> tempObjects;
+    float playerZ = playerPos.z;
 
     // Lambda to scan a single cell's references
     auto scanCell = [&](RE::TESObjectCELL* cell) {
@@ -662,11 +693,12 @@ void ObjectScanner::ScanObjects()
 
                 RE::NiPoint3 objPos = ref->GetPosition();
                 float distSq = playerPos.GetSquaredDistance(objPos);
+                float zDiff = objPos.z - playerZ;
 
                 const char* name = ref->GetDisplayFullName();
                 if (!name || name[0] == '\0') continue;
 
-                tempObjects.push_back({ref, name, std::sqrt(distSq)});
+                tempObjects.push_back({ref, name, std::sqrt(distSq), zDiff});
             }
         }
     };
@@ -714,9 +746,16 @@ void ObjectScanner::ScanObjects()
         }
     }
 
-    // Sort by distance (closest first)
+    // Sort by: same-level objects first, then by distance
     std::sort(tempObjects.begin(), tempObjects.end(),
         [](const TempObject& a, const TempObject& b) {
+            bool aSameLevel = std::abs(a.zDiff) <= ELEVATION_THRESHOLD;
+            bool bSameLevel = std::abs(b.zDiff) <= ELEVATION_THRESHOLD;
+            // Prefer same-level objects
+            if (aSameLevel != bSameLevel) {
+                return aSameLevel;  // Same-level objects come first
+            }
+            // Within same elevation group, sort by distance
             return a.distance < b.distance;
         });
 
@@ -770,53 +809,7 @@ void ObjectScanner::ScanQuestMarkers()
         return;
     }
 
-    // 1. Scan door proxy markers (exit doors when objective is outside current cell)
-    // Only add door markers if player is in interior AND there are world quest markers
-    // (indicating the objective is outside the current cell)
-    auto& doorHandles = pipboyData->mapData.doorRefHandles;
-    auto& worldMarkers = pipboyData->mapData.worldQuestMarkers;
-    bool isInterior = playerCell && playerCell->IsInterior();
-    bool hasWorldObjectives = !worldMarkers.empty();
-
-    REX::INFO("ObjectScanner: doorRefHandles has {} entries (interior={}, hasWorldObj={})",
-        doorHandles.size(), isInterior, hasWorldObjectives);
-
-    // Door markers are only relevant when in interior with objectives outside
-    if (isInterior && hasWorldObjectives) {
-        for (std::uint32_t i = 0; i < doorHandles.size(); ++i) {
-            auto handle = doorHandles[i];
-            if (!handle) continue;
-
-            auto refPtr = handle.get();
-            if (!refPtr || !refPtr.get()) continue;
-
-            auto* ref = refPtr.get();
-            if (ref->IsDeleted() || ref->IsDisabled()) continue;
-
-            RE::NiPoint3 pos = ref->GetPosition();
-            if (!IsValidPosition(pos)) continue;
-
-            // Try to find objective name for this door marker
-            std::string markerName = FindObjectiveName(ref, player);
-            if (markerName.empty()) {
-                const char* name = ref->GetDisplayFullName();
-                markerName = (name && name[0] != '\0') ? name : "Exit";
-            }
-            markerName += " (Quest)";  // Indicate this is a quest-related door
-
-            ScannedObject obj;
-            obj.ref = ref;
-            obj.name = markerName;
-            obj.isVirtual = false;
-            obj.virtualPos = pos;
-
-            m_scannedObjects.push_back(obj);
-            addedRefs.insert(ref);
-            REX::INFO("ObjectScanner: Added door marker: '{}'", markerName);
-        }
-    }
-
-    // 2. Scan local quest markers (objectives in current interior)
+    // 1. Scan local quest markers (objectives in current interior)
     auto& localMarkers = pipboyData->mapData.localQuestMarkers;
     REX::INFO("ObjectScanner: localQuestMarkers has {} entries", localMarkers.size());
 
@@ -828,9 +821,6 @@ void ObjectScanner::ScanQuestMarkers()
 
         auto* ref = refPtr.get();
         if (ref->IsDeleted() || ref->IsDisabled()) continue;
-
-        // Skip if already added
-        if (addedRefs.contains(ref)) continue;
 
         RE::NiPoint3 pos = ref->GetPosition();
         if (!IsValidPosition(pos)) continue;
@@ -854,8 +844,8 @@ void ObjectScanner::ScanQuestMarkers()
             markerName, pos.x, pos.y, pos.z);
     }
 
-    // 3. Scan world quest markers (objectives in world/exterior)
-    // worldMarkers already declared above
+    // 2. Scan world quest markers (objectives in world/exterior)
+    auto& worldMarkers = pipboyData->mapData.worldQuestMarkers;
     REX::INFO("ObjectScanner: worldQuestMarkers has {} entries", worldMarkers.size());
 
     for (const auto& [refHandle, pipboyObj] : worldMarkers) {
@@ -903,9 +893,8 @@ void ObjectScanner::ScanQuestMarkers()
         m_currentIndex = 0;
     }
 
-    REX::INFO("ObjectScanner: Found {} quest markers (door={}, local={}, world={})",
+    REX::INFO("ObjectScanner: Found {} quest markers (local={}, world={})",
         m_scannedObjects.size(),
-        doorHandles.size(),
         localMarkers.size(),
         worldMarkers.size());
 }
@@ -962,8 +951,10 @@ void ObjectScanner::ScanCompassMarkers()
         RE::TESObjectREFR* ref;
         std::string name;
         float distance;
+        float zDiff;
     };
     std::vector<TempMarker> tempMarkers;
+    float playerZ = playerPos.z;
 
     // Iterate through travelLocationsMarkers
     for (const auto& [markerData, pipboyObj] : pipboyData->mapData.travelLocationsMarkers) {
@@ -1022,14 +1013,20 @@ void ObjectScanner::ScanCompassMarkers()
             continue;
         }
 
-        tempMarkers.push_back({foundRef, name, dist});
+        float zDiff = pos.z - playerZ;
+        tempMarkers.push_back({foundRef, name, dist, zDiff});
         REX::INFO("ObjectScanner: Found location '{}' discovered={} dist={:.0f}",
             name, isDiscovered, dist);
     }
 
-    // Sort by distance (closest first)
+    // Sort by: same-level locations first, then by distance
     std::sort(tempMarkers.begin(), tempMarkers.end(),
         [](const TempMarker& a, const TempMarker& b) {
+            bool aSameLevel = std::abs(a.zDiff) <= ELEVATION_THRESHOLD;
+            bool bSameLevel = std::abs(b.zDiff) <= ELEVATION_THRESHOLD;
+            if (aSameLevel != bSameLevel) {
+                return aSameLevel;
+            }
             return a.distance < b.distance;
         });
 
@@ -1069,8 +1066,10 @@ void ObjectScanner::ScanCompanions()
         RE::Actor* actor;
         std::string name;
         float distance;
+        float zDiff;
     };
     std::vector<TempCompanion> tempCompanions;
+    float playerZ = playerPos.z;
 
     // Lambda to scan a cell for companions
     auto scanCellForCompanions = [&](RE::TESObjectCELL* cell) {
@@ -1095,9 +1094,11 @@ void ObjectScanner::ScanCompanions()
             const char* name = actor->GetDisplayFullName();
             if (!name || name[0] == '\0') continue;
 
-            float dist = playerPos.GetDistance(actor->GetPosition());
+            RE::NiPoint3 actorPos = actor->GetPosition();
+            float dist = playerPos.GetDistance(actorPos);
+            float zDiff = actorPos.z - playerZ;
 
-            tempCompanions.push_back({actor, name, dist});
+            tempCompanions.push_back({actor, name, dist, zDiff});
             REX::INFO("ObjectScanner: Found companion '{}' dist={:.0f}", name, dist);
         }
     };
@@ -1124,9 +1125,14 @@ void ObjectScanner::ScanCompanions()
         }
     }
 
-    // Sort by distance (closest first)
+    // Sort by: same-level companions first, then by distance
     std::sort(tempCompanions.begin(), tempCompanions.end(),
         [](const TempCompanion& a, const TempCompanion& b) {
+            bool aSameLevel = std::abs(a.zDiff) <= ELEVATION_THRESHOLD;
+            bool bSameLevel = std::abs(b.zDiff) <= ELEVATION_THRESHOLD;
+            if (aSameLevel != bSameLevel) {
+                return aSameLevel;
+            }
             return a.distance < b.distance;
         });
 
@@ -1165,8 +1171,10 @@ void ObjectScanner::ScanPowerArmor()
         RE::TESObjectREFR* ref;
         std::string name;
         float distance;
+        float zDiff;
     };
     std::vector<TempPowerArmor> tempPowerArmor;
+    float playerZ = playerPos.z;
 
     // Check lastUsedPowerArmor from PlayerCharacter
     if (player->lastUsedPowerArmor) {
@@ -1176,9 +1184,11 @@ void ObjectScanner::ScanPowerArmor()
             if (ref && !ref->IsDeleted() && !ref->IsDisabled()) {
                 const char* name = ref->GetDisplayFullName();
                 std::string displayName = (name && name[0] != '\0') ? name : "Power Armor";
-                float dist = playerPos.GetDistance(ref->GetPosition());
+                RE::NiPoint3 paPos = ref->GetPosition();
+                float dist = playerPos.GetDistance(paPos);
+                float zDiff = paPos.z - playerZ;
 
-                tempPowerArmor.push_back({ref, displayName, dist});
+                tempPowerArmor.push_back({ref, displayName, dist, zDiff});
                 REX::INFO("ObjectScanner: Found last used power armor '{}' dist={:.0f}", displayName, dist);
             }
         }
@@ -1218,9 +1228,11 @@ void ObjectScanner::ScanPowerArmor()
                 if (!alreadyAdded) {
                     const char* name = ref->GetDisplayFullName();
                     std::string displayName = (name && name[0] != '\0') ? name : "Power Armor Frame";
-                    float dist = playerPos.GetDistance(ref->GetPosition());
+                    RE::NiPoint3 paPos = ref->GetPosition();
+                    float dist = playerPos.GetDistance(paPos);
+                    float zDiff = paPos.z - playerZ;
 
-                    tempPowerArmor.push_back({ref, displayName, dist});
+                    tempPowerArmor.push_back({ref, displayName, dist, zDiff});
                     REX::INFO("ObjectScanner: Found power armor frame '{}' dist={:.0f}", displayName, dist);
                 }
             }
@@ -1245,9 +1257,14 @@ void ObjectScanner::ScanPowerArmor()
         }
     }
 
-    // Sort by distance (closest first)
+    // Sort by: same-level power armor first, then by distance
     std::sort(tempPowerArmor.begin(), tempPowerArmor.end(),
         [](const TempPowerArmor& a, const TempPowerArmor& b) {
+            bool aSameLevel = std::abs(a.zDiff) <= ELEVATION_THRESHOLD;
+            bool bSameLevel = std::abs(b.zDiff) <= ELEVATION_THRESHOLD;
+            if (aSameLevel != bSameLevel) {
+                return aSameLevel;
+            }
             return a.distance < b.distance;
         });
 
@@ -1319,6 +1336,10 @@ void ObjectScanner::ScanAndAnnounce()
 
     if (dist >= 0) {
         announcement += objName + ", " + std::to_string(static_cast<int>(dist)) + " units";
+        std::string elevation = GetElevationIndicator(firstObj);
+        if (!elevation.empty()) {
+            announcement += ", " + elevation;
+        }
     } else {
         announcement += objName;
     }
@@ -1416,6 +1437,10 @@ void ObjectScanner::AnnounceCurrentObject()
 
     if (dist >= 0) {
         announcement += ", " + std::to_string(static_cast<int>(dist)) + " units";
+        std::string elevation = GetElevationIndicator(obj);
+        if (!elevation.empty()) {
+            announcement += ", " + elevation;
+        }
     }
 
     SpeakText(announcement);
@@ -1541,6 +1566,37 @@ float ObjectScanner::GetDistanceToScannedObject(const ScannedObject& a_obj)
     } else {
         return GetDistanceToObject(a_obj.ref);
     }
+}
+
+std::string ObjectScanner::GetElevationIndicator(const ScannedObject& a_obj)
+{
+    auto* player = RE::PlayerCharacter::GetSingleton();
+    if (!player) return "";
+
+    float playerZ = player->GetPosition().z;
+    float objectZ = 0.0f;
+
+    if (a_obj.isVirtual) {
+        if (!IsValidPosition(a_obj.virtualPos)) {
+            return "";
+        }
+        objectZ = a_obj.virtualPos.z;
+    } else {
+        if (!a_obj.ref || a_obj.ref->IsDeleted() || a_obj.ref->IsDisabled()) {
+            return "";
+        }
+        objectZ = a_obj.ref->GetPosition().z;
+    }
+
+    float zDiff = objectZ - playerZ;
+
+    if (zDiff > ELEVATION_THRESHOLD) {
+        return "above";
+    } else if (zDiff < -ELEVATION_THRESHOLD) {
+        return "below";
+    }
+
+    return "";
 }
 
 void ObjectScanner::SpeakNoObjectsNearby()
