@@ -4,7 +4,8 @@
 #include <RE/P/PipboyMenu.h>
 
 // Abstract base class for Pip-Boy page handlers
-// Each page (STAT, INV, DATA, MAP, RADIO) extends this class
+// Each page (STAT, INV, DATA, MAP, RADIO) extends this class.
+// CheckSelection() and CheckTabChange() are called per-frame from the AdvanceMovie hook.
 class PipBoyPageBase
 {
 public:
@@ -14,15 +15,12 @@ public:
     virtual void OnPageActivated() = 0;
     virtual void OnPageDeactivated() = 0;
 
-    // Input handlers
-    virtual void CheckSelection() = 0;  // Called on Up/Down navigation
-    virtual void CheckTabChange() = 0;  // Called on Q/E or Left/Right for sub-tabs
+    // Per-frame state checks (called from AdvanceMovie via PipBoyMenuAccessibility)
+    virtual void CheckSelection() = 0;  // Page-specific per-frame checks (e.g. Map mouse selection)
+    virtual void CheckTabChange() = 0;  // Detect tab changes within the page
 
     // State management
     virtual void Reset() = 0;
-
-    // Get the page name for announcements
-    virtual const char* GetPageName() const = 0;
 
 protected:
     // Get the dataObj from PipboyMenu (direct member access, much more reliable)

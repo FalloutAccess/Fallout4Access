@@ -3,9 +3,9 @@
 #include "PipBoyDataPage.h"
 #include "PipBoyMapPage.h"
 #include "PipBoyCallbackHook.h"
+#include "LocalizationHelper.h"
 #include "SpeechManager.h"
 #include <RE/P/PipboyMenu.h>
-#include <SRAL.h>
 
 PipBoyMenuAccessibility* PipBoyMenuAccessibility::GetSingleton()
 {
@@ -48,7 +48,7 @@ void PipBoyMenuAccessibility::OnPipBoyMenuOpened()
 
             // Announce Pip-Boy opened and current page
             std::string announcement = "Pip-Boy, ";
-            announcement += GetPageName(page);
+            announcement += GetLocalizedPageName(page);
             SpeakText(announcement);
 
             // Activate the current page handler
@@ -85,105 +85,67 @@ void PipBoyMenuAccessibility::CheckSelection()
         return;
     }
 
-    // Check for page change first
+    // Check for page change
     auto currentPage = GetCurrentPage(menu.get());
-
     if (currentPage != m_currentPage) {
         SwitchToPage(currentPage);
         return;
     }
 
-    // Delegate to active page handler
+    // Check for tab change
+    CheckTabChange(menu.get());
+
+    // Delegate to active page for page-specific per-frame checks (e.g. Map mouse selection)
     if (auto* activePage = GetActivePage()) {
         activePage->CheckSelection();
     }
 }
 
-void PipBoyMenuAccessibility::CheckPageChange()
+void PipBoyMenuAccessibility::CheckTabChange(RE::IMenu* a_menu)
 {
-    if (!m_isOpen) {
-        return;
-    }
-
-    auto ui = RE::UI::GetSingleton();
-    if (!ui) return;
-
-    auto menu = ui->GetMenu("PipboyMenu"sv);
-    if (!menu) return;
-
-    auto currentPage = GetCurrentPage(menu.get());
-
-    if (currentPage != m_currentPage) {
-        SwitchToPage(currentPage);
-    }
-}
-
-void PipBoyMenuAccessibility::OnNavigate(bool a_up)
-{
-    if (!m_isOpen) return;
-
-    auto ui = RE::UI::GetSingleton();
-    if (!ui) return;
-
-    auto menu = ui->GetMenu("PipboyMenu"sv);
-    if (!menu) return;
-
-    // Check for page change first
-    auto currentPage = GetCurrentPage(menu.get());
-    if (currentPage != m_currentPage) {
-        SwitchToPage(currentPage);
-        return;
-    }
-
-    // Delegate to inventory page if that's the active page
-    if (m_currentPage == Page::INV && m_inventoryPage) {
-        if (a_up) {
-            m_inventoryPage->OnNavigateUp();
-        } else {
-            m_inventoryPage->OnNavigateDown();
-        }
-    } else if (auto* activePage = GetActivePage()) {
-        // For other pages, fall back to CheckSelection
-        activePage->CheckSelection();
-    }
-}
-
-void PipBoyMenuAccessibility::CheckTabChange()
-{
-    if (!m_isOpen) {
-        return;
-    }
-
     // Delegate to active page handler for tab changes within page
     if (auto* activePage = GetActivePage()) {
         activePage->CheckTabChange();
-    } else {
-        // For unimplemented pages, try to read and announce tab directly
-        auto ui = RE::UI::GetSingleton();
-        if (!ui) {
-            return;
-        }
+        return;
+    }
 
-        auto menu = ui->GetMenu("PipboyMenu"sv);
-        if (!menu || !menu->uiMovie) {
-            return;
-        }
+    // For pages without a dedicated handler (STAT, RADIO), read tab from dataObj
+    auto* pipboyMenu = static_cast<RE::PipboyMenu*>(a_menu);
+    const auto& dataObj = pipboyMenu->dataObj;
+    if (dataObj.IsUndefined() || !dataObj.IsObject()) {
+        return;
+    }
 
-        Scaleform::GFx::Value tabValue;
-        bool gotTab = menu->uiMovie->GetVariable(&tabValue, "root.DataObj.CurrentTab");
+    Scaleform::GFx::Value tabValue;
+    if (!dataObj.GetMember("CurrentTab", &tabValue)) {
+        return;
+    }
 
-        if (gotTab) {
-            int tab = -1;
-            if (tabValue.IsInt()) tab = tabValue.GetInt();
-            else if (tabValue.IsNumber()) tab = static_cast<int>(tabValue.GetNumber());
-            else if (tabValue.IsUInt()) tab = static_cast<int>(tabValue.GetUInt());
+    int tab = -1;
+    if (tabValue.IsInt()) tab = tabValue.GetInt();
+    else if (tabValue.IsNumber()) tab = static_cast<int>(tabValue.GetNumber());
+    else if (tabValue.IsUInt()) tab = static_cast<int>(tabValue.GetUInt());
 
-            if (tab >= 0 && tab != m_lastTab) {
-                m_lastTab = tab;
-                // Announce generic tab number for unimplemented pages
-                std::string announcement = "Tab " + std::to_string(tab + 1);
-                SpeakText(announcement);
+    if (tab >= 0 && tab != m_lastTab) {
+        m_lastTab = tab;
+
+        // Get localized tab name based on current page
+        std::string tabName;
+        if (m_currentPage == Page::STAT) {
+            static const char* kStatTabKeys[] = {
+                "$PipboyConditionCategory", "$PipboySPECIALCategory", "$PipboyPerksCategory"
+            };
+            if (tab >= 0 && tab < 3) {
+                tabName = LocalizationHelper::Translate(kStatTabKeys[tab]);
             }
+        }
+        // RADIO has no tabs
+
+        if (!tabName.empty()) {
+            SpeakText(tabName);
+        } else {
+            // Fallback for unknown tabs
+            SpeakText("Tab " + std::to_string(tab + 1));
         }
     }
 }
@@ -206,17 +168,13 @@ PipBoyMenuAccessibility::Page PipBoyMenuAccessibility::GetCurrentPage(RE::IMenu*
         return Page::STAT;
     }
 
-    // Cast to PipboyMenu to access the dataObj member directly
     auto* pipboyMenu = static_cast<RE::PipboyMenu*>(a_menu);
-
-    // Access dataObj member which is a Scaleform::GFx::Value at offset 0x0F0
     const auto& dataObj = pipboyMenu->dataObj;
 
     if (dataObj.IsUndefined() || !dataObj.IsObject()) {
         return Page::STAT;
     }
 
-    // Get CurrentPage member from dataObj
     Scaleform::GFx::Value pageValue;
     if (dataObj.GetMember("CurrentPage", &pageValue)) {
         int pageNum = 0;
@@ -248,7 +206,6 @@ PipBoyPageBase* PipBoyMenuAccessibility::GetActivePage()
         case Page::STAT:
         case Page::RADIO:
         default:
-            // Not implemented yet - return nullptr
             return nullptr;
     }
 }
@@ -263,11 +220,12 @@ void PipBoyMenuAccessibility::SwitchToPage(Page a_newPage)
         oldPage->OnPageDeactivated();
     }
 
-    // Update current page
+    // Update current page and reset tab tracking
     m_currentPage = a_newPage;
+    m_lastTab = -1;
 
     // Announce page change
-    SpeakText(GetPageName(a_newPage));
+    SpeakText(GetLocalizedPageName(a_newPage));
 
     // Activate new page
     if (auto* newPage = GetActivePage()) {
@@ -275,16 +233,14 @@ void PipBoyMenuAccessibility::SwitchToPage(Page a_newPage)
     }
 }
 
-const char* PipBoyMenuAccessibility::GetPageName(Page a_page)
+std::string PipBoyMenuAccessibility::GetLocalizedPageName(Page a_page)
 {
-    switch (a_page) {
-        case Page::STAT:  return "Status";
-        case Page::INV:   return "Inventory";
-        case Page::DATA:  return "Data";
-        case Page::MAP:   return "Map";
-        case Page::RADIO: return "Radio";
-        default:          return "Unknown";
+    static const char* kPageKeys[] = { "$STAT", "$INV", "$DATA", "$MAP", "$RADIO" };
+    int idx = static_cast<int>(a_page);
+    if (idx >= 0 && idx < 5) {
+        return LocalizationHelper::Translate(kPageKeys[idx]);
     }
+    return "Unknown";
 }
 
 void PipBoyMenuAccessibility::SpeakText(const std::string& a_text, bool a_interrupt)

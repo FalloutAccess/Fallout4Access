@@ -19,7 +19,6 @@ public:
     void CheckSelection() override;
     void CheckTabChange() override;
     void Reset() override;
-    const char* GetPageName() const override { return "Map"; }
 
     // Scanner key handlers (called from MenuAccessibility)
     void OnNextMarker();           // Page Down
@@ -63,7 +62,10 @@ private:
     bool MarkerMatchesFilter(const MapMarker& a_marker);
     void AnnounceFilterChange();
     const char* GetFilterName(MarkerFilter a_filter);
-    const char* GetTabName(std::int32_t a_tabIndex);
+    std::string GetLocalizedTabName(std::int32_t a_tabIndex);
+
+    // Embedded message box (fast travel confirmation, marker management)
+    void CheckMessageBox();
 
     // Distance and direction calculation
     void CalculateDistanceAndDirection(MapMarker& a_marker);
@@ -86,4 +88,8 @@ private:
 
     // Game selection tracking (polls uiSelectedMarkerIndex)
     std::int32_t m_lastGameSelectedIndex = -1;
+
+    // Embedded message box state (PipboyMessageBox.swf loaded into MessageHolder_mc)
+    bool m_messageBoxOpen = false;
+    std::int32_t m_messageBoxLastSelection = -1;
 };

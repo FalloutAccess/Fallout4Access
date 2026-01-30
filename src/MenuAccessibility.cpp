@@ -65,47 +65,27 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
     auto device = a_event->device.get();
 
     bool isNavigationKey = false;
-    bool isPipBoyItemNavKey = false;  // Up/Down only for Pip-Boy item navigation
-    bool isPipBoyPageNavKey = false;  // W/S for Pip-Boy page switching
-    bool isPipBoyNavUp = false;       // True if navigating up, false if down
 
     // Keyboard navigation keys (Windows Virtual Key codes)
     if (device == RE::INPUT_DEVICE::kKeyboard) {
-        // Up/Down arrows - navigation for all menus, item nav for Pip-Boy
-        if (idCode == 0x26) {  // Up arrow
+        if (idCode == 0x26 || idCode == 0x28) {  // Up/Down arrows
             isNavigationKey = true;
-            isPipBoyItemNavKey = true;
-            isPipBoyNavUp = true;
         }
-        if (idCode == 0x28) {  // Down arrow
+        if (idCode == 0x57 || idCode == 0x53) {  // W/S
             isNavigationKey = true;
-            isPipBoyItemNavKey = true;
-            isPipBoyNavUp = false;
-        }
-        // W/S - navigation for most menus, but PAGE switching for Pip-Boy
-        if (idCode == 0x57 || idCode == 0x53) {
-            isNavigationKey = true;
-            isPipBoyPageNavKey = true;
         }
     }
     // Gamepad: DPad Up/Down
     else if (device == RE::INPUT_DEVICE::kGamepad) {
-        if (idCode == 0x0001) {  // DPad Up
+        if (idCode == 0x0001 || idCode == 0x0002) {  // DPad Up/Down
             isNavigationKey = true;
-            isPipBoyItemNavKey = true;
-            isPipBoyNavUp = true;
-        }
-        if (idCode == 0x0002) {  // DPad Down
-            isNavigationKey = true;
-            isPipBoyItemNavKey = true;
-            isPipBoyNavUp = false;
         }
     }
 
     if (isNavigationKey) {
         // Delay the check to next frame so the game has time to update the selection
         if (auto* taskInterface = F4SE::GetTaskInterface()) {
-            taskInterface->AddTask([this, isPipBoyItemNavKey, isPipBoyPageNavKey, isPipBoyNavUp]() {
+            taskInterface->AddTask([this]() {
                 // Main/Pause menus: Need keystroke-triggered checks because selectedIndex
                 // doesn't update without keyboard focus on the Scaleform list
                 if (m_mainMenuOpen || m_pauseMenuOpen) {
@@ -118,16 +98,7 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
                 if (m_specialMenuOpen) {
                     SPECIALMenuAccessibility::GetSingleton()->CheckSelection(m_mainMenuOpen, m_pauseMenuOpen);
                 }
-                // Terminal/VATS: AdvanceMovie hooks handle state tracking per-frame
-                if (m_pipBoyMenuOpen) {
-                    if (isPipBoyItemNavKey) {
-                        // Up/Down navigates items within a list
-                        PipBoyMenuAccessibility::GetSingleton()->OnNavigate(isPipBoyNavUp);
-                    } else if (isPipBoyPageNavKey) {
-                        // W/S switches pages in Pip-Boy
-                        PipBoyMenuAccessibility::GetSingleton()->CheckPageChange();
-                    }
-                }
+                // Terminal/VATS/PipBoy: AdvanceMovie hooks handle state tracking per-frame
                 // Confirmation dialog: MainMenuHook handles this per-frame
             });
         }
@@ -171,25 +142,8 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
         }
     }
 
-    // Pip-Boy tab keys (Q/E and Left/Right) - switches tabs within a page
-    // Note: W/S switches pages (handled above), Q/E switches tabs
-    bool isPipBoyTabKey = false;
-    if (device == RE::INPUT_DEVICE::kKeyboard) {
-        isPipBoyTabKey = (idCode == 0x51 || idCode == 0x45 ||   // Q, E
-                          idCode == 0x25 || idCode == 0x27);    // Left, Right arrows
-    } else if (device == RE::INPUT_DEVICE::kGamepad) {
-        // LB/RB for tabs, D-pad left/right also for tabs
-        isPipBoyTabKey = (idCode == 0x0100 || idCode == 0x0200 ||  // LB, RB
-                          idCode == 0x0004 || idCode == 0x0008);    // D-pad Left, Right
-    }
-
-    if (isPipBoyTabKey && m_pipBoyMenuOpen) {
-        if (auto* taskInterface = F4SE::GetTaskInterface()) {
-            taskInterface->AddTask([this]() {
-                PipBoyMenuAccessibility::GetSingleton()->CheckTabChange();
-            });
-        }
-    }
+    // PipBoy page/tab changes are detected per-frame via AdvanceMovie hook.
+    // Only scanner keys for Map page remain as key-press-driven (custom accessibility actions).
 
     // Scanner keys for Pip-Boy Map page navigation (Windows VK codes)
     // These keys are only handled on the Map page (page 3)

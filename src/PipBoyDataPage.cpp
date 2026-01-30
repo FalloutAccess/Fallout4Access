@@ -1,5 +1,6 @@
 #include "PipBoyDataPage.h"
 #include "PipBoyCallbackHook.h"
+#include "LocalizationHelper.h"
 
 void PipBoyDataPage::OnPageActivated()
 {
@@ -18,7 +19,7 @@ void PipBoyDataPage::OnPageActivated()
     auto tab = GetCurrentTab(menu.get());
     if (tab >= 0) {
         m_lastTab = tab;
-        SpeakText(GetTabName(tab));
+        SpeakText(GetLocalizedTabName(tab));
     }
 }
 
@@ -30,28 +31,8 @@ void PipBoyDataPage::OnPageDeactivated()
 
 void PipBoyDataPage::CheckSelection()
 {
-    auto ui = RE::UI::GetSingleton();
-    if (!ui) return;
-
-    auto menu = ui->GetMenu("PipboyMenu"sv);
-    if (!menu) return;
-
-    // Check if tab changed
-    auto currentTab = GetCurrentTab(menu.get());
-    if (currentTab >= 0 && currentTab != m_lastTab) {
-        m_lastTab = currentTab;
-        m_lastSelection = -1;
-        // Clear quest state when leaving Quests tab
-        if (currentTab != static_cast<std::int32_t>(Tab::Quests)) {
-            PipBoyCallbackHook::GetSingleton()->ClearQuestState();
-        }
-        SpeakText(GetTabName(currentTab));
-        return;
-    }
-
     // Quest/Workshop/Stats selection is handled by PipBoyCallbackHook callbacks.
-    // The game's onQuestSelection/onWorkshopSelection callbacks fire on navigation,
-    // which the hook intercepts and announces.
+    // No per-frame polling needed.
 }
 
 void PipBoyDataPage::CheckTabChange()
@@ -70,7 +51,7 @@ void PipBoyDataPage::CheckTabChange()
         if (currentTab != static_cast<std::int32_t>(Tab::Quests)) {
             PipBoyCallbackHook::GetSingleton()->ClearQuestState();
         }
-        SpeakText(GetTabName(currentTab));
+        SpeakText(GetLocalizedTabName(currentTab));
     }
 }
 
@@ -82,12 +63,10 @@ void PipBoyDataPage::Reset()
     PipBoyCallbackHook::GetSingleton()->ClearQuestState();
 }
 
-const char* PipBoyDataPage::GetTabName(std::int32_t a_tabIndex)
+std::string PipBoyDataPage::GetLocalizedTabName(std::int32_t a_tabIndex)
 {
-    switch (static_cast<Tab>(a_tabIndex)) {
-        case Tab::Quests:    return "Quests";
-        case Tab::Workshops: return "Workshops";
-        case Tab::Stats:     return "Stats";
-        default:             return "Unknown";
+    if (a_tabIndex >= 0 && a_tabIndex < kTabCount) {
+        return LocalizationHelper::Translate(kTabKeys[a_tabIndex]);
     }
+    return "Unknown";
 }

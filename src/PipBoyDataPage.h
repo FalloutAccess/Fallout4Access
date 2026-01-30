@@ -4,6 +4,8 @@
 
 // Handles the DATA page of the Pip-Boy
 // Tabs: Quests(0), Workshops(1), Stats(2)
+// Quest/workshop selection is handled by PipBoyCallbackHook callbacks.
+// Tab changes are detected per-frame from the AdvanceMovie hook.
 class PipBoyDataPage : public PipBoyPageBase
 {
 public:
@@ -16,7 +18,6 @@ public:
     void CheckSelection() override;
     void CheckTabChange() override;
     void Reset() override;
-    const char* GetPageName() const override { return "Data"; }
 
 private:
     // Tab definitions
@@ -26,5 +27,9 @@ private:
         Stats = 2
     };
 
-    const char* GetTabName(std::int32_t a_tabIndex);
+    // Tab localization keys (ordered by tab index)
+    static constexpr const char* kTabKeys[] = { "$QUESTS", "$SANCTUARY", "$LOG" };
+    static constexpr int kTabCount = 3;
+
+    std::string GetLocalizedTabName(std::int32_t a_tabIndex);
 };

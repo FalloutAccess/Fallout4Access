@@ -1,4 +1,5 @@
 #include "PipBoyMapPage.h"
+#include "LocalizationHelper.h"
 #include "SpeechManager.h"
 #include <RE/P/PlayerCharacter.h>
 #include <RE/M/MenuCursor.h>
@@ -37,7 +38,7 @@ void PipBoyMapPage::OnPageActivated()
     if (tab >= 0) {
         m_lastTab = tab;
         m_isLocalMap = (tab == 1);
-        SpeakText(GetTabName(tab));
+        SpeakText(GetLocalizedTabName(tab));
     }
 
     // Build marker list with a small delay to let Scaleform populate
@@ -61,6 +62,10 @@ void PipBoyMapPage::OnPageDeactivated()
 
 void PipBoyMapPage::CheckSelection()
 {
+    // Check for embedded message box first (fast travel confirmation etc.)
+    CheckMessageBox();
+    if (m_messageBoxOpen) return;
+
     // Poll selectedMarkerInfo from the map holder (uses mapPageObj, not root.Menu_mc)
     auto ui = RE::UI::GetSingleton();
     if (!ui) return;
@@ -122,6 +127,125 @@ void PipBoyMapPage::CheckSelection()
     }
 }
 
+void PipBoyMapPage::CheckMessageBox()
+{
+    auto ui = RE::UI::GetSingleton();
+    if (!ui) return;
+
+    auto menu = ui->GetMenu("PipboyMenu"sv);
+    if (!menu) return;
+
+    auto* pipboyMenu = static_cast<RE::PipboyMenu*>(menu.get());
+    const auto& mapPageObj = pipboyMenu->mapMenuObj.mapPageObj;
+    if (!mapPageObj.IsObject()) return;
+
+    // Check MessageHolder_mc visibility
+    Scaleform::GFx::Value holder;
+    if (!const_cast<Scaleform::GFx::Value&>(mapPageObj).GetMember("MessageHolder_mc", &holder) || !holder.IsObject()) {
+        if (m_messageBoxOpen) {
+            m_messageBoxOpen = false;
+            m_messageBoxLastSelection = -1;
+        }
+        return;
+    }
+
+    Scaleform::GFx::Value visibleVal;
+    bool isVisible = false;
+    if (holder.GetMember("visible", &visibleVal) && visibleVal.IsBoolean()) {
+        isVisible = visibleVal.GetBoolean();
+    }
+
+    if (!isVisible) {
+        if (m_messageBoxOpen) {
+            // Message box just closed
+            m_messageBoxOpen = false;
+            m_messageBoxLastSelection = -1;
+        }
+        return;
+    }
+
+    // MessageHolder_mc is visible - navigate to Menu_mc inside loaded SWF
+    // Hierarchy: MessageHolder_mc -> [loaded SWF root at child 0] -> Menu_mc
+    Scaleform::GFx::Value loadedRoot;
+    Scaleform::GFx::Value args[1];
+    args[0] = 0;  // child index 0
+    if (!holder.Invoke("getChildAt", &loadedRoot, args, 1) || !loadedRoot.IsObject()) return;
+
+    Scaleform::GFx::Value menuMc;
+    if (!loadedRoot.GetMember("Menu_mc", &menuMc) || !menuMc.IsObject()) return;
+
+    if (!m_messageBoxOpen) {
+        // Message box just opened - announce body and first button
+        m_messageBoxOpen = true;
+
+        // Read body text
+        Scaleform::GFx::Value bodyVal;
+        std::string bodyText;
+        if (menuMc.GetMember("bodyText", &bodyVal) && bodyVal.IsString()) {
+            bodyText = CleanLocalizationString(bodyVal.GetString());
+        }
+
+        // Read button array
+        Scaleform::GFx::Value buttonArray;
+        std::uint32_t buttonCount = 0;
+        std::string firstButton;
+        if (menuMc.GetMember("buttonArray", &buttonArray) && buttonArray.IsArray()) {
+            buttonCount = buttonArray.GetArraySize();
+            if (buttonCount > 0) {
+                Scaleform::GFx::Value btn;
+                if (buttonArray.GetElement(0, &btn) && btn.IsObject()) {
+                    Scaleform::GFx::Value textVal;
+                    if (btn.GetMember("text", &textVal) && textVal.IsString()) {
+                        firstButton = CleanLocalizationString(textVal.GetString());
+                    }
+                }
+            }
+        }
+
+        // Build announcement
+        std::string announcement;
+        if (!bodyText.empty()) {
+            announcement = bodyText;
+        }
+        if (buttonCount > 0) {
+            announcement += ". " + std::to_string(buttonCount) + " buttons";
+            if (!firstButton.empty()) {
+                announcement += ". " + firstButton;
+            }
+        }
+
+        if (!announcement.empty()) {
+            SpeakText(announcement);
+        }
+
+        m_messageBoxLastSelection = 0;
+    } else {
+        // Message box already open - poll for selection changes
+        Scaleform::GFx::Value selVal;
+        if (!menuMc.GetMember("selectedIndex", &selVal)) return;
+
+        std::int32_t selectedIndex = -1;
+        if (selVal.IsUInt()) selectedIndex = static_cast<std::int32_t>(selVal.GetUInt());
+        else if (selVal.IsInt()) selectedIndex = selVal.GetInt();
+        else if (selVal.IsNumber()) selectedIndex = static_cast<std::int32_t>(selVal.GetNumber());
+
+        if (selectedIndex < 0 || selectedIndex == m_messageBoxLastSelection) return;
+        m_messageBoxLastSelection = selectedIndex;
+
+        // Read button text at new index
+        Scaleform::GFx::Value buttonArray;
+        if (!menuMc.GetMember("buttonArray", &buttonArray) || !buttonArray.IsArray()) return;
+
+        Scaleform::GFx::Value btn;
+        if (!buttonArray.GetElement(static_cast<std::uint32_t>(selectedIndex), &btn) || !btn.IsObject()) return;
+
+        Scaleform::GFx::Value textVal;
+        if (btn.GetMember("text", &textVal) && textVal.IsString()) {
+            SpeakText(CleanLocalizationString(textVal.GetString()), true);
+        }
+    }
+}
+
 void PipBoyMapPage::CheckTabChange()
 {
     auto ui = RE::UI::GetSingleton();
@@ -142,7 +266,7 @@ void PipBoyMapPage::CheckTabChange()
         m_filteredIndices.clear();
         m_markers.clear();
 
-        SpeakText(GetTabName(currentTab));
+        SpeakText(GetLocalizedTabName(currentTab));
 
         // Rebuild marker list for the new map
         if (auto* taskInterface = F4SE::GetTaskInterface()) {
@@ -174,6 +298,8 @@ void PipBoyMapPage::Reset()
     m_referenceY = 0;
     m_referenceName.clear();
     m_lastGameSelectedIndex = -1;
+    m_messageBoxOpen = false;
+    m_messageBoxLastSelection = -1;
 }
 
 void PipBoyMapPage::OnNextMarker()
@@ -720,13 +846,13 @@ const char* PipBoyMapPage::GetFilterName(MarkerFilter a_filter)
     }
 }
 
-const char* PipBoyMapPage::GetTabName(std::int32_t a_tabIndex)
+std::string PipBoyMapPage::GetLocalizedTabName(std::int32_t a_tabIndex)
 {
-    switch (a_tabIndex) {
-        case 0: return "World Map";
-        case 1: return "Local Map";
-        default: return "Unknown";
+    static const char* kTabKeys[] = { "$World Map", "$Local Map" };
+    if (a_tabIndex >= 0 && a_tabIndex < 2) {
+        return LocalizationHelper::Translate(kTabKeys[a_tabIndex]);
     }
+    return "Unknown";
 }
 
 void PipBoyMapPage::CalculateDistanceAndDirection(MapMarker& a_marker)
