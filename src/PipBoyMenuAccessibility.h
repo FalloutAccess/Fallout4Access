@@ -6,9 +6,11 @@
 
 class PipBoyInventoryPage;
 class PipBoyDataPage;
+class PipBoyMapPage;
 
 // Main coordinator for Pip-Boy menu accessibility
-// Manages page lifecycle and routes input to active page
+// Manages page lifecycle and routes input to active page.
+// Page/tab changes are detected per-frame via AdvanceMovie hook polling.
 class PipBoyMenuAccessibility
 {
 public:
@@ -18,13 +20,14 @@ public:
     void OnPipBoyMenuOpened();
     void OnPipBoyMenuClosed();
 
-    // Input handlers (called by MenuAccessibility)
-    void CheckSelection();   // Navigation keys (Up/Down/W/S)
-    void CheckPageChange();  // Page keys (1-5) or shoulder buttons
-    void CheckTabChange();   // Tab keys (Q/E) or d-pad left/right
-    void OnNavigate(bool a_up);  // Direction-specific navigation (Up/Down)
+    // Per-frame state check (called from PipBoyCallbackHook::HookedAdvanceMovie)
+    // Detects page changes, tab changes, and delegates to active page
+    void CheckSelection();
 
     void Reset();
+
+    // Getter for map page (needed by MenuAccessibility for scanner keys)
+    PipBoyMapPage* GetMapPage() { return m_mapPage.get(); }
 
 private:
     PipBoyMenuAccessibility();
@@ -46,7 +49,10 @@ private:
     Page GetCurrentPage(RE::IMenu* a_menu);
     PipBoyPageBase* GetActivePage();
     void SwitchToPage(Page a_newPage);
-    const char* GetPageName(Page a_page);
+    std::string GetLocalizedPageName(Page a_page);
+
+    // Tab change detection (called per-frame from CheckSelection)
+    void CheckTabChange(RE::IMenu* a_menu);
 
     // Utilities
     void SpeakText(const std::string& a_text, bool a_interrupt = false);
@@ -54,13 +60,10 @@ private:
     // State
     bool m_isOpen = false;
     Page m_currentPage = Page::STAT;
-    int m_lastTab = -1;  // For tracking tab changes on unimplemented pages
+    int m_lastTab = -1;  // For tracking tab changes on pages without dedicated handlers
 
     // Page handlers
     std::unique_ptr<PipBoyInventoryPage> m_inventoryPage;
     std::unique_ptr<PipBoyDataPage> m_dataPage;
-    // Future: m_statPage, m_mapPage, m_radioPage
-
-    // Scaleform paths
-    static constexpr const char* CURRENT_PAGE_PATH = "root.DataObj.CurrentPage";
+    std::unique_ptr<PipBoyMapPage> m_mapPage;
 };

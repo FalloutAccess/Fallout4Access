@@ -1,4 +1,5 @@
 #include "PipBoyCallbackHook.h"
+#include "PipBoyMenuAccessibility.h"
 #include "ItemStatFormatter.h"
 #include "SpeechManager.h"
 #include <F4SE/F4SE.h>
@@ -134,6 +135,9 @@ void PipBoyCallbackHook::HookedAdvanceMovie(RE::PipboyMenu* a_this, float a_time
 
     // Check for summary state change (lightweight boolean comparison, no logging)
     GetSingleton()->CheckSummaryStateChange();
+
+    // Per-frame polling for active page (Map page needs this for mouse selection detection)
+    PipBoyMenuAccessibility::GetSingleton()->CheckSelection();
 }
 
 void PipBoyCallbackHook::HandleInvItemSelection(const Scaleform::GFx::FunctionHandler::Params& a_params)

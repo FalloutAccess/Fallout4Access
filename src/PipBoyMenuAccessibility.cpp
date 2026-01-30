@@ -1,6 +1,7 @@
 #include "PipBoyMenuAccessibility.h"
 #include "PipBoyInventoryPage.h"
 #include "PipBoyDataPage.h"
+#include "PipBoyMapPage.h"
 #include "PipBoyCallbackHook.h"
 #include "SpeechManager.h"
 #include <RE/P/PipboyMenu.h>
@@ -16,6 +17,7 @@ PipBoyMenuAccessibility::PipBoyMenuAccessibility()
 {
     m_inventoryPage = std::make_unique<PipBoyInventoryPage>();
     m_dataPage = std::make_unique<PipBoyDataPage>();
+    m_mapPage = std::make_unique<PipBoyMapPage>();
 }
 
 void PipBoyMenuAccessibility::OnPipBoyMenuOpened()
@@ -195,6 +197,7 @@ void PipBoyMenuAccessibility::Reset()
     // Reset all page handlers
     if (m_inventoryPage) m_inventoryPage->Reset();
     if (m_dataPage) m_dataPage->Reset();
+    if (m_mapPage) m_mapPage->Reset();
 }
 
 PipBoyMenuAccessibility::Page PipBoyMenuAccessibility::GetCurrentPage(RE::IMenu* a_menu)
@@ -240,8 +243,9 @@ PipBoyPageBase* PipBoyMenuAccessibility::GetActivePage()
             return m_inventoryPage.get();
         case Page::DATA:
             return m_dataPage.get();
-        case Page::STAT:
         case Page::MAP:
+            return m_mapPage.get();
+        case Page::STAT:
         case Page::RADIO:
         default:
             // Not implemented yet - return nullptr
