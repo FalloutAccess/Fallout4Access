@@ -18,20 +18,69 @@ void ExamineMenuHook::Install()
         return;
     }
 
-    // Hook ExamineMenu::AdvanceMovie (vtable index 4)
-    // VTABLE::ExamineMenu[0] is the primary vtable (IMenu/GameMenuBase)
-    static REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)> hook(
-        VTABLE::ExamineMenu[0],
-        4,  // AdvanceMovie is at index 4
-        HookedAdvanceMovie
-    );
+    bool allSucceeded = true;
 
-    if (hook.Enable()) {
-        s_advanceMovieHook = &hook;
-        m_installed = true;
-        REX::INFO("ExamineMenuHook: AdvanceMovie hook installed successfully");
+    // Hook ExamineMenu::AdvanceMovie (vtable index 4)
+    static REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)> examineHook(
+        VTABLE::ExamineMenu[0],
+        4,
+        HookedExamineAdvanceMovie
+    );
+    if (examineHook.Enable()) {
+        s_advanceMovieHook = &examineHook;
+        REX::INFO("ExamineMenuHook: ExamineMenu hook installed");
     } else {
-        REX::ERROR("ExamineMenuHook: Failed to install AdvanceMovie hook");
+        REX::ERROR("ExamineMenuHook: Failed to install ExamineMenu hook");
+        allSucceeded = false;
+    }
+
+    // Hook PowerArmorModMenu::AdvanceMovie (separate callback for correct trampoline)
+    static REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)> powerArmorHook(
+        VTABLE::PowerArmorModMenu[0],
+        4,
+        HookedPowerArmorAdvanceMovie
+    );
+    if (powerArmorHook.Enable()) {
+        s_powerArmorAdvanceMovieHook = &powerArmorHook;
+        REX::INFO("ExamineMenuHook: PowerArmorModMenu hook installed");
+    } else {
+        REX::ERROR("ExamineMenuHook: Failed to install PowerArmorModMenu hook");
+        allSucceeded = false;
+    }
+
+    // Hook CookingMenu::AdvanceMovie (no header in CommonLibF4, use raw VTABLE ID)
+    static REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)> cookingHook(
+        REL::ID(1395125),
+        4,
+        HookedCookingAdvanceMovie
+    );
+    if (cookingHook.Enable()) {
+        s_cookingAdvanceMovieHook = &cookingHook;
+        REX::INFO("ExamineMenuHook: CookingMenu hook installed");
+    } else {
+        REX::ERROR("ExamineMenuHook: Failed to install CookingMenu hook");
+        allSucceeded = false;
+    }
+
+    // Hook RobotModMenu::AdvanceMovie (no header in CommonLibF4, use raw VTABLE ID)
+    static REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)> robotModHook(
+        REL::ID(1057885),
+        4,
+        HookedRobotModAdvanceMovie
+    );
+    if (robotModHook.Enable()) {
+        s_robotModAdvanceMovieHook = &robotModHook;
+        REX::INFO("ExamineMenuHook: RobotModMenu hook installed");
+    } else {
+        REX::ERROR("ExamineMenuHook: Failed to install RobotModMenu hook");
+        allSucceeded = false;
+    }
+
+    m_installed = true;
+    if (allSucceeded) {
+        REX::INFO("ExamineMenuHook: All workbench hooks installed successfully");
+    } else {
+        REX::WARN("ExamineMenuHook: Some workbench hooks failed to install");
     }
 }
 
@@ -46,17 +95,42 @@ void ExamineMenuHook::ResetState()
     m_lastSpokenText.clear();  // Clear deduplication cache
 }
 
-void ExamineMenuHook::HookedAdvanceMovie(RE::ExamineMenu* a_this, float a_timeDelta, std::uint64_t a_time)
+void ExamineMenuHook::HookedExamineAdvanceMovie(RE::ExamineMenu* a_this, float a_timeDelta, std::uint64_t a_time)
 {
-    // Call original function first to let the game update state
     if (s_advanceMovieHook) {
         (*s_advanceMovieHook)(a_this, a_timeDelta, a_time);
     }
+    GetSingleton()->ProcessAdvanceMovie(a_this);
+}
 
-    // Then check for state changes
-    auto* hook = GetSingleton();
-    if (hook->m_menuOpen) {
-        hook->CheckStateChanges(a_this);
+void ExamineMenuHook::HookedPowerArmorAdvanceMovie(RE::ExamineMenu* a_this, float a_timeDelta, std::uint64_t a_time)
+{
+    if (s_powerArmorAdvanceMovieHook) {
+        (*s_powerArmorAdvanceMovieHook)(a_this, a_timeDelta, a_time);
+    }
+    GetSingleton()->ProcessAdvanceMovie(a_this);
+}
+
+void ExamineMenuHook::HookedCookingAdvanceMovie(RE::ExamineMenu* a_this, float a_timeDelta, std::uint64_t a_time)
+{
+    if (s_cookingAdvanceMovieHook) {
+        (*s_cookingAdvanceMovieHook)(a_this, a_timeDelta, a_time);
+    }
+    GetSingleton()->ProcessAdvanceMovie(a_this);
+}
+
+void ExamineMenuHook::HookedRobotModAdvanceMovie(RE::ExamineMenu* a_this, float a_timeDelta, std::uint64_t a_time)
+{
+    if (s_robotModAdvanceMovieHook) {
+        (*s_robotModAdvanceMovieHook)(a_this, a_timeDelta, a_time);
+    }
+    GetSingleton()->ProcessAdvanceMovie(a_this);
+}
+
+void ExamineMenuHook::ProcessAdvanceMovie(RE::ExamineMenu* a_this)
+{
+    if (m_menuOpen) {
+        CheckStateChanges(a_this);
     }
 }
 
@@ -147,7 +221,6 @@ void ExamineMenuHook::OnItemSelectMode(RE::ExamineMenu* a_menu)
 
         // Build and announce item description with full stats
         std::string announcement = BuildItemAnnouncement(a_menu, currentSelection);
-        REX::DEBUG("ExamineMenuHook::OnItemSelectMode - announcement='{}'", announcement);
         if (!announcement.empty()) {
             SpeakText(announcement);
         }
@@ -205,7 +278,6 @@ void ExamineMenuHook::OnModChoiceMode(RE::ExamineMenu* a_menu)
 
         // Get mod name
         std::string modName = GetModName(a_menu, currentSelection);
-        REX::DEBUG("ExamineMenuHook::OnModChoiceMode - modName='{}'", modName);
         if (modName.empty()) return;
 
         std::string announcement = modName;

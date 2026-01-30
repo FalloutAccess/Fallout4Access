@@ -13,7 +13,9 @@
 #include "ContainerMenuAccessibility.h"
 #include "LevelUpMenuAccessibility.h"
 #include "MessageBoxMenuHook.h"
+#include "PipBoyMapPage.h"
 #include <SRAL.h>
+#include <REX/W32/USER32.h>
 
 MenuAccessibility* MenuAccessibility::GetSingleton()
 {
@@ -49,7 +51,7 @@ RE::BSEventNotifyControl MenuAccessibility::ProcessEvent(
 bool MenuAccessibility::ShouldHandleEvent(const RE::InputEvent*)
 {
     // Only handle events when a tracked menu is open
-    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen || m_examineMenuOpen || m_levelUpMenuOpen;
+    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen || m_examineMenuOpen || m_powerArmorModMenuOpen || m_cookingMenuOpen || m_robotModMenuOpen || m_levelUpMenuOpen;
 }
 
 void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
@@ -186,6 +188,82 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
             taskInterface->AddTask([this]() {
                 PipBoyMenuAccessibility::GetSingleton()->CheckTabChange();
             });
+        }
+    }
+
+    // Scanner keys for Pip-Boy Map page navigation (Windows VK codes)
+    // These keys are only handled on the Map page (page 3)
+    if (m_pipBoyMenuOpen && device == RE::INPUT_DEVICE::kKeyboard) {
+        // Check if we're on the map page
+        auto* mapPage = PipBoyMenuAccessibility::GetSingleton()->GetMapPage();
+
+        // Only handle scanner keys if map page is active and we have a valid page pointer
+        bool onMapPage = (mapPage != nullptr);
+
+        // Verify we're actually on the map page by checking current page
+        auto ui = RE::UI::GetSingleton();
+        if (ui) {
+            auto menu = ui->GetMenu("PipboyMenu"sv);
+            if (menu) {
+                auto* pipboyMenu = static_cast<RE::PipboyMenu*>(menu.get());
+                if (pipboyMenu && !pipboyMenu->dataObj.IsUndefined() && pipboyMenu->dataObj.IsObject()) {
+                    Scaleform::GFx::Value pageValue;
+                    if (pipboyMenu->dataObj.GetMember("CurrentPage", &pageValue)) {
+                        int pageNum = 0;
+                        if (pageValue.IsInt()) pageNum = pageValue.GetInt();
+                        else if (pageValue.IsNumber()) pageNum = static_cast<int>(pageValue.GetNumber());
+                        else if (pageValue.IsUInt()) pageNum = static_cast<int>(pageValue.GetUInt());
+                        onMapPage = (pageNum == 3);  // MAP page is 3
+                    }
+                }
+            }
+        }
+
+        if (onMapPage && mapPage) {
+            bool shiftHeld = REX::W32::GetKeyState(REX::W32::VK_SHIFT) < 0;
+
+            // Page Down (0x22 / VK_NEXT) - Next marker
+            if (idCode == 0x22) {
+                if (auto* taskInterface = F4SE::GetTaskInterface()) {
+                    taskInterface->AddTask([mapPage]() {
+                        mapPage->OnNextMarker();
+                    });
+                }
+            }
+            // Page Up (0x21 / VK_PRIOR) - Previous marker
+            else if (idCode == 0x21) {
+                if (auto* taskInterface = F4SE::GetTaskInterface()) {
+                    taskInterface->AddTask([mapPage]() {
+                        mapPage->OnPreviousMarker();
+                    });
+                }
+            }
+            // Home (0x24 / VK_HOME) - Announce details or set reference point
+            else if (idCode == 0x24) {
+                if (shiftHeld) {
+                    // Shift+Home: Set current marker as distance reference point
+                    if (auto* taskInterface = F4SE::GetTaskInterface()) {
+                        taskInterface->AddTask([mapPage]() {
+                            mapPage->OnSetReferencePoint();
+                        });
+                    }
+                } else {
+                    // Home: Announce full marker details
+                    if (auto* taskInterface = F4SE::GetTaskInterface()) {
+                        taskInterface->AddTask([mapPage]() {
+                            mapPage->OnAnnounceDetails();
+                        });
+                    }
+                }
+            }
+            // End (0x23 / VK_END) - Cycle filter
+            else if (idCode == 0x23) {
+                if (auto* taskInterface = F4SE::GetTaskInterface()) {
+                    taskInterface->AddTask([mapPage]() {
+                        mapPage->OnCycleFilter();
+                    });
+                }
+            }
         }
     }
 
@@ -337,6 +415,18 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
         m_examineMenuOpen = true;
         REX::INFO("ExamineMenu opened");
         ExamineMenuAccessibility::GetSingleton()->OnExamineMenuOpened();
+    } else if (a_menuName == "PowerArmorModMenu"sv) {
+        m_powerArmorModMenuOpen = true;
+        REX::INFO("PowerArmorModMenu opened");
+        ExamineMenuAccessibility::GetSingleton()->OnExamineMenuOpened();
+    } else if (a_menuName == "CookingMenu"sv) {
+        m_cookingMenuOpen = true;
+        REX::INFO("CookingMenu opened");
+        ExamineMenuAccessibility::GetSingleton()->OnExamineMenuOpened();
+    } else if (a_menuName == "RobotModMenu"sv) {
+        m_robotModMenuOpen = true;
+        REX::INFO("RobotModMenu opened");
+        ExamineMenuAccessibility::GetSingleton()->OnExamineMenuOpened();
     } else if (a_menuName == "ContainerMenu"sv) {
         m_containerMenuOpen = true;
         REX::INFO("ContainerMenu opened");
@@ -394,6 +484,18 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
     } else if (a_menuName == "ExamineMenu"sv) {
         m_examineMenuOpen = false;
         REX::INFO("ExamineMenu closed");
+        ExamineMenuAccessibility::GetSingleton()->OnExamineMenuClosed();
+    } else if (a_menuName == "PowerArmorModMenu"sv) {
+        m_powerArmorModMenuOpen = false;
+        REX::INFO("PowerArmorModMenu closed");
+        ExamineMenuAccessibility::GetSingleton()->OnExamineMenuClosed();
+    } else if (a_menuName == "CookingMenu"sv) {
+        m_cookingMenuOpen = false;
+        REX::INFO("CookingMenu closed");
+        ExamineMenuAccessibility::GetSingleton()->OnExamineMenuClosed();
+    } else if (a_menuName == "RobotModMenu"sv) {
+        m_robotModMenuOpen = false;
+        REX::INFO("RobotModMenu closed");
         ExamineMenuAccessibility::GetSingleton()->OnExamineMenuClosed();
     } else if (a_menuName == "ContainerMenu"sv) {
         m_containerMenuOpen = false;

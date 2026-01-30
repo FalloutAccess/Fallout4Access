@@ -49,6 +49,9 @@ private:
     bool m_hudMenuOpen = false;
     bool m_pipBoyMenuOpen = false;
     bool m_examineMenuOpen = false;
+    bool m_powerArmorModMenuOpen = false;
+    bool m_cookingMenuOpen = false;
+    bool m_robotModMenuOpen = false;
     bool m_containerMenuOpen = false;
     bool m_barterMenuOpen = false;
     bool m_levelUpMenuOpen = false;

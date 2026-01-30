@@ -28,6 +28,9 @@ void ExamineMenuAccessibility::OnExamineMenuOpened()
             if (!ui) return;
 
             auto menu = ui->GetMenu("ExamineMenu"sv);
+            if (!menu) menu = ui->GetMenu("PowerArmorModMenu"sv);
+            if (!menu) menu = ui->GetMenu("CookingMenu"sv);
+            if (!menu) menu = ui->GetMenu("RobotModMenu"sv);
             if (!menu) return;
 
             // Announce workbench type

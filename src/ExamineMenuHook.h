@@ -2,6 +2,7 @@
 
 #include "pch.h"
 #include <RE/E/ExamineMenu.h>
+#include <RE/P/PowerArmorModMenu.h>
 #include <REL/Hook.h>
 
 // Hooks ExamineMenu::AdvanceMovie to check for state changes every frame
@@ -31,8 +32,14 @@ private:
     ExamineMenuHook& operator=(const ExamineMenuHook&) = delete;
     ExamineMenuHook& operator=(ExamineMenuHook&&) = delete;
 
-    // The hooked AdvanceMovie function
-    static void HookedAdvanceMovie(RE::ExamineMenu* a_this, float a_timeDelta, std::uint64_t a_time);
+    // Hooked AdvanceMovie functions (one per menu type for correct trampoline calls)
+    static void HookedExamineAdvanceMovie(RE::ExamineMenu* a_this, float a_timeDelta, std::uint64_t a_time);
+    static void HookedPowerArmorAdvanceMovie(RE::ExamineMenu* a_this, float a_timeDelta, std::uint64_t a_time);
+    static void HookedCookingAdvanceMovie(RE::ExamineMenu* a_this, float a_timeDelta, std::uint64_t a_time);
+    static void HookedRobotModAdvanceMovie(RE::ExamineMenu* a_this, float a_timeDelta, std::uint64_t a_time);
+
+    // Shared accessibility logic called after each trampoline
+    void ProcessAdvanceMovie(RE::ExamineMenu* a_this);
 
     // State checking
     void CheckStateChanges(RE::ExamineMenu* a_menu);
@@ -82,6 +89,9 @@ private:
     static constexpr const char* MOD_DESCRIPTION_PATH = "root.ModDescriptionBase_mc.ModDescription_tf.text";
     static constexpr const char* LEGENDARY_DESC_PATH = "root.LegendaryItemDescription_tf.text";
 
-    // The vtable hook
+    // The vtable hooks (one per menu type, all call the same HookedAdvanceMovie)
     static inline REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)>* s_powerArmorAdvanceMovieHook = nullptr;
+    static inline REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)>* s_cookingAdvanceMovieHook = nullptr;
+    static inline REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)>* s_robotModAdvanceMovieHook = nullptr;
 };
