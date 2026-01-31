@@ -20,9 +20,6 @@ public:
     // Called by MenuAccessibility when menu opens/closes
     void SetMenuOpen(bool a_open) { m_menuOpen = a_open; }
 
-    // Announce the message box content (body + button count + selected button)
-    void AnnounceMessageBox();
-
 private:
     MessageBoxMenuHook() = default;
     ~MessageBoxMenuHook() = default;
@@ -34,8 +31,8 @@ private:
     // The hooked AdvanceMovie function
     static void HookedAdvanceMovie(RE::MessageBoxMenu* a_this, float a_timeDelta, std::uint64_t a_time);
 
-    // Check for selection changes (called every frame when menu is open)
-    void CheckSelectionChange(RE::MessageBoxMenu* a_menu);
+    // Check for content and selection changes (called every frame when menu is open)
+    void CheckContentChanges(RE::MessageBoxMenu* a_menu);
 
     // Scaleform accessors
     std::string GetBodyText(RE::IMenu* a_menu);
@@ -54,6 +51,8 @@ private:
     std::int32_t m_buttonCount = 0;
     std::int32_t m_framesSinceOpen = 0;  // Track frames for delayed data population
     static constexpr std::int32_t MAX_RETRY_FRAMES = 10;  // Retry for ~166ms at 60fps
+    std::string m_lastBodyText;
+    std::vector<std::string> m_lastButtonLabels;
 
     // Scaleform paths (from SWF analysis - Menu_mc is the stage instance)
     static constexpr const char* BODY_TEXT_PATH = "root.Menu_mc.Body_tf.text";

@@ -145,6 +145,8 @@ void PipBoyMapPage::CheckMessageBox()
         if (m_messageBoxOpen) {
             m_messageBoxOpen = false;
             m_messageBoxLastSelection = -1;
+            m_messageBoxLastBodyText.clear();
+            m_messageBoxLastButtonLabels.clear();
         }
         return;
     }
@@ -157,60 +159,107 @@ void PipBoyMapPage::CheckMessageBox()
 
     if (!isVisible) {
         if (m_messageBoxOpen) {
-            // Message box just closed
+            REX::INFO("CheckMessageBox: Message box closed");
             m_messageBoxOpen = false;
             m_messageBoxLastSelection = -1;
+            m_messageBoxLastBodyText.clear();
+            m_messageBoxLastButtonLabels.clear();
         }
         return;
     }
 
-    // MessageHolder_mc is visible - navigate to Menu_mc inside loaded SWF
-    // Hierarchy: MessageHolder_mc -> [loaded SWF root at child 0] -> Menu_mc
-    Scaleform::GFx::Value loadedRoot;
-    Scaleform::GFx::Value args[1];
-    args[0] = 0;  // child index 0
-    if (!holder.Invoke("getChildAt", &loadedRoot, args, 1) || !loadedRoot.IsObject()) return;
+    // MessageHolder_mc is visible - find Menu_mc inside loaded PipboyMessageBox.swf
+    // MessageHolder_mc has a pre-existing dimmer child (Symbol 223) at index 0;
+    // the loaded SWF root is appended via addChild(), so iterate to find the child with Menu_mc
+    Scaleform::GFx::Value numChildrenVal;
+    if (!holder.GetMember("numChildren", &numChildrenVal)) return;
+    std::uint32_t numChildren = 0;
+    if (numChildrenVal.IsUInt()) numChildren = numChildrenVal.GetUInt();
+    else if (numChildrenVal.IsNumber()) numChildren = static_cast<std::uint32_t>(numChildrenVal.GetNumber());
+    else if (numChildrenVal.IsInt() && numChildrenVal.GetInt() > 0) numChildren = static_cast<std::uint32_t>(numChildrenVal.GetInt());
 
     Scaleform::GFx::Value menuMc;
-    if (!loadedRoot.GetMember("Menu_mc", &menuMc) || !menuMc.IsObject()) return;
+    bool foundMenu = false;
+    for (std::uint32_t i = 0; i < numChildren; ++i) {
+        Scaleform::GFx::Value child;
+        Scaleform::GFx::Value idx;
+        idx = i;
+        if (!holder.Invoke("getChildAt", &child, &idx, 1) || !child.IsObject()) continue;
 
-    if (!m_messageBoxOpen) {
-        // Message box just opened - announce body and first button
-        m_messageBoxOpen = true;
-
-        // Read body text
-        Scaleform::GFx::Value bodyVal;
-        std::string bodyText;
-        if (menuMc.GetMember("bodyText", &bodyVal) && bodyVal.IsString()) {
-            bodyText = CleanLocalizationString(bodyVal.GetString());
+        if (child.GetMember("Menu_mc", &menuMc) && menuMc.IsObject()) {
+            foundMenu = true;
+            break;
         }
+    }
+    if (!foundMenu) return;
 
-        // Read button array
-        Scaleform::GFx::Value buttonArray;
-        std::uint32_t buttonCount = 0;
-        std::string firstButton;
-        if (menuMc.GetMember("buttonArray", &buttonArray) && buttonArray.IsArray()) {
-            buttonCount = buttonArray.GetArraySize();
-            if (buttonCount > 0) {
-                Scaleform::GFx::Value btn;
-                if (buttonArray.GetElement(0, &btn) && btn.IsObject()) {
-                    Scaleform::GFx::Value textVal;
-                    if (btn.GetMember("text", &textVal) && textVal.IsString()) {
-                        firstButton = CleanLocalizationString(textVal.GetString());
-                    }
+    // Read current body text
+    Scaleform::GFx::Value bodyVal;
+    std::string currentBodyText;
+    if (menuMc.GetMember("bodyText", &bodyVal) && bodyVal.IsString()) {
+        currentBodyText = bodyVal.GetString();
+    }
+
+    // Read current button labels
+    Scaleform::GFx::Value buttonArray;
+    std::vector<std::string> currentButtonLabels;
+    std::uint32_t buttonCount = 0;
+    if (menuMc.GetMember("buttonArray", &buttonArray) && buttonArray.IsArray()) {
+        buttonCount = buttonArray.GetArraySize();
+        for (std::uint32_t i = 0; i < buttonCount; ++i) {
+            Scaleform::GFx::Value btn;
+            if (buttonArray.GetElement(i, &btn) && btn.IsObject()) {
+                Scaleform::GFx::Value textVal;
+                if (btn.GetMember("text", &textVal) && textVal.IsString()) {
+                    currentButtonLabels.push_back(textVal.GetString());
+                } else {
+                    currentButtonLabels.push_back("");
                 }
+            } else {
+                currentButtonLabels.push_back("");
             }
         }
+    }
 
-        // Build announcement
+    // Read selected index
+    Scaleform::GFx::Value selVal;
+    std::int32_t selectedIndex = 0;
+    if (menuMc.GetMember("selectedIndex", &selVal)) {
+        if (selVal.IsUInt()) selectedIndex = static_cast<std::int32_t>(selVal.GetUInt());
+        else if (selVal.IsInt()) selectedIndex = selVal.GetInt();
+        else if (selVal.IsNumber()) selectedIndex = static_cast<std::int32_t>(selVal.GetNumber());
+    }
+
+    // Check if content changed (body text or button labels)
+    bool contentChanged = (currentBodyText != m_messageBoxLastBodyText) ||
+                          (currentButtonLabels != m_messageBoxLastButtonLabels);
+
+    if (!m_messageBoxOpen || contentChanged) {
+        // First open or content changed — announce full state
+        if (!m_messageBoxOpen) {
+            m_messageBoxOpen = true;
+            REX::INFO("CheckMessageBox: Message box opened");
+        }
+
         std::string announcement;
-        if (!bodyText.empty()) {
-            announcement = bodyText;
+        std::string translatedBody = LocalizationHelper::Translate(currentBodyText);
+        if (!translatedBody.empty()) {
+            announcement = translatedBody;
         }
         if (buttonCount > 0) {
-            announcement += ". " + std::to_string(buttonCount) + " buttons";
-            if (!firstButton.empty()) {
-                announcement += ". " + firstButton;
+            if (!announcement.empty()) {
+                announcement += ". ";
+            }
+            std::string buttonWord = (buttonCount == 1)
+                ? LocalizationHelper::Translate("$F4A_button")
+                : LocalizationHelper::Translate("$F4A_buttons");
+            announcement += std::to_string(buttonCount) + " " + buttonWord;
+
+            if (selectedIndex >= 0 && selectedIndex < static_cast<std::int32_t>(buttonCount)) {
+                std::string selectedButton = LocalizationHelper::Translate(currentButtonLabels[selectedIndex]);
+                if (!selectedButton.empty()) {
+                    announcement += ". " + selectedButton;
+                }
             }
         }
 
@@ -218,30 +267,18 @@ void PipBoyMapPage::CheckMessageBox()
             SpeakText(announcement);
         }
 
-        m_messageBoxLastSelection = 0;
-    } else {
-        // Message box already open - poll for selection changes
-        Scaleform::GFx::Value selVal;
-        if (!menuMc.GetMember("selectedIndex", &selVal)) return;
-
-        std::int32_t selectedIndex = -1;
-        if (selVal.IsUInt()) selectedIndex = static_cast<std::int32_t>(selVal.GetUInt());
-        else if (selVal.IsInt()) selectedIndex = selVal.GetInt();
-        else if (selVal.IsNumber()) selectedIndex = static_cast<std::int32_t>(selVal.GetNumber());
-
-        if (selectedIndex < 0 || selectedIndex == m_messageBoxLastSelection) return;
+        m_messageBoxLastBodyText = currentBodyText;
+        m_messageBoxLastButtonLabels = currentButtonLabels;
+        m_messageBoxLastSelection = selectedIndex;
+    } else if (selectedIndex >= 0 && selectedIndex != m_messageBoxLastSelection) {
+        // Content unchanged, but selection changed — announce just the button
         m_messageBoxLastSelection = selectedIndex;
 
-        // Read button text at new index
-        Scaleform::GFx::Value buttonArray;
-        if (!menuMc.GetMember("buttonArray", &buttonArray) || !buttonArray.IsArray()) return;
-
-        Scaleform::GFx::Value btn;
-        if (!buttonArray.GetElement(static_cast<std::uint32_t>(selectedIndex), &btn) || !btn.IsObject()) return;
-
-        Scaleform::GFx::Value textVal;
-        if (btn.GetMember("text", &textVal) && textVal.IsString()) {
-            SpeakText(CleanLocalizationString(textVal.GetString()), true);
+        if (selectedIndex < static_cast<std::int32_t>(buttonCount)) {
+            std::string buttonText = LocalizationHelper::Translate(currentButtonLabels[selectedIndex]);
+            if (!buttonText.empty()) {
+                SpeakText(buttonText);
+            }
         }
     }
 }
@@ -300,6 +337,8 @@ void PipBoyMapPage::Reset()
     m_lastGameSelectedIndex = -1;
     m_messageBoxOpen = false;
     m_messageBoxLastSelection = -1;
+    m_messageBoxLastBodyText.clear();
+    m_messageBoxLastButtonLabels.clear();
 }
 
 void PipBoyMapPage::OnNextMarker()

@@ -36,6 +36,8 @@ void MessageBoxMenuHook::ResetState()
     m_buttonCount = 0;
     m_initialAnnouncementDone = false;
     m_framesSinceOpen = 0;
+    m_lastBodyText.clear();
+    m_lastButtonLabels.clear();
 }
 
 void MessageBoxMenuHook::HookedAdvanceMovie(RE::MessageBoxMenu* a_this, float a_timeDelta, std::uint64_t a_time)
@@ -45,88 +47,85 @@ void MessageBoxMenuHook::HookedAdvanceMovie(RE::MessageBoxMenu* a_this, float a_
         (*s_advanceMovieHook)(a_this, a_timeDelta, a_time);
     }
 
-    // Then check for state changes
     auto* hook = GetSingleton();
-    if (hook->m_menuOpen) {
-        // Track frames for retry logic
-        hook->m_framesSinceOpen++;
+    if (!hook->m_menuOpen) return;
 
-        // Do initial announcement if not done yet (retry until success or max frames)
-        if (!hook->m_initialAnnouncementDone && hook->m_framesSinceOpen <= MAX_RETRY_FRAMES) {
-            hook->AnnounceMessageBox();
-        }
-        // Check for selection changes
-        hook->CheckSelectionChange(a_this);
-    }
-}
+    hook->m_framesSinceOpen++;
 
-void MessageBoxMenuHook::AnnounceMessageBox()
-{
-    auto ui = RE::UI::GetSingleton();
-    if (!ui) {
+    // Stop polling after max frames if we already announced once
+    if (hook->m_framesSinceOpen > MAX_RETRY_FRAMES && hook->m_initialAnnouncementDone) {
+        hook->CheckContentChanges(a_this);
         return;
     }
 
-    auto menu = ui->GetMenu("MessageBoxMenu"sv);
-    if (!menu || !menu->uiMovie) {
-        return;
-    }
-
-    // Get body text from Scaleform
-    std::string bodyText = GetBodyText(menu.get());
-
-    // Get button count from Scaleform
-    m_buttonCount = GetButtonCount(menu.get());
-
-    // Get selected index
-    std::int32_t selectedIndex = GetSelectedIndex(menu.get());
-
-    // Build announcement: body text, then button count, then selected button
-    std::string announcement;
-
-    if (!bodyText.empty()) {
-        announcement = LocalizationHelper::CleanString(bodyText);
-    }
-
-    if (m_buttonCount > 0) {
-        if (!announcement.empty()) {
-            announcement += ". ";
-        }
-        std::string buttonWord = (m_buttonCount == 1)
-            ? LocalizationHelper::Translate("$F4A_button")
-            : LocalizationHelper::Translate("$F4A_buttons");
-        announcement += std::to_string(m_buttonCount) + " " + buttonWord;
-
-        // Announce selected button
-        if (selectedIndex >= 0) {
-            std::string buttonText = GetButtonText(menu.get(), selectedIndex);
-            if (!buttonText.empty()) {
-                announcement += ". " + LocalizationHelper::CleanString(buttonText);
-                m_lastSelection = selectedIndex;
-            }
-        }
-    }
-
-    if (!announcement.empty()) {
-        SpeakText(announcement);
-        m_initialAnnouncementDone = true;
-    } else if (m_framesSinceOpen >= MAX_RETRY_FRAMES) {
-        m_initialAnnouncementDone = true;  // Stop retrying
-    }
+    hook->CheckContentChanges(a_this);
 }
 
-void MessageBoxMenuHook::CheckSelectionChange(RE::MessageBoxMenu* a_menu)
+void MessageBoxMenuHook::CheckContentChanges(RE::MessageBoxMenu* a_menu)
 {
     if (!a_menu || !a_menu->uiMovie) return;
 
+    // Read current state from Scaleform
+    std::string currentBodyText = GetBodyText(a_menu);
+    std::int32_t currentButtonCount = GetButtonCount(a_menu);
     std::int32_t currentSelection = GetSelectedIndex(a_menu);
 
-    if (currentSelection >= 0 && currentSelection != m_lastSelection) {
+    // Build current button label list
+    std::vector<std::string> currentButtonLabels;
+    for (std::int32_t i = 0; i < currentButtonCount; ++i) {
+        currentButtonLabels.push_back(GetButtonText(a_menu, i));
+    }
+
+    // Check if content changed (body text or button labels)
+    bool contentChanged = (currentBodyText != m_lastBodyText) ||
+                          (currentButtonLabels != m_lastButtonLabels);
+
+    if (contentChanged) {
+        // Content changed (or first population) — announce full state
+        std::string announcement;
+
+        if (!currentBodyText.empty()) {
+            announcement = LocalizationHelper::Translate(currentBodyText);
+        }
+
+        if (currentButtonCount > 0) {
+            if (!announcement.empty()) {
+                announcement += ". ";
+            }
+            std::string buttonWord = (currentButtonCount == 1)
+                ? LocalizationHelper::Translate("$F4A_button")
+                : LocalizationHelper::Translate("$F4A_buttons");
+            announcement += std::to_string(currentButtonCount) + " " + buttonWord;
+
+            if (currentSelection >= 0 && currentSelection < currentButtonCount) {
+                std::string buttonText = currentButtonLabels[currentSelection];
+                if (!buttonText.empty()) {
+                    announcement += ". " + LocalizationHelper::Translate(buttonText);
+                }
+            }
+        }
+
+        if (!announcement.empty()) {
+            SpeakText(announcement);
+            m_initialAnnouncementDone = true;
+        } else if (m_framesSinceOpen >= MAX_RETRY_FRAMES) {
+            m_initialAnnouncementDone = true;
+        }
+
+        // Update cached state
+        m_lastBodyText = currentBodyText;
+        m_lastButtonLabels = currentButtonLabels;
+        m_lastSelection = currentSelection;
+        m_buttonCount = currentButtonCount;
+    } else if (currentSelection >= 0 && currentSelection != m_lastSelection) {
+        // Content unchanged, but selection changed — announce just the button
         m_lastSelection = currentSelection;
 
-        std::string buttonText = GetButtonText(a_menu, currentSelection);
-        if (!buttonText.empty()) {
-            SpeakText(LocalizationHelper::CleanString(buttonText));
+        if (currentSelection < currentButtonCount) {
+            std::string buttonText = currentButtonLabels[currentSelection];
+            if (!buttonText.empty()) {
+                SpeakText(LocalizationHelper::Translate(buttonText));
+            }
         }
     }
 }

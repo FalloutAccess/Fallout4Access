@@ -92,4 +92,6 @@ private:
     // Embedded message box state (PipboyMessageBox.swf loaded into MessageHolder_mc)
     bool m_messageBoxOpen = false;
     std::int32_t m_messageBoxLastSelection = -1;
+    std::string m_messageBoxLastBodyText;
+    std::vector<std::string> m_messageBoxLastButtonLabels;
 };
