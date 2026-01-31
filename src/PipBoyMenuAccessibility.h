@@ -7,6 +7,8 @@
 class PipBoyInventoryPage;
 class PipBoyDataPage;
 class PipBoyMapPage;
+class PipBoyStatsPage;
+class PipBoyRadioPage;
 
 // Main coordinator for Pip-Boy menu accessibility
 // Manages page lifecycle and routes input to active page.
@@ -52,7 +54,7 @@ private:
     std::string GetLocalizedPageName(Page a_page);
 
     // Tab change detection (called per-frame from CheckSelection)
-    void CheckTabChange(RE::IMenu* a_menu);
+    void CheckTabChange();
 
     // Utilities
     void SpeakText(const std::string& a_text, bool a_interrupt = false);
@@ -60,10 +62,11 @@ private:
     // State
     bool m_isOpen = false;
     Page m_currentPage = Page::STAT;
-    int m_lastTab = -1;  // For tracking tab changes on pages without dedicated handlers
 
     // Page handlers
     std::unique_ptr<PipBoyInventoryPage> m_inventoryPage;
     std::unique_ptr<PipBoyDataPage> m_dataPage;
     std::unique_ptr<PipBoyMapPage> m_mapPage;
+    std::unique_ptr<PipBoyStatsPage> m_statsPage;
+    std::unique_ptr<PipBoyRadioPage> m_radioPage;
 };

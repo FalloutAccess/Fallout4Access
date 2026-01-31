@@ -2,6 +2,8 @@
 #include "PipBoyInventoryPage.h"
 #include "PipBoyDataPage.h"
 #include "PipBoyMapPage.h"
+#include "PipBoyStatsPage.h"
+#include "PipBoyRadioPage.h"
 #include "PipBoyCallbackHook.h"
 #include "LocalizationHelper.h"
 #include "SpeechManager.h"
@@ -18,6 +20,8 @@ PipBoyMenuAccessibility::PipBoyMenuAccessibility()
     m_inventoryPage = std::make_unique<PipBoyInventoryPage>();
     m_dataPage = std::make_unique<PipBoyDataPage>();
     m_mapPage = std::make_unique<PipBoyMapPage>();
+    m_statsPage = std::make_unique<PipBoyStatsPage>();
+    m_radioPage = std::make_unique<PipBoyRadioPage>();
 }
 
 void PipBoyMenuAccessibility::OnPipBoyMenuOpened()
@@ -93,7 +97,7 @@ void PipBoyMenuAccessibility::CheckSelection()
     }
 
     // Check for tab change
-    CheckTabChange(menu.get());
+    CheckTabChange();
 
     // Delegate to active page for page-specific per-frame checks (e.g. Map mouse selection)
     if (auto* activePage = GetActivePage()) {
@@ -101,52 +105,11 @@ void PipBoyMenuAccessibility::CheckSelection()
     }
 }
 
-void PipBoyMenuAccessibility::CheckTabChange(RE::IMenu* a_menu)
+void PipBoyMenuAccessibility::CheckTabChange()
 {
     // Delegate to active page handler for tab changes within page
     if (auto* activePage = GetActivePage()) {
         activePage->CheckTabChange();
-        return;
-    }
-
-    // For pages without a dedicated handler (STAT, RADIO), read tab from dataObj
-    auto* pipboyMenu = static_cast<RE::PipboyMenu*>(a_menu);
-    const auto& dataObj = pipboyMenu->dataObj;
-    if (dataObj.IsUndefined() || !dataObj.IsObject()) {
-        return;
-    }
-
-    Scaleform::GFx::Value tabValue;
-    if (!dataObj.GetMember("CurrentTab", &tabValue)) {
-        return;
-    }
-
-    int tab = -1;
-    if (tabValue.IsInt()) tab = tabValue.GetInt();
-    else if (tabValue.IsNumber()) tab = static_cast<int>(tabValue.GetNumber());
-    else if (tabValue.IsUInt()) tab = static_cast<int>(tabValue.GetUInt());
-
-    if (tab >= 0 && tab != m_lastTab) {
-        m_lastTab = tab;
-
-        // Get localized tab name based on current page
-        std::string tabName;
-        if (m_currentPage == Page::STAT) {
-            static const char* kStatTabKeys[] = {
-                "$PipboyConditionCategory", "$PipboySPECIALCategory", "$PipboyPerksCategory"
-            };
-            if (tab >= 0 && tab < 3) {
-                tabName = LocalizationHelper::Translate(kStatTabKeys[tab]);
-            }
-        }
-        // RADIO has no tabs
-
-        if (!tabName.empty()) {
-            SpeakText(tabName);
-        } else {
-            // Fallback for unknown tabs
-            SpeakText("Tab " + std::to_string(tab + 1));
-        }
     }
 }
 
@@ -154,12 +117,13 @@ void PipBoyMenuAccessibility::Reset()
 {
     m_isOpen = false;
     m_currentPage = Page::STAT;
-    m_lastTab = -1;
 
     // Reset all page handlers
     if (m_inventoryPage) m_inventoryPage->Reset();
     if (m_dataPage) m_dataPage->Reset();
     if (m_mapPage) m_mapPage->Reset();
+    if (m_statsPage) m_statsPage->Reset();
+    if (m_radioPage) m_radioPage->Reset();
 }
 
 PipBoyMenuAccessibility::Page PipBoyMenuAccessibility::GetCurrentPage(RE::IMenu* a_menu)
@@ -197,14 +161,16 @@ PipBoyMenuAccessibility::Page PipBoyMenuAccessibility::GetCurrentPage(RE::IMenu*
 PipBoyPageBase* PipBoyMenuAccessibility::GetActivePage()
 {
     switch (m_currentPage) {
+        case Page::STAT:
+            return m_statsPage.get();
         case Page::INV:
             return m_inventoryPage.get();
         case Page::DATA:
             return m_dataPage.get();
         case Page::MAP:
             return m_mapPage.get();
-        case Page::STAT:
         case Page::RADIO:
+            return m_radioPage.get();
         default:
             return nullptr;
     }
@@ -220,9 +186,8 @@ void PipBoyMenuAccessibility::SwitchToPage(Page a_newPage)
         oldPage->OnPageDeactivated();
     }
 
-    // Update current page and reset tab tracking
+    // Update current page
     m_currentPage = a_newPage;
-    m_lastTab = -1;
 
     // Announce page change
     SpeakText(GetLocalizedPageName(a_newPage));
