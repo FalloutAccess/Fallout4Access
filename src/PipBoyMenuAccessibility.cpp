@@ -208,6 +208,17 @@ std::string PipBoyMenuAccessibility::GetLocalizedPageName(Page a_page)
     return "Unknown";
 }
 
+void PipBoyMenuAccessibility::AnnounceInventoryStatus()
+{
+    if (!m_isOpen || m_currentPage != Page::INV) {
+        return;
+    }
+
+    if (m_inventoryPage) {
+        m_inventoryPage->AnnounceCarryWeightAndCaps();
+    }
+}
+
 void PipBoyMenuAccessibility::SpeakText(const std::string& a_text, bool a_interrupt)
 {
     SpeechManager::GetSingleton()->Speak(a_text, a_interrupt);

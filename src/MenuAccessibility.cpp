@@ -51,7 +51,7 @@ RE::BSEventNotifyControl MenuAccessibility::ProcessEvent(
 bool MenuAccessibility::ShouldHandleEvent(const RE::InputEvent*)
 {
     // Only handle events when a tracked menu is open
-    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen || m_examineMenuOpen || m_powerArmorModMenuOpen || m_cookingMenuOpen || m_robotModMenuOpen || m_levelUpMenuOpen;
+    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen || m_examineMenuOpen || m_powerArmorModMenuOpen || m_cookingMenuOpen || m_robotModMenuOpen || m_levelUpMenuOpen || m_workshopMenuOpen;
 }
 
 void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
@@ -301,10 +301,16 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
         }
     }
 
-    // H key - contextual info (combat stats in menus for now, extensible for menu-specific info later)
+    // H key - contextual info depending on active menu
     if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x48) {  // VK_H
-        REX::INFO("MenuAccessibility: H pressed, announcing combat stats");
-        ContextualInfoAnnouncer::GetSingleton()->AnnounceCombatStats();
+        if (m_pipBoyMenuOpen) {
+            PipBoyMenuAccessibility::GetSingleton()->AnnounceInventoryStatus();
+        } else if (m_workshopMenuOpen) {
+            WorkshopMenuAccessibility::GetSingleton()->AnnounceSettlementStats();
+        } else {
+            REX::INFO("MenuAccessibility: H pressed, announcing combat stats");
+            ContextualInfoAnnouncer::GetSingleton()->AnnounceCombatStats();
+        }
     }
 }
 
@@ -399,6 +405,14 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
         LoadingMenuHook::GetSingleton()->Install();
         LoadingMenuHook::GetSingleton()->ResetState();
         LoadingMenuHook::GetSingleton()->SetMenuOpen(true);
+    } else if (a_menuName == "WorkshopMenu"sv) {
+        m_workshopMenuOpen = true;
+        REX::INFO("WorkshopMenu opened");
+        WorkshopMenuAccessibility::GetSingleton()->OnWorkshopMenuOpened();
+    } else if (a_menuName == "Workshop_CaravanMenu"sv) {
+        m_caravanMenuOpen = true;
+        REX::INFO("Workshop_CaravanMenu opened");
+        WorkshopCaravanMenuAccessibility::GetSingleton()->OnCaravanMenuOpened();
     }
 }
 
@@ -467,6 +481,14 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
         m_loadingMenuOpen = false;
         REX::INFO("LoadingMenu closed");
         LoadingMenuHook::GetSingleton()->SetMenuOpen(false);
+    } else if (a_menuName == "WorkshopMenu"sv) {
+        m_workshopMenuOpen = false;
+        REX::INFO("WorkshopMenu closed");
+        WorkshopMenuAccessibility::GetSingleton()->OnWorkshopMenuClosed();
+    } else if (a_menuName == "Workshop_CaravanMenu"sv) {
+        m_caravanMenuOpen = false;
+        REX::INFO("Workshop_CaravanMenu closed");
+        WorkshopCaravanMenuAccessibility::GetSingleton()->OnCaravanMenuClosed();
     }
 }
 

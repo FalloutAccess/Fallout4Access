@@ -21,6 +21,9 @@ public:
     void CheckTabChange() override;
     void Reset() override;
 
+    // Announce carry weight and caps (called on H key press)
+    void AnnounceCarryWeightAndCaps();
+
 private:
     // Tab localization keys (ordered by tab index)
     static constexpr const char* kTabKeys[] = {

@@ -31,6 +31,9 @@ public:
     // Getter for map page (needed by MenuAccessibility for scanner keys)
     PipBoyMapPage* GetMapPage() { return m_mapPage.get(); }
 
+    // Announce carry weight and caps (H key on INV page)
+    void AnnounceInventoryStatus();
+
 private:
     PipBoyMenuAccessibility();
     ~PipBoyMenuAccessibility() = default;

@@ -68,6 +68,21 @@ Page/Tab state:
   - CurrentPage           (int) 0=STAT, 1=INV, 2=DATA, 3=MAP, 4=RADIO
   - CurrentTab            (int) sub-tab index within current page
 
+Player status (DataObj members):
+  - CurrWeight            (number) current carry weight
+  - MaxWeight             (number) maximum carry weight
+  - Caps                  (uint) player's bottlecap currency count
+
+Bottom bar text fields (only on INV page frames):
+  - root.Menu_mc.BottomBar_mc.Info_mc.Weight_tf.text  (string) "120/250" carry weight
+  - root.Menu_mc.BottomBar_mc.Info_mc.Caps_tf.text    (string) caps count
+  - root.Menu_mc.BottomBar_mc.Info_mc.HP_tf.text      (string) hit points
+  - root.Menu_mc.BottomBar_mc.Info_mc.AP_tf.text      (string) action points
+  - root.Menu_mc.BottomBar_mc.Info_mc.LVL_tf.text     (string) player level
+  - root.Menu_mc.BottomBar_mc.Info_mc.Date_tf.text    (string) in-game date
+  - root.Menu_mc.BottomBar_mc.Info_mc.Time_tf.text    (string) in-game time
+  - root.Menu_mc.BottomBar_mc.Info_mc.Location_tf.text (string) current location
+
 Inventory arrays:
   - InvItems              (array) all inventory items
   - InvSelectedItems      (array) selected index for each tab [7 elements]
@@ -109,6 +124,36 @@ Pip-Boy pages:
   - DATA (2): Quests, Workshops, Stats tabs
   - MAP (3): World Map, Local Map tabs
   - RADIO (4): Radio stations list
+
+Map marker data (from DataObj, populated by C++):
+  - WorldMapMarkers       (array) all world map markers
+  - LocalMapMarkers       (array) all local map markers
+
+Map holders (display containers):
+  - root.WorldMapHolder_mc - World map display
+  - root.LocalMapHolder_mc - Local map display
+  Note: MarkerInfoA is a local reference in the AS3 class, not accessible via GetVariable
+
+Map marker properties (MarkerInfoA[i]):
+  - name                  (string) location name
+  - type                  (uint) marker type ID (0-85)
+  - arrayIndex            (uint) unique marker ID for selection
+  - x, y                  (number) world coordinates
+  - undiscovered          (bool) not yet discovered
+  - dungeonCleared        (bool) location cleared
+  - workshopOwned         (bool) player-owned settlement
+  - workshopPopulation    (uint) settlement population
+  - workshopHappyPct      (uint) settlement happiness percentage
+
+Map selection function:  root.Menu_mc.MapPage_mc.SetCenterMarker(arrayIndex)
+Local map function:      root.Menu_mc.LocalMapPage_mc.SetCenterMarker(arrayIndex)
+
+Common marker types:
+  - 0: Cave, 1: City, 2: Diamond City
+  - 13: Settlement, 15: Vault
+  - 78-80: Quest markers
+  - 81: Custom Marker, 82: Player Location
+  - 83: Power Armor, 84: Dogmeat, 85: Companion
 ```
 
 ## HUDMenu.swf
@@ -391,6 +436,12 @@ Pip-Boy specific:
   - Q:           0x51 (Previous tab)
   - E:           0x45 (Next tab)
   - 1-5:         0x31-0x35 (Direct page select)
+
+Scanner keys (used for map navigation):
+  - Page Up:     0x21 (VK_PRIOR) - Previous marker
+  - Page Down:   0x22 (VK_NEXT) - Next marker
+  - Home:        0x24 (VK_HOME) - Announce details / Set reference (with Shift)
+  - End:         0x23 (VK_END) - Cycle filter
 
 Device types (RE::INPUT_DEVICE):
   - kKeyboard:   0
