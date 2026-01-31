@@ -1,8 +1,7 @@
 #include "AutoWalk.h"
 #include "SpeechManager.h"
-#include <SRAL.h>
-#include <cmath>
 #include <Windows.h>
+#undef ERROR
 
 static AutoWalk* s_singleton = nullptr;
 
@@ -18,32 +17,10 @@ void AutoWalk::Initialize()
 {
     if (m_initialized) return;
 
-    // Find the GlobalVariables from fallout4access.esp
-    auto* dataHandler = RE::TESDataHandler::GetSingleton();
-    if (!dataHandler) {
-        REX::WARN("AutoWalk: TESDataHandler not available");
-        return;
-    }
-
-    // Try to find our globals by EditorID
-    for (auto* global : dataHandler->GetFormArray<RE::TESGlobal>()) {
-        if (!global) continue;
-
-        const char* editorID = global->GetFormEditorID();
-        if (!editorID) continue;
-
-        if (strcmp(editorID, "F4A_TargetFormID") == 0) {
-            m_globalTargetFormID = global;
-            REX::INFO("AutoWalk: Found F4A_TargetFormID global");
-        }
-        else if (strcmp(editorID, "F4A_StopDistance") == 0) {
-            m_globalStopDistance = global;
-            REX::INFO("AutoWalk: Found F4A_StopDistance global");
-        }
-    }
-
-    if (!m_globalTargetFormID || !m_globalStopDistance) {
-        REX::WARN("AutoWalk: fallout4access.esp not loaded or missing GlobalVariables");
+    // Find the quest by EditorID
+    m_quest = RE::TESForm::GetFormByEditorID<RE::TESQuest>("F4A_AutoWalkQuest");
+    if (!m_quest) {
+        REX::WARN("AutoWalk: F4A_AutoWalkQuest not found");
         REX::WARN("AutoWalk: Auto-walk feature disabled. Install fallout4access.esp to enable.");
         return;
     }
@@ -84,13 +61,40 @@ void AutoWalk::WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance,
     m_stopDistance = a_stopDistance;
     m_onArrival = a_onArrival;
 
-    // Set the stop distance global
-    m_globalStopDistance->value = a_stopDistance;
+    // Dispatch to Papyrus with FormID as int32 (no float precision loss)
+    auto* gameVM = RE::GameVM::GetSingleton();
+    if (!gameVM) return;
+    auto vm = gameVM->GetVM();
+    if (!vm) return;
 
-    // Set the target FormID global - Papyrus will detect this and start walking
-    m_globalTargetFormID->value = static_cast<float>(a_target->GetFormID());
+    auto& handlePolicy = vm->GetObjectHandlePolicy();
+    auto handle = handlePolicy.GetHandleForObject(
+        RE::BSScript::GetVMTypeID<RE::TESQuest>(),
+        m_quest);
 
-    REX::INFO("AutoWalk: Set target FormID {} for {}, distance: {}",
+    if (handle == handlePolicy.EmptyHandle()) {
+        REX::ERROR("AutoWalk: Failed to get quest VM handle");
+        m_targetRef = nullptr;
+        m_onArrival = nullptr;
+        return;
+    }
+
+    bool dispatched = vm->DispatchMethodCall(
+        handle,
+        RE::BSFixedString("F4A:AutoWalk"),
+        RE::BSFixedString("OnWalkToTarget"),
+        nullptr,
+        static_cast<std::int32_t>(a_target->GetFormID()),
+        a_stopDistance);
+
+    if (!dispatched) {
+        REX::ERROR("AutoWalk: DispatchMethodCall OnWalkToTarget failed");
+        m_targetRef = nullptr;
+        m_onArrival = nullptr;
+        return;
+    }
+
+    REX::INFO("AutoWalk: Dispatched walk to FormID {:08X} for {}, distance: {}",
               a_target->GetFormID(), a_target->GetDisplayFullName(), distance);
 }
 
@@ -98,9 +102,25 @@ void AutoWalk::Stop()
 {
     if (!m_targetRef) return;
 
-    if (m_initialized && m_globalTargetFormID) {
-        // Send stop signal (-1) - Papyrus will detect this and call StopWalking()
-        m_globalTargetFormID->value = -1.0f;
+    if (m_initialized && m_quest) {
+        auto* gameVM = RE::GameVM::GetSingleton();
+        if (gameVM) {
+            auto vm = gameVM->GetVM();
+            if (vm) {
+                auto& handlePolicy = vm->GetObjectHandlePolicy();
+                auto handle = handlePolicy.GetHandleForObject(
+                    RE::BSScript::GetVMTypeID<RE::TESQuest>(),
+                    m_quest);
+
+                if (handle != handlePolicy.EmptyHandle()) {
+                    vm->DispatchMethodCall(
+                        handle,
+                        RE::BSFixedString("F4A:AutoWalk"),
+                        RE::BSFixedString("OnStopWalking"),
+                        nullptr);
+                }
+            }
+        }
     }
 
     m_targetRef = nullptr;

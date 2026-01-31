@@ -1,12 +1,13 @@
 Scriptname F4A:AutoWalk extends Quest conditional
 {
   Auto-walk system for Fallout4Access scanner.
-  Walks player to a target object set by the F4SE plugin via GlobalVariable.
+  F4SE plugin calls OnWalkToTarget/OnStopWalking via DispatchMethodCall,
+  passing FormIDs as proper int32 (no float precision loss from globals).
 
   Setup:
   1. Attach this script to F4A_AutoWalkQuest
   2. Set the property values in Creation Kit
-  3. F4SE plugin writes target FormID to F4A_TargetFormID global
+  3. F4SE plugin calls OnWalkToTarget(formID, stopDistance) directly
 }
 
 ; === Properties (set in Creation Kit) ===
@@ -28,12 +29,6 @@ group References
     Actor property PlayerRef auto const mandatory
     {Player reference - usually Game.GetPlayer()}
 
-    GlobalVariable property F4A_TargetFormID auto const mandatory
-    {Global storing target FormID from F4SE plugin}
-
-    GlobalVariable property F4A_StopDistance auto const mandatory
-    {Global storing how close to stop (default 100)}
-
     Idle property IdleStop auto const
     {Optional idle to play when stopping}
 endGroup
@@ -49,31 +44,15 @@ ObjectReference property CurrentTarget = None auto hidden
 float property CheckInterval = 0.25 auto hidden
 {How often to check arrival (seconds)}
 
+float fStopDistance = 100.0
+
 ; Timer ID for arrival checking
 int TimerArrivalCheck = 1 const
-
-; Timer ID for polling GlobalVariable
-int TimerTargetPoll = 2 const
 
 ; === Events ===
 
 Event OnInit()
-    ; Start polling for target from F4SE plugin
-    Debug.Trace("F4A:AutoWalk initialized, polling for targets")
-    StartTimer(0.5, TimerTargetPoll)
-EndEvent
-
-Event OnTimer(int aiTimerID)
-    if aiTimerID == TimerTargetPoll
-        CheckForNewTarget()
-        ; Continue polling
-        StartTimer(0.1, TimerTargetPoll)
-
-    elseIf aiTimerID == TimerArrivalCheck
-        if IsWalking
-            CheckArrival()
-        endIf
-    endIf
+    Debug.Trace("F4A:AutoWalk initialized")
 EndEvent
 
 Event Actor.OnCombatStateChanged(Actor akSender, Actor akTarget, int aeCombatState)
@@ -87,45 +66,36 @@ Event Actor.OnCombatStateChanged(Actor akSender, Actor akTarget, int aeCombatSta
     endIf
 EndEvent
 
-; === Main Functions ===
+; === Functions called from C++ via DispatchMethodCall ===
 
-Function CheckForNewTarget()
-    {Check if F4SE plugin set a new target FormID or stop signal}
+Function OnWalkToTarget(int aiFormID, float afStopDistance)
+    {Called by F4SE plugin - receives FormID as proper int32, no float precision loss}
 
-    float targetFormID = F4A_TargetFormID.GetValue()
+    Form targetForm = Game.GetForm(aiFormID)
 
-    ; Check for stop signal (-1) from C++
-    if targetFormID < 0
-        F4A_TargetFormID.SetValue(0)
-        if IsWalking
-            Debug.Trace("F4A:AutoWalk - Stop signal received from plugin")
-            StopWalking(false)
-        endIf
-        return
-    endIf
-
-    if targetFormID > 0
-        ; Get the actual reference from FormID
-        ; The FormID is a runtime ID from the scanner (NPC, door, container, etc.)
-        int formID = targetFormID as int
-        Form targetForm = Game.GetForm(formID)
-
-        if targetForm
-            ObjectReference targetRef = targetForm as ObjectReference
-            if targetRef && targetRef != CurrentTarget
-                ; Clear the global so we don't re-trigger
-                F4A_TargetFormID.SetValue(0)
-
-                ; Start walking to this target
-                StartWalkingTo(targetRef)
-            endIf
+    if targetForm
+        ObjectReference targetRef = targetForm as ObjectReference
+        if targetRef
+            fStopDistance = afStopDistance
+            StartWalkingTo(targetRef)
         else
-            ; Invalid FormID, clear it
-            F4A_TargetFormID.SetValue(0)
-            Debug.Trace("F4A:AutoWalk - Invalid FormID: " + formID)
+            Debug.Trace("F4A:AutoWalk - Form is not an ObjectReference: " + aiFormID)
         endIf
+    else
+        Debug.Trace("F4A:AutoWalk - Invalid FormID from plugin: " + aiFormID)
     endIf
 EndFunction
+
+Function OnStopWalking()
+    {Called by F4SE plugin to stop walking}
+
+    if IsWalking
+        Debug.Trace("F4A:AutoWalk - Stop signal received from plugin")
+        StopWalking(false)
+    endIf
+EndFunction
+
+; === Walking Functions ===
 
 Function StartWalkingTo(ObjectReference akTarget)
     {Begin walking to the specified target}
@@ -141,7 +111,7 @@ Function StartWalkingTo(ObjectReference akTarget)
     endIf
 
     CurrentTarget = akTarget
-    float stopDist = F4A_StopDistance.GetValue()
+    float stopDist = fStopDistance
     if stopDist <= 0
         stopDist = 100.0
     endIf
@@ -176,6 +146,14 @@ Function StartWalkingTo(ObjectReference akTarget)
     StartTimer(CheckInterval, TimerArrivalCheck)
 EndFunction
 
+Event OnTimer(int aiTimerID)
+    if aiTimerID == TimerArrivalCheck
+        if IsWalking
+            CheckArrival()
+        endIf
+    endIf
+EndEvent
+
 Function CheckArrival()
     {Check if we've arrived at destination}
 
@@ -191,7 +169,7 @@ Function CheckArrival()
         return
     endIf
 
-    float stopDist = F4A_StopDistance.GetValue()
+    float stopDist = fStopDistance
     if stopDist <= 0
         stopDist = 100.0
     endIf

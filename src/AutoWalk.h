@@ -6,9 +6,8 @@
 /**
  * AutoWalk - Controls automatic walking to scanner-selected objects.
  *
- * Communicates with Papyrus script F4A:AutoWalk via GlobalVariables:
- * - F4A_TargetFormID: C++ writes target FormID here, Papyrus reads and walks
- * - F4A_StopDistance: How close to stop (default 100 units)
+ * Communicates with Papyrus script F4A:AutoWalk via DispatchMethodCall,
+ * passing FormIDs as proper int32 arguments (no float precision loss).
  *
  * Requires: fallout4access.esp with F4A_AutoWalkQuest and associated records.
  */
@@ -17,11 +16,11 @@ class AutoWalk
 public:
     static AutoWalk* GetSingleton();
 
-    // Initialize - find GlobalVariables (call after data is loaded)
+    // Initialize - find quest form (call after data is loaded)
     void Initialize();
 
     // Start walking to a target reference
-    // Sets the GlobalVariable for Papyrus to pick up
+    // Calls Papyrus OnWalkToTarget with FormID as int32
     void WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance = 100.0f,
                 std::function<void()> a_onArrival = nullptr);
 
@@ -42,9 +41,8 @@ private:
 
     void CheckArrival();
 
-    // GlobalVariables for Papyrus communication
-    RE::TESGlobal* m_globalTargetFormID = nullptr;
-    RE::TESGlobal* m_globalStopDistance = nullptr;
+    // Quest for Papyrus VM communication
+    RE::TESQuest* m_quest = nullptr;
 
     // State tracking (for arrival callback)
     RE::TESObjectREFR* m_targetRef = nullptr;
