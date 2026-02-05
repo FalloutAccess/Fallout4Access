@@ -94,8 +94,9 @@ void AutoWalk::WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance,
         return;
     }
 
+    const char* name = a_target->GetDisplayFullName();
     REX::INFO("AutoWalk: Dispatched walk to FormID {:08X} for {}, distance: {}",
-              a_target->GetFormID(), a_target->GetDisplayFullName(), distance);
+              a_target->GetFormID(), name ? name : "<unnamed>", distance);
 }
 
 void AutoWalk::Stop()
