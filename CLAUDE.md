@@ -37,6 +37,7 @@ xmake build && xmake install-mo2
 
 - **SpeechManager** - `SpeechManager::GetSingleton()->Speak()` - Centralized speech output with automatic logging
 - **SRAL** - `SRAL_Initialize()`, `SRAL_GetCurrentEngine()` (internal use only - use SpeechManager for speech)
+- **RE::UIUtils** - `RE::UIUtils::PlayMenuSound("UIMenuOK")` - Play UI sounds. See [docs/audio-playback-api.md](docs/audio-playback-api.md)
 - **RE::UI** - UI system access and menu event registration
 - **RE::IMenu** - Menu interface with Scaleform movie access
 - **RE::Scaleform::GFx** - Flash/Scaleform UI framework for accessing menu elements

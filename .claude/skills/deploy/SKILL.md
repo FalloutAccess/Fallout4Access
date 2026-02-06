@@ -18,7 +18,7 @@ Build the fallout4access plugin and deploy it to Mod Organizer 2 for testing.
 
 2. **Install to MO2**:
    ```bash
-   xmake install-mo2
+   xmake install
    ```
    This copies the DLL, PDB, and Data files to the MO2 mods folder.
 
