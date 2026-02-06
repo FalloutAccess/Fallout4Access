@@ -17,6 +17,8 @@
 #include "SpeechManager.h"
 #include "VATSCallbackHook.h"
 #include "VATSMenuHook.h"
+#include "WorkshopCaravanMenuAccessibility.h"
+#include "WorkshopMenuAccessibility.h"
 #include <SRAL.h>
 
 void OnF4SEMessage(F4SE::MessagingInterface::Message* a_msg)
@@ -105,6 +107,12 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 
     // Install LoadingMenu hook for loading screen accessibility
     LoadingMenuHook::GetSingleton()->Install();
+
+    // Install WorkshopMenu hook for building accessibility
+    WorkshopMenuAccessibility::GetSingleton()->Install();
+
+    // Install Workshop_CaravanMenu hook for supply line accessibility
+    WorkshopCaravanMenuAccessibility::GetSingleton()->Install();
 
     // Note: CrosshairAccessibility is registered in OnF4SEMessage when game data is ready
     // because it needs PlayerCharacter to be available

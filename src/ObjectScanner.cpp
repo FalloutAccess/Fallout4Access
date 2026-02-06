@@ -13,6 +13,7 @@
 #include <RE/P/PowerArmor.h>
 #include <RE/T/TES.h>
 #include <RE/T/TESFurniture.h>
+#include <RE/W/Workshop.h>
 #include <RE/G/GridCellArray.h>
 
 // Static storage for singleton
@@ -49,6 +50,26 @@ void ObjectScanner::Register()
                 REX::WARN("ObjectScanner: PlayerControls not available yet");
             }
         });
+    }
+}
+
+void ObjectScanner::SetWorkshopMode(bool a_active)
+{
+    if (a_active && !m_workshopModeActive) {
+        m_preWorkshopCategory = m_currentCategory;
+        m_currentCategory = ScanCategory::Workshop;
+        m_currentSubcategory = ScanSubcategory::All;
+        m_scannedObjects.clear();
+        m_currentIndex = -1;
+        m_workshopModeActive = true;
+        REX::INFO("ObjectScanner: Workshop mode activated");
+    } else if (!a_active && m_workshopModeActive) {
+        m_currentCategory = m_preWorkshopCategory;
+        m_currentSubcategory = ScanSubcategory::All;
+        m_scannedObjects.clear();
+        m_currentIndex = -1;
+        m_workshopModeActive = false;
+        REX::INFO("ObjectScanner: Workshop mode deactivated");
     }
 }
 
@@ -95,8 +116,9 @@ void ObjectScanner::OnButtonEvent(const RE::ButtonEvent* a_event)
         }
     }
 
-    // Check if Shift is held using REX::W32 (returns negative if key is down)
+    // Check modifier keys using REX::W32 (returns negative if key is down)
     bool shiftHeld = REX::W32::GetKeyState(REX::W32::VK_SHIFT) < 0;
+    bool ctrlHeld = REX::W32::GetKeyState(REX::W32::VK_CONTROL) < 0;
 
     if (idCode == NUMPAD_5) {
         REX::INFO("ObjectScanner: Numpad 5 pressed, scanning...");
@@ -118,7 +140,10 @@ void ObjectScanner::OnButtonEvent(const RE::ButtonEvent* a_event)
             SelectPrevious();
         }
     } else if (idCode == HOME) {
-        if (shiftHeld) {
+        if (ctrlHeld && shiftHeld) {
+            REX::INFO("ObjectScanner: Ctrl+Shift+Home pressed, debug info");
+            DebugAnnounceCurrentObject();
+        } else if (shiftHeld) {
             // Toggle: if already walking, stop; otherwise start walking
             if (AutoWalk::GetSingleton()->IsWalking()) {
                 REX::INFO("ObjectScanner: Shift+Home pressed, stopping walk");
@@ -137,6 +162,11 @@ void ObjectScanner::OnButtonEvent(const RE::ButtonEvent* a_event)
         REX::INFO("ObjectScanner: End pressed, cycling subcategory");
         CycleSubcategory();
     } else if (idCode == H_KEY) {
+        // Skip if workshop menu is open — it handles H key for settlement stats
+        auto* ui = RE::UI::GetSingleton();
+        if (ui && ui->GetMenu("WorkshopMenu"sv)) {
+            return;
+        }
         REX::INFO("ObjectScanner: H pressed, announcing combat stats");
         ContextualInfoAnnouncer::GetSingleton()->AnnounceCombatStats();
     }
@@ -174,6 +204,11 @@ void ObjectScanner::NextCategory()
         m_currentCategory = static_cast<ScanCategory>(next);
         m_currentSubcategory = ScanSubcategory::All;
 
+        // Skip Workshop category when not in workshop mode
+        if (m_currentCategory == ScanCategory::Workshop && !m_workshopModeActive) {
+            continue;
+        }
+
         // Clear and rescan
         m_scannedObjects.clear();
         m_currentIndex = -1;
@@ -201,6 +236,11 @@ void ObjectScanner::PreviousCategory()
         }
         m_currentCategory = static_cast<ScanCategory>(prev);
         m_currentSubcategory = ScanSubcategory::All;
+
+        // Skip Workshop category when not in workshop mode
+        if (m_currentCategory == ScanCategory::Workshop && !m_workshopModeActive) {
+            continue;
+        }
 
         // Clear and rescan
         m_scannedObjects.clear();
@@ -230,6 +270,7 @@ const char* ObjectScanner::GetCategoryName(ScanCategory a_category)
         case ScanCategory::Locations: return "Locations";
         case ScanCategory::Companions: return "Companions";
         case ScanCategory::PowerArmor: return "Power Armor";
+        case ScanCategory::Workshop: return "Workshop objects";
         default: return "Unknown";
     }
 }
@@ -567,6 +608,20 @@ bool ObjectScanner::IsInteractable(RE::TESObjectREFR* a_ref)
         return true;
     }
 
+    // Skip objects the game marks as non-activatable by the player
+    // (e.g. invisible sound emitters, mod-internal markers)
+    if (auto* keywordForm = baseObj->As<RE::BGSKeywordForm>()) {
+        static RE::BGSKeyword* blockActivationKW = nullptr;
+        static bool kwLookedUp = false;
+        if (!kwLookedUp) {
+            blockActivationKW = RE::TESForm::GetFormByEditorID<RE::BGSKeyword>("BlockPlayerActivation");
+            kwLookedUp = true;
+        }
+        if (blockActivationKW && keywordForm->HasKeyword(blockActivationKW)) {
+            return false;
+        }
+    }
+
     // Check if object is activatable (has activation prompt)
     // This filters out static objects like fence posts, rocks, etc.
     RE::BSString activateText;
@@ -639,6 +694,10 @@ void ObjectScanner::ScanObjects()
     }
 
     // These categories use different scanning methods
+    if (m_currentCategory == ScanCategory::Workshop) {
+        ScanWorkshopObjects();
+        return;
+    }
     if (m_currentCategory == ScanCategory::QuestMarkers) {
         ScanQuestMarkers();
         return;
@@ -770,6 +829,111 @@ void ObjectScanner::ScanObjects()
 
     REX::INFO("ObjectScanner: Found {} {}",
         m_scannedObjects.size(), GetCategoryName(m_currentCategory));
+}
+
+void ObjectScanner::ScanWorkshopObjects()
+{
+    auto* player = RE::PlayerCharacter::GetSingleton();
+    if (!player) {
+        REX::WARN("ObjectScanner: No player singleton");
+        return;
+    }
+
+    RE::NiPoint3 playerPos = player->GetPosition();
+    m_lastScanPosition = playerPos;
+    m_scannedObjects.clear();
+    m_currentIndex = -1;
+
+    // Find the active workshop
+    auto* workshop = RE::Workshop::FindNearestValidWorkshop(*player);
+    if (!workshop) {
+        REX::WARN("ObjectScanner: No valid workshop found nearby");
+        return;
+    }
+
+    struct TempObject {
+        RE::TESObjectREFR* ref;
+        std::string name;
+        float distance;
+        float zDiff;
+    };
+    std::vector<TempObject> tempObjects;
+    float playerZ = playerPos.z;
+
+    auto scanCell = [&](RE::TESObjectCELL* cell) {
+        if (!cell) return;
+        if (cell->cellState != RE::TESObjectCELL::CELL_STATE::kAttached) return;
+
+        for (auto& refPtr : cell->references) {
+            auto* ref = refPtr.get();
+            if (!ref) continue;
+            if (ref == player) continue;
+            if (ref == workshop) continue;
+            if (ref->IsDeleted() || ref->IsDisabled()) continue;
+
+            // Skip NPCs/actors
+            if (ref->Is(RE::ENUM_FORM_ID::kACHR)) continue;
+
+            RE::NiPoint3 objPos = ref->GetPosition();
+
+            // Must be within workshop buildable area
+            if (!RE::Workshop::IsLocationWithinBuildableArea(*workshop, objPos)) continue;
+
+            const char* name = ref->GetDisplayFullName();
+            if (!name || name[0] == '\0') continue;
+
+            float distSq = playerPos.GetSquaredDistance(objPos);
+            float zDiff = objPos.z - playerZ;
+
+            tempObjects.push_back({ref, name, std::sqrt(distSq), zDiff});
+        }
+    };
+
+    auto* tes = RE::TES::GetSingleton();
+    if (!tes) return;
+
+    if (tes->interiorCell) {
+        scanCell(tes->interiorCell);
+    } else {
+        auto* gridCells = tes->gridCells;
+        if (gridCells) {
+            std::uint32_t dimension = gridCells->dimension;
+            for (std::uint32_t x = 0; x < dimension; ++x) {
+                for (std::uint32_t y = 0; y < dimension; ++y) {
+                    auto* gridCell = gridCells->Get(x, y);
+                    if (gridCell && gridCell->cell) {
+                        scanCell(gridCell->cell);
+                    }
+                }
+            }
+        } else {
+            auto* cell = player->GetParentCell();
+            if (cell) {
+                scanCell(cell);
+            }
+        }
+    }
+
+    // Sort by same-level first, then distance
+    std::sort(tempObjects.begin(), tempObjects.end(),
+        [](const TempObject& a, const TempObject& b) {
+            bool aSameLevel = std::abs(a.zDiff) <= ELEVATION_THRESHOLD;
+            bool bSameLevel = std::abs(b.zDiff) <= ELEVATION_THRESHOLD;
+            if (aSameLevel != bSameLevel) {
+                return aSameLevel;
+            }
+            return a.distance < b.distance;
+        });
+
+    for (const auto& obj : tempObjects) {
+        m_scannedObjects.push_back({obj.ref, obj.name});
+    }
+
+    if (!m_scannedObjects.empty()) {
+        m_currentIndex = 0;
+    }
+
+    REX::INFO("ObjectScanner: Found {} workshop objects", m_scannedObjects.size());
 }
 
 void ObjectScanner::ScanQuestMarkers()
@@ -1676,6 +1840,119 @@ void ObjectScanner::WalkToCurrentObject()
         }
         SpeakText("Arrived");
     });
+}
+
+void ObjectScanner::DebugAnnounceCurrentObject()
+{
+    if (m_scannedObjects.empty() || m_currentIndex < 0) {
+        SpeakText("No object selected");
+        return;
+    }
+
+    const auto& obj = m_scannedObjects[m_currentIndex];
+
+    if (obj.isVirtual) {
+        SpeakText("Virtual marker, no reference to inspect");
+        REX::INFO("=== DEBUG OBJECT INFO ===");
+        REX::INFO("  Virtual quest marker: '{}'", obj.name);
+        REX::INFO("  Position: ({:.0f}, {:.0f}, {:.0f})", obj.virtualPos.x, obj.virtualPos.y, obj.virtualPos.z);
+        REX::INFO("=========================");
+        return;
+    }
+
+    if (!obj.ref) {
+        SpeakText("Null reference");
+        return;
+    }
+
+    auto* ref = obj.ref;
+
+    // Gather all debug info
+    std::uint32_t refFormID = ref->GetFormID();
+    RE::NiPoint3 pos = ref->GetPosition();
+    float dist = GetDistanceToObject(ref);
+
+    // Base object info
+    auto* baseObj = ref->GetObjectReference();
+    std::uint32_t baseFormID = baseObj ? baseObj->GetFormID() : 0;
+    const char* baseEditorID = baseObj ? baseObj->GetFormEditorID() : nullptr;
+    RE::ENUM_FORM_ID baseFormType = baseObj ? baseObj->GetFormType() : RE::ENUM_FORM_ID::kNONE;
+
+    // Display name
+    const char* displayName = ref->GetDisplayFullName();
+
+    // Activation text
+    RE::BSString activateText;
+    bool hasActivation = baseObj ? baseObj->GetActivateText(ref, activateText) : false;
+
+    // 3D loaded state
+    bool is3DLoaded = ref->Get3D() != nullptr;
+
+    // Flags
+    bool isDeleted = ref->IsDeleted();
+    bool isDisabled = ref->IsDisabled();
+
+    // Cell info
+    auto* cell = ref->GetParentCell();
+    const char* cellName = cell ? cell->GetFullName() : nullptr;
+    bool cellIsInterior = cell ? cell->IsInterior() : false;
+
+    // Log everything in detail
+    REX::INFO("=== DEBUG OBJECT INFO ===");
+    REX::INFO("  Display Name: '{}'", displayName ? displayName : "(null)");
+    REX::INFO("  Ref FormID: {:08X}", refFormID);
+    REX::INFO("  Base FormID: {:08X}", baseFormID);
+    REX::INFO("  Base EditorID: '{}'", baseEditorID ? baseEditorID : "(null)");
+    REX::INFO("  Base Form Type: {}", static_cast<int>(baseFormType));
+    REX::INFO("  Position: ({:.0f}, {:.0f}, {:.0f})", pos.x, pos.y, pos.z);
+    REX::INFO("  Distance: {:.0f}", dist);
+    REX::INFO("  3D Loaded: {}", is3DLoaded);
+    REX::INFO("  Deleted: {}, Disabled: {}", isDeleted, isDisabled);
+    REX::INFO("  Cell: '{}' (interior={})", cellName ? cellName : "(null)", cellIsInterior);
+    REX::INFO("  Has Activation: {} (text='{}')", hasActivation,
+        hasActivation ? activateText.c_str() : "");
+
+    // Keywords from base object
+    if (baseObj) {
+        if (auto* keywordForm = baseObj->As<RE::BGSKeywordForm>()) {
+            if (keywordForm->numKeywords > 0 && keywordForm->keywords) {
+                std::string kwList;
+                for (std::uint32_t i = 0; i < keywordForm->numKeywords; ++i) {
+                    auto* kw = keywordForm->keywords[i];
+                    if (kw) {
+                        if (!kwList.empty()) kwList += ", ";
+                        const char* kwEdID = kw->GetFormEditorID();
+                        kwList += kwEdID ? kwEdID : std::format("{:08X}", kw->GetFormID());
+                    }
+                }
+                REX::INFO("  Keywords: [{}]", kwList);
+            } else {
+                REX::INFO("  Keywords: (none)");
+            }
+        }
+    }
+
+    REX::INFO("=========================");
+
+    // Speak a concise summary via screen reader
+    std::string summary = "Debug: ";
+    summary += displayName ? displayName : "(no name)";
+    summary += ", type " + std::to_string(static_cast<int>(baseFormType));
+    summary += ", ref " + std::format("{:08X}", refFormID);
+    summary += ", base " + std::format("{:08X}", baseFormID);
+    if (baseEditorID && baseEditorID[0] != '\0') {
+        summary += ", editor ID " + std::string(baseEditorID);
+    }
+    if (!is3DLoaded) {
+        summary += ", no 3D";
+    }
+    if (hasActivation) {
+        summary += ", activate: " + std::string(activateText.c_str());
+    } else {
+        summary += ", no activation";
+    }
+
+    SpeakText(summary);
 }
 
 void ObjectScanner::SpeakText(const std::string& a_text)
