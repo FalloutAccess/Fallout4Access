@@ -24,6 +24,7 @@ enum class ScanCategory {
 // Generic names that are interpreted based on current category:
 // - Activators: TypeA=Furniture, TypeB=Other
 // - Containers: TypeA=NonEmpty, TypeB=Empty
+// - Doors: TypeA=Locked, TypeB=Cell doors
 enum class ScanSubcategory {
     All,    // No subcategory filtering
     TypeA,  // Category-specific filter A
@@ -86,6 +87,8 @@ private:
     bool IsContainerEmpty(RE::TESObjectREFR* a_ref);
     bool IsDoorLocked(RE::TESObjectREFR* a_ref);
     bool IsDoorOpen(RE::TESObjectREFR* a_ref);
+    bool IsCellDoor(RE::TESObjectREFR* a_ref);
+    std::string GetDoorDestinationName(RE::TESObjectREFR* a_ref);
     const char* GetCategoryName(ScanCategory a_category);
     const char* GetMarkerTypeName(RE::MARKER_TYPE a_type);
 

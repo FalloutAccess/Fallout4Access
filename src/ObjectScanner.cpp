@@ -14,6 +14,7 @@
 #include <RE/T/TES.h>
 #include <RE/T/TESFurniture.h>
 #include <RE/W/Workshop.h>
+#include <RE/E/ExtraTeleport.h>
 #include <RE/G/GridCellArray.h>
 
 // Static storage for singleton
@@ -288,11 +289,6 @@ void ObjectScanner::CycleSubcategory()
     int next = (static_cast<int>(m_currentSubcategory) + 1) % static_cast<int>(ScanSubcategory::COUNT);
     m_currentSubcategory = static_cast<ScanSubcategory>(next);
 
-    // Doors only has All and Locked (skip TypeB)
-    if (m_currentCategory == ScanCategory::Doors && m_currentSubcategory == ScanSubcategory::TypeB) {
-        m_currentSubcategory = ScanSubcategory::All;
-    }
-
     // Clear cached objects to force rescan with new filter
     m_scannedObjects.clear();
     m_currentIndex = -1;
@@ -322,7 +318,7 @@ const char* ObjectScanner::GetSubcategoryName(ScanSubcategory a_subcategory)
         switch (a_subcategory) {
             case ScanSubcategory::All: return "All";
             case ScanSubcategory::TypeA: return "Locked";
-            case ScanSubcategory::TypeB: return "All";  // No separate unlocked filter
+            case ScanSubcategory::TypeB: return "Cell doors";
             default: return "Unknown";
         }
     } else if (m_currentCategory == ScanCategory::Corpses) {
@@ -396,12 +392,13 @@ bool ObjectScanner::MatchesSubcategory(RE::TESObjectREFR* a_ref, ScanSubcategory
         }
     }
 
-    // Door subcategories: TypeA=Locked only
+    // Door subcategories: TypeA=Locked, TypeB=Cell doors
     if (m_currentCategory == ScanCategory::Doors) {
-        if (a_subcategory == ScanSubcategory::TypeA) {
-            return IsDoorLocked(a_ref);  // Locked filter
+        switch (a_subcategory) {
+            case ScanSubcategory::TypeA: return IsDoorLocked(a_ref);
+            case ScanSubcategory::TypeB: return IsCellDoor(a_ref);
+            default: return true;
         }
-        return true;  // All or TypeB shows all doors
     }
 
     // Corpse subcategories: TypeA=Unlooted, TypeB=Looted
@@ -685,6 +682,57 @@ bool ObjectScanner::IsDoorOpen(RE::TESObjectREFR* a_ref)
            state == RE::BGSOpenCloseForm::OPEN_STATE::kOpening;
 }
 
+bool ObjectScanner::IsCellDoor(RE::TESObjectREFR* a_ref)
+{
+    if (!a_ref) return false;
+
+    auto* extraList = a_ref->extraList.get();
+    if (!extraList) return false;
+
+    auto* extraTeleport = extraList->GetByType<RE::ExtraTeleport>();
+    return extraTeleport && extraTeleport->teleportData;
+}
+
+std::string ObjectScanner::GetDoorDestinationName(RE::TESObjectREFR* a_ref)
+{
+    if (!a_ref) return {};
+
+    auto* extraList = a_ref->extraList.get();
+    if (!extraList) return {};
+
+    auto* extraTeleport = extraList->GetByType<RE::ExtraTeleport>();
+    if (!extraTeleport || !extraTeleport->teleportData) return {};
+
+    auto* teleportData = extraTeleport->teleportData;
+
+    // Try transition cell name first
+    if (auto* destCell = teleportData->transitionCell) {
+        const char* cellName = destCell->GetFullName();
+        if (cellName && cellName[0] != '\0') {
+            return cellName;
+        }
+    }
+
+    // Fallback: resolve linked door and get its parent cell name
+    if (teleportData->linkedDoor) {
+        auto destDoorPtr = teleportData->linkedDoor.get();
+        if (destDoorPtr) {
+            auto* destDoor = destDoorPtr.get();
+            if (destDoor) {
+                auto* parentCell = destDoor->GetParentCell();
+                if (parentCell) {
+                    const char* cellName = parentCell->GetFullName();
+                    if (cellName && cellName[0] != '\0') {
+                        return cellName;
+                    }
+                }
+            }
+        }
+    }
+
+    return {};
+}
+
 void ObjectScanner::ScanObjects()
 {
     auto* player = RE::PlayerCharacter::GetSingleton();
@@ -757,7 +805,17 @@ void ObjectScanner::ScanObjects()
                 const char* name = ref->GetDisplayFullName();
                 if (!name || name[0] == '\0') continue;
 
-                tempObjects.push_back({ref, name, std::sqrt(distSq), zDiff});
+                // For cell doors, append destination name
+                std::string objName = name;
+                auto* baseObj = ref->GetObjectReference();
+                if (baseObj && baseObj->GetFormType() == RE::ENUM_FORM_ID::kDOOR) {
+                    std::string destName = GetDoorDestinationName(ref);
+                    if (!destName.empty()) {
+                        objName += ", to " + destName;
+                    }
+                }
+
+                tempObjects.push_back({ref, objName, std::sqrt(distSq), zDiff});
             }
         }
     };
@@ -1475,17 +1533,18 @@ void ObjectScanner::ScanAndAnnounce()
                 objName += " (empty)";
             }
         }
-        // Add status for doors (only if locked or closed)
+        // Add status for doors (locked and/or closed, but skip "closed" for cell doors)
         else if (baseObj && baseObj->GetFormType() == RE::ENUM_FORM_ID::kDOOR) {
             bool isLocked = IsDoorLocked(firstObj.ref);
             bool isOpen = IsDoorOpen(firstObj.ref);
-            if (isLocked || !isOpen) {
-                std::string status;
-                if (isLocked) status = "locked";
-                if (!isOpen) {
-                    if (!status.empty()) status += ", ";
-                    status += "closed";
-                }
+            bool isCellDoor = IsCellDoor(firstObj.ref);
+            std::string status;
+            if (isLocked) status = "locked";
+            if (!isOpen && !isCellDoor) {
+                if (!status.empty()) status += ", ";
+                status += "closed";
+            }
+            if (!status.empty()) {
                 objName += " (" + status + ")";
             }
         }
@@ -1581,17 +1640,18 @@ void ObjectScanner::AnnounceCurrentObject()
                 announcement += " (empty)";
             }
         }
-        // Add status for doors (only if locked or closed)
+        // Add status for doors (locked and/or closed, but skip "closed" for cell doors)
         else if (baseObj && baseObj->GetFormType() == RE::ENUM_FORM_ID::kDOOR) {
             bool isLocked = IsDoorLocked(obj.ref);
             bool isOpen = IsDoorOpen(obj.ref);
-            if (isLocked || !isOpen) {
-                std::string status;
-                if (isLocked) status = "locked";
-                if (!isOpen) {
-                    if (!status.empty()) status += ", ";
-                    status += "closed";
-                }
+            bool isCellDoor = IsCellDoor(obj.ref);
+            std::string status;
+            if (isLocked) status = "locked";
+            if (!isOpen && !isCellDoor) {
+                if (!status.empty()) status += ", ";
+                status += "closed";
+            }
+            if (!status.empty()) {
                 announcement += " (" + status + ")";
             }
         }
