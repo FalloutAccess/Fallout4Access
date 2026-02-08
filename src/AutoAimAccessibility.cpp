@@ -332,11 +332,8 @@ void AutoAimAccessibility::StartLOSSound()
     auto vm = gameVM->GetVM();
     if (!vm) return;
 
-    auto* player = RE::PlayerCharacter::GetSingleton();
-    if (!player) return;
-
-    // Call F4A:SoundHelper.PlaySound(formID, player) via Papyrus VM
-    // Pass form ID as int to avoid C++ PackVariable crash on SNDR forms
+    // Call F4A:SoundHelper.PlaySound(formID) via Papyrus VM
+    // Script gets player reference internally via Game.GetPlayer()
     auto callback = RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor>(
         new LOSSoundCallback(this));
 
@@ -344,13 +341,25 @@ void AutoAimAccessibility::StartLOSSound()
         RE::BSFixedString("F4A:SoundHelper"),
         RE::BSFixedString("PlaySound"),
         callback,
-        static_cast<std::int32_t>(m_losSoundForm->GetFormID()),
-        static_cast<RE::TESObjectREFR*>(player));
+        static_cast<std::int32_t>(m_losSoundForm->GetFormID()));
 
     if (dispatched) {
         m_losSoundPlaying = true;
+        m_pendingStop = false;
     } else {
         REX::ERROR("AutoAimAccessibility: DispatchStaticCall PlaySound failed");
+    }
+}
+
+void AutoAimAccessibility::SetLOSSoundInstanceID(std::uint32_t a_id)
+{
+    m_losSoundInstanceID = a_id;
+
+    // If a stop was requested before the callback arrived, stop immediately
+    if (m_pendingStop && a_id != 0) {
+        m_pendingStop = false;
+        StopSoundInstance(a_id);
+        m_losSoundInstanceID = 0;
     }
 }
 
@@ -359,21 +368,26 @@ void AutoAimAccessibility::StopLOSSound()
     if (!m_losSoundPlaying) return;
 
     if (m_losSoundInstanceID != 0) {
-        auto* gameVM = RE::GameVM::GetSingleton();
-        if (gameVM) {
-            auto vm = gameVM->GetVM();
-            if (vm) {
-                vm->DispatchStaticCall(
-                    RE::BSFixedString("F4A:SoundHelper"),
-                    RE::BSFixedString("StopSound"),
-                    nullptr,
-                    static_cast<std::int32_t>(m_losSoundInstanceID));
-
-                REX::INFO("AutoAimAccessibility: LOS sound stopped (instance={})", m_losSoundInstanceID);
-            }
-        }
+        StopSoundInstance(m_losSoundInstanceID);
+    } else {
+        // Callback hasn't arrived yet - flag for stop when it does
+        m_pendingStop = true;
     }
 
     m_losSoundPlaying = false;
     m_losSoundInstanceID = 0;
+}
+
+void AutoAimAccessibility::StopSoundInstance(std::uint32_t a_instanceID)
+{
+    auto* gameVM = RE::GameVM::GetSingleton();
+    if (!gameVM) return;
+    auto vm = gameVM->GetVM();
+    if (!vm) return;
+
+    vm->DispatchStaticCall(
+        RE::BSFixedString("F4A:SoundHelper"),
+        RE::BSFixedString("StopSound"),
+        nullptr,
+        static_cast<std::int32_t>(a_instanceID));
 }

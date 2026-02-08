@@ -12,7 +12,7 @@ public:
 
     void SetEnabled(bool a_enabled) { m_enabled = a_enabled; }
     bool IsEnabled() const { return m_enabled; }
-    void SetLOSSoundInstanceID(std::uint32_t a_id) { m_losSoundInstanceID = a_id; }
+    void SetLOSSoundInstanceID(std::uint32_t a_id);
 
 private:
     AutoAimAccessibility() = default;
@@ -41,6 +41,7 @@ private:
     // Audio
     void StartLOSSound();
     void StopLOSSound();
+    void StopSoundInstance(std::uint32_t a_instanceID);
 
     RE::GUN_STATE m_lastGunState = RE::GUN_STATE::kRelaxed;
     bool m_enabled = true;
@@ -55,6 +56,7 @@ private:
     RE::BGSSoundDescriptorForm* m_losSoundForm = nullptr;
     std::uint32_t m_losSoundInstanceID = 0;
     bool m_losSoundPlaying = false;
+    bool m_pendingStop = false;  // Stop requested before callback arrived
     bool m_targetHasLOS = false;
 
     static constexpr float MAX_TARGET_DISTANCE = 5000.0f;

@@ -48,6 +48,10 @@ Both `GetSoundHandleByName` and `GetSoundHandleByFile` crash in `BSSoundHandle::
 
 Calling `Sound.Play()` directly via `IVirtualMachine::DispatchMethodCall` on a SNDR form handle also fails — `DispatchMethodCall` returns `false` because SNDR forms don't have bound Papyrus script objects. Additionally, passing a `BGSSoundDescriptorForm*` as an argument to any dispatch call crashes in `PackVariable` when it tries to create/bind a BSScript::Object for the form.
 
+### Why Not Pass TESObjectREFR* as Arguments?
+
+Passing `TESObjectREFR*` or `Actor*` (e.g., the player) to `DispatchStaticCall` as a Papyrus `ObjectReference` parameter causes `"Type mismatch for argument"` errors in the Papyrus VM. The `PackVariable` template creates a BSScript::Object that Papyrus rejects. **Always have the Papyrus script obtain references internally** (e.g., `Game.GetPlayer()`) instead of passing them from C++.
+
 ### Solution: Papyrus Helper Script + DispatchStaticCall
 
 **Step 1:** Create a SNDR form in your ESP pointing to the WAV file.
@@ -57,10 +61,10 @@ Calling `Sound.Play()` directly via `IVirtualMachine::DispatchMethodCall` on a S
 ```papyrus
 Scriptname F4A:SoundHelper
 
-int Function PlaySound(int aiSoundFormID, ObjectReference akSource) global
+int Function PlaySound(int aiSoundFormID) global
     Sound snd = Game.GetForm(aiSoundFormID) as Sound
     if snd
-        return snd.Play(akSource)
+        return snd.Play(Game.GetPlayer())
     endIf
     return 0
 EndFunction
@@ -92,6 +96,7 @@ auto vm = gameVM->GetVM();
 auto* player = RE::PlayerCharacter::GetSingleton();
 
 // Play — pass form ID as int, NOT the form pointer
+// Do NOT pass TESObjectREFR*/Actor* — causes Papyrus type mismatch errors
 auto callback = RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor>(
     new MyCallback());
 
@@ -99,8 +104,7 @@ vm->DispatchStaticCall(
     RE::BSFixedString("F4A:SoundHelper"),
     RE::BSFixedString("PlaySound"),
     callback,
-    static_cast<std::int32_t>(soundForm->GetFormID()),  // int, not pointer!
-    static_cast<RE::TESObjectREFR*>(player));
+    static_cast<std::int32_t>(soundForm->GetFormID()));  // int, not pointer!
 
 // Stop — pass the instance ID returned by PlaySound callback
 vm->DispatchStaticCall(

@@ -5,6 +5,7 @@
 #include "ContainerMenuAccessibility.h"
 #include "CorpseLootTracker.h"
 #include "CrosshairAccessibility.h"
+#include "HitMarkerAudioFeedback.h"
 #include "DialogueMenuHook.h"
 #include "ExamineMenuHook.h"
 #include "HUDMessageHook.h"
@@ -31,6 +32,9 @@ void OnF4SEMessage(F4SE::MessagingInterface::Message* a_msg)
 
         // Register corpse loot tracking event sink
         CorpseLootTracker::GetSingleton()->Register();
+
+        // Register hit marker audio feedback for combat accessibility
+        HitMarkerAudioFeedback::GetSingleton()->Register();
 
         // Load damage type translations
         ItemStatFormatter::LoadTranslations();

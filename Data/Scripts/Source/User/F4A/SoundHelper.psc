@@ -3,10 +3,10 @@ Scriptname F4A:SoundHelper
  Accepts form ID as int to avoid C++ PackVariable crash when
  binding BGSSoundDescriptorForm to a Papyrus Sound object.}
 
-int Function PlaySound(int aiSoundFormID, ObjectReference akSource) global
+int Function PlaySound(int aiSoundFormID) global
     Sound snd = Game.GetForm(aiSoundFormID) as Sound
     if snd
-        return snd.Play(akSource)
+        return snd.Play(Game.GetPlayer())
     endIf
     return 0
 EndFunction
