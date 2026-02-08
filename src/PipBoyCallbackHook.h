@@ -58,8 +58,8 @@ private:
     void HandleQuestSelection(const Scaleform::GFx::FunctionHandler::Params& a_params);
     void HandleWorkshopSelection(const Scaleform::GFx::FunctionHandler::Params& a_params);
 
-    // Extract and announce inventory item using page reference and InfoObj array
-    void AnnounceInventoryItem(const Scaleform::GFx::Value& a_pageRef, const Scaleform::GFx::Value& a_infoObj);
+    // Extract and announce inventory item identity from page reference (stats announced separately after original call)
+    void AnnounceInventoryItem(const Scaleform::GFx::Value& a_pageRef);
 
     // Extract and announce quest name + status from callback params
     void AnnounceQuest(const Scaleform::GFx::Value& a_questEntry);
@@ -99,6 +99,8 @@ private:
     std::string m_currentQuestDescription;       // Current quest's description text
     std::string m_lastAnnouncedQuestName;        // For deferred objectives dedup
     bool m_lastShowingSummary = false;            // Last known Description_tf.visible state
+    bool m_pendingStatsAnnounce = false;          // Set by AnnounceInventoryItem, consumed by HookedCall
+    bool m_pendingObjectivesAnnounce = false;     // Set by HandleQuestSelection, consumed by HookedCall
 
     // The vtable hooks
     static inline REL::HookVFT<void(RE::PipboyMenu*, const Scaleform::GFx::FunctionHandler::Params&)>* s_callHook = nullptr;

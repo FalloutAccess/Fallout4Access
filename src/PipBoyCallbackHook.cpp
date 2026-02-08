@@ -124,6 +124,26 @@ void PipBoyCallbackHook::HookedCall(RE::PipboyMenu* a_this, const Scaleform::GFx
     if (s_callHook) {
         (*s_callHook)(a_this, a_params);
     }
+
+    // After original call: Scaleform data is now updated by the game.
+    // Read it immediately while the values are still valid (same frame).
+    if (funcID == hook->m_invItemSelectionID && hook->m_pendingStatsAnnounce) {
+        hook->m_pendingStatsAnnounce = false;
+        // InfoObj (args[1]) now has the correct item's stats
+        if (a_params.args && a_params.args[1].IsArray()) {
+            auto stats = ItemStatFormatter::ParseInfoObj(a_params.args[1]);
+            if (!stats.empty()) {
+                std::string statsAnnouncement = ItemStatFormatter::BuildStatAnnouncement(stats);
+                if (!statsAnnouncement.empty()) {
+                    hook->SpeakText(statsAnnouncement.substr(2));  // Remove leading ", "
+                }
+            }
+        }
+    }
+    if (funcID == hook->m_questSelectionID && hook->m_pendingObjectivesAnnounce) {
+        hook->m_pendingObjectivesAnnounce = false;
+        hook->AnnounceQuestObjectives(hook->m_objectivesListRef);
+    }
 }
 
 void PipBoyCallbackHook::HookedAdvanceMovie(RE::PipboyMenu* a_this, float a_timeDelta, std::uint64_t a_time)
@@ -149,13 +169,6 @@ void PipBoyCallbackHook::HandleInvItemSelection(const Scaleform::GFx::FunctionHa
 
     REX::DEBUG("PipBoyCallbackHook: onInvItemSelection callback received");
 
-    // Get the InfoObj array
-    const auto& infoObj = a_params.args[1];
-    if (!infoObj.IsArray()) {
-        REX::DEBUG("PipBoyCallbackHook: InfoObj is not an array");
-        return;
-    }
-
     // arg[3] is the page reference (Pipboy_InvPage) - use this to get selectedEntry
     const auto& pageRef = a_params.args[3];
     if (!pageRef.IsObject()) {
@@ -163,7 +176,7 @@ void PipBoyCallbackHook::HandleInvItemSelection(const Scaleform::GFx::FunctionHa
         return;
     }
 
-    AnnounceInventoryItem(pageRef, infoObj);
+    AnnounceInventoryItem(pageRef);
 }
 
 void PipBoyCallbackHook::HandleQuestSelection(const Scaleform::GFx::FunctionHandler::Params& a_params)
@@ -198,19 +211,10 @@ void PipBoyCallbackHook::HandleQuestSelection(const Scaleform::GFx::FunctionHand
     // Announce quest name + status immediately
     AnnounceQuest(questEntry);
 
-    // Defer objectives announcement by 1 frame (game populates objectives after original call)
-    auto* taskInterface = F4SE::GetTaskInterface();
-    if (taskInterface) {
-        Scaleform::GFx::Value storedObjectives = m_objectivesListRef;
-        std::string questName = m_lastAnnouncedQuestName;
-        taskInterface->AddTask([this, storedObjectives, questName]() {
-            // Only announce if still on the same quest (user may have navigated away)
-            if (questName != m_lastAnnouncedQuestName) {
-                return;
-            }
-            AnnounceQuestObjectives(storedObjectives);
-        });
-    }
+    // Signal that objectives should be announced after the original Call populates them.
+    // We don't defer to next frame (which would cause use-after-free on the Scaleform value).
+    // Instead, HookedCall reads objectives right after the original function returns.
+    m_pendingObjectivesAnnounce = true;
 }
 
 void PipBoyCallbackHook::HandleWorkshopSelection(const Scaleform::GFx::FunctionHandler::Params& a_params)
@@ -226,7 +230,7 @@ void PipBoyCallbackHook::HandleWorkshopSelection(const Scaleform::GFx::FunctionH
     AnnounceWorkshop(workshopEntry);
 }
 
-void PipBoyCallbackHook::AnnounceInventoryItem(const Scaleform::GFx::Value& a_pageRef, const Scaleform::GFx::Value& a_infoObj)
+void PipBoyCallbackHook::AnnounceInventoryItem(const Scaleform::GFx::Value& a_pageRef)
 {
     // Extract item identity from page.List_mc.selectedEntry (reliable, synchronous)
     ItemIdentity identity;
@@ -304,29 +308,10 @@ void PipBoyCallbackHook::AnnounceInventoryItem(const Scaleform::GFx::Value& a_pa
     SpeakText(identity.BuildBasicAnnouncement());
     REX::DEBUG("PipBoyCallbackHook: Announced identity immediately: '{}'", identity.name);
 
-    // Schedule deferred stats announcement (1 frame delay for InfoObj to update)
-    // Store InfoObj by value - hoping it's a reference that will update
-    auto* taskInterface = F4SE::GetTaskInterface();
-    if (taskInterface) {
-        // Copy the InfoObj value - test if it updates by next frame
-        Scaleform::GFx::Value storedInfoObj = a_infoObj;
-
-        taskInterface->AddTask([this, storedInfoObj, itemName = identity.name]() {
-            // Re-parse InfoObj - if it's a live reference, it should have fresh data now
-            auto stats = ItemStatFormatter::ParseInfoObj(storedInfoObj);
-
-            if (stats.empty()) {
-                REX::DEBUG("PipBoyCallbackHook: Deferred stats empty for '{}'", itemName);
-                return;
-            }
-
-            std::string statsAnnouncement = ItemStatFormatter::BuildStatAnnouncement(stats);
-            if (!statsAnnouncement.empty()) {
-                SpeakText(statsAnnouncement.substr(2));  // Remove leading ", "
-                REX::DEBUG("PipBoyCallbackHook: Deferred stats for '{}': {}", itemName, statsAnnouncement);
-            }
-        });
-    }
+    // Signal that stats should be announced after the original Call updates the InfoObj.
+    // The InfoObj array contains stale (previous item) data at this point.
+    // HookedCall will parse stats after the original function populates correct data.
+    m_pendingStatsAnnounce = true;
 }
 
 void PipBoyCallbackHook::AnnounceQuest(const Scaleform::GFx::Value& a_questEntry)
