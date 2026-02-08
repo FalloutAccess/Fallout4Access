@@ -863,16 +863,17 @@ void ObjectScanner::ScanObjects()
         }
     }
 
-    // Sort by: same-level objects first, then by distance
+    // Sort: in interiors, same-level objects first then distance; in exteriors, pure distance
+    bool isInterior = tes->interiorCell != nullptr;
     std::sort(tempObjects.begin(), tempObjects.end(),
-        [](const TempObject& a, const TempObject& b) {
-            bool aSameLevel = std::abs(a.zDiff) <= ELEVATION_THRESHOLD;
-            bool bSameLevel = std::abs(b.zDiff) <= ELEVATION_THRESHOLD;
-            // Prefer same-level objects
-            if (aSameLevel != bSameLevel) {
-                return aSameLevel;  // Same-level objects come first
+        [isInterior](const TempObject& a, const TempObject& b) {
+            if (isInterior) {
+                bool aSameLevel = std::abs(a.zDiff) <= ELEVATION_THRESHOLD;
+                bool bSameLevel = std::abs(b.zDiff) <= ELEVATION_THRESHOLD;
+                if (aSameLevel != bSameLevel) {
+                    return aSameLevel;
+                }
             }
-            // Within same elevation group, sort by distance
             return a.distance < b.distance;
         });
 
@@ -972,13 +973,16 @@ void ObjectScanner::ScanWorkshopObjects()
         }
     }
 
-    // Sort by same-level first, then distance
+    // Sort: in interiors, same-level objects first then distance; in exteriors, pure distance
+    bool isInterior = tes->interiorCell != nullptr;
     std::sort(tempObjects.begin(), tempObjects.end(),
-        [](const TempObject& a, const TempObject& b) {
-            bool aSameLevel = std::abs(a.zDiff) <= ELEVATION_THRESHOLD;
-            bool bSameLevel = std::abs(b.zDiff) <= ELEVATION_THRESHOLD;
-            if (aSameLevel != bSameLevel) {
-                return aSameLevel;
+        [isInterior](const TempObject& a, const TempObject& b) {
+            if (isInterior) {
+                bool aSameLevel = std::abs(a.zDiff) <= ELEVATION_THRESHOLD;
+                bool bSameLevel = std::abs(b.zDiff) <= ELEVATION_THRESHOLD;
+                if (aSameLevel != bSameLevel) {
+                    return aSameLevel;
+                }
             }
             return a.distance < b.distance;
         });
@@ -1241,14 +1245,9 @@ void ObjectScanner::ScanCompassMarkers()
             name, isDiscovered, dist);
     }
 
-    // Sort by: same-level locations first, then by distance
+    // Sort by distance (compass markers only appear in exterior cells, no Z-range sorting needed)
     std::sort(tempMarkers.begin(), tempMarkers.end(),
         [](const TempMarker& a, const TempMarker& b) {
-            bool aSameLevel = std::abs(a.zDiff) <= ELEVATION_THRESHOLD;
-            bool bSameLevel = std::abs(b.zDiff) <= ELEVATION_THRESHOLD;
-            if (aSameLevel != bSameLevel) {
-                return aSameLevel;
-            }
             return a.distance < b.distance;
         });
 
@@ -1347,13 +1346,16 @@ void ObjectScanner::ScanCompanions()
         }
     }
 
-    // Sort by: same-level companions first, then by distance
+    // Sort: in interiors, same-level companions first then distance; in exteriors, pure distance
+    bool isInterior = tes->interiorCell != nullptr;
     std::sort(tempCompanions.begin(), tempCompanions.end(),
-        [](const TempCompanion& a, const TempCompanion& b) {
-            bool aSameLevel = std::abs(a.zDiff) <= ELEVATION_THRESHOLD;
-            bool bSameLevel = std::abs(b.zDiff) <= ELEVATION_THRESHOLD;
-            if (aSameLevel != bSameLevel) {
-                return aSameLevel;
+        [isInterior](const TempCompanion& a, const TempCompanion& b) {
+            if (isInterior) {
+                bool aSameLevel = std::abs(a.zDiff) <= ELEVATION_THRESHOLD;
+                bool bSameLevel = std::abs(b.zDiff) <= ELEVATION_THRESHOLD;
+                if (aSameLevel != bSameLevel) {
+                    return aSameLevel;
+                }
             }
             return a.distance < b.distance;
         });
@@ -1479,13 +1481,16 @@ void ObjectScanner::ScanPowerArmor()
         }
     }
 
-    // Sort by: same-level power armor first, then by distance
+    // Sort: in interiors, same-level power armor first then distance; in exteriors, pure distance
+    bool isInterior = tes && tes->interiorCell != nullptr;
     std::sort(tempPowerArmor.begin(), tempPowerArmor.end(),
-        [](const TempPowerArmor& a, const TempPowerArmor& b) {
-            bool aSameLevel = std::abs(a.zDiff) <= ELEVATION_THRESHOLD;
-            bool bSameLevel = std::abs(b.zDiff) <= ELEVATION_THRESHOLD;
-            if (aSameLevel != bSameLevel) {
-                return aSameLevel;
+        [isInterior](const TempPowerArmor& a, const TempPowerArmor& b) {
+            if (isInterior) {
+                bool aSameLevel = std::abs(a.zDiff) <= ELEVATION_THRESHOLD;
+                bool bSameLevel = std::abs(b.zDiff) <= ELEVATION_THRESHOLD;
+                if (aSameLevel != bSameLevel) {
+                    return aSameLevel;
+                }
             }
             return a.distance < b.distance;
         });
