@@ -1,46 +1,107 @@
-# CommonLibF4 Plugin Template
+# Fallout 4 Access
 
-This is a basic plugin template using CommonLibF4.
+An F4SE plugin that makes Fallout 4 accessible to blind and visually impaired players. Uses [SRAL](https://github.com/m1maker/SRAL) (Screen Reader Abstraction Library) to provide screen reader support through NVDA, JAWS, or SAPI.
+
+## Features
+
+### Accessible Menus
+
+- **Main Menu, Pause Menu** - Full navigation and announcements
+- **Settings Menu** - All settings categories with values read aloud
+- **Save/Load Menus** - Save slot details including character level and playtime
+- **Pip-Boy** - Inventory, Stats, Data (Quests/Workshops/Stats), Map, and Radio pages
+- **Container/Looting** - Item lists with stats, weight, and value
+- **Barter Menu** - Vendor trading with side-switching (F key)
+- **Terminal Menus** - In-game computer terminals
+- **Dialogue Menu** - NPC conversation options with speaker names
+- **VATS** - Target selection and body part announcements
+- **Level-Up Menu** - Perk selection and descriptions
+- **Workbenches** - Cooking, Power Armor, and Robot workbenches
+- **Workshop & Supply Lines** - Settlement building and caravan management
+- **Message Boxes & Confirmation Dialogs** - Prompts and choices
+- **S.P.E.C.I.A.L. Menu** - Character creation stat allocation
+- **Examine Menu** - Item inspection
+- **Loading Screens** - Loading screen text read aloud
+
+### Gameplay Accessibility
+
+- **Object Scanner** - Scans nearby objects by category (NPCs, items, doors, containers) with subcategories, locked door detection, and corpse loot tracking
+- **Crosshair Feedback** - Announces what you're looking at
+- **Auto-Aim** - Continuous target tracking assistance
+- **Auto-Walk** - Navigate to map markers and scanned objects
+- **Audio Hit Markers** - Distinct sounds for hits, critical hits, and kills
+- **HUD Notifications** - Item pickups, location discoveries, and XP gains read aloud
+- **Combat Stats (H key)** - Press H to hear health, ammo, and other combat stats
+- **Contextual Info** - Carry weight and caps on Pip-Boy inventory
+
+## Requirements
+
+- Fallout 4 (Steam version)
+- [F4SE](https://f4se.silverlock.org/) (Fallout 4 Script Extender)
+- A screen reader: [NVDA](https://www.nvaccess.org/) (recommended), JAWS, or Windows SAPI
+- [Address Library for F4SE](https://www.nexusmods.com/fallout4/mods/47327)
+
+## Installation
+
+1. Install F4SE and Address Library if you haven't already
+2. Copy the `fallout4access` folder into your Fallout 4 Data directory (or install via a mod manager)
+3. The folder structure should be:
+   ```
+   Data/
+     F4SE/
+       Plugins/
+         fallout4access.dll
+     Sound/
+       FX/
+         F4A/
+           UI/
+             (sound files)
+   ```
+4. Load `fallout4access.esp` in your mod load order
+
+## Building from Source
 
 ### Requirements
-* [XMake](https://xmake.io) [2.8.2+]
-* C++23 Compiler (MSVC, Clang-CL)
 
-## Getting Started
-```bat
-git clone --recurse-submodules https://github.com/libxse/commonlibf4-template
-cd commonlibf4-template
+- [XMake](https://xmake.io) 2.8.2+
+- C++23 compiler (MSVC or Clang-CL)
+- Windows x64
+
+### Clone
+
+```bash
+git clone --recurse-submodules https://git.alex19ep.me/alex19EP/f4access
+cd fallout4access
 ```
 
 ### Build
-To build the project, run the following command:
-```bat
+
+```bash
 xmake build
 ```
 
-> ***Note:*** *This will generate a `build/windows/` directory in the **project's root directory** with the build output.*
+Build output is in `build/windows/x64/release/fallout4access.dll`.
 
-### Build Output (Optional)
-If you want to redirect the build output, set one of or both of the following environment variables:
+### Install to Mod Organizer 2
 
-- Path to a Fallout 4 install folder: `XSE_FO4_GAME_PATH`
+Set the environment variable `XSE_FO4_MODS_PATH` to your MO2 mods directory, then:
 
-- Path to a Mod Manager mods folder: `XSE_FO4_MODS_PATH`
+```bash
+xmake install
+```
 
-### Project Generation (Optional)
-If you want to generate a Visual Studio project, run the following command:
-```bat
+### Generate Visual Studio Project (Optional)
+
+```bash
 xmake project -k vsxmake
 ```
 
-> ***Note:*** *This will generate a `vsxmakeXXXX/` directory in the **project's root directory** using the latest version of Visual Studio installed on the system.*
+## License
 
-### Upgrading Packages (Optional)
-If you want to upgrade the project's dependencies, run the following commands:
-```bat
-xmake repo --update
-xmake require --upgrade
-```
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
 
-## Documentation
-Please refer to the [Wiki](../../wiki/Home) for more advanced topics.
+## Credits
+
+- [CommonLibF4](https://github.com/alandtse/CommonLibF4) - Reverse-engineered F4SE API
+- [SRAL](https://github.com/m1maker/SRAL) - Screen Reader Abstraction Library
+- [F4SE](https://f4se.silverlock.org/) - Fallout 4 Script Extender
