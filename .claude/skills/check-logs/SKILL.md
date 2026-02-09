@@ -10,8 +10,10 @@ Quickly analyze the fallout4access plugin logs without spawning a full subagent.
 
 ## Log Locations
 
-- **Debug log**: `D:\alex\OneDrive\Документы\My Games\Fallout4\F4SE\fallout4access.log`
-- **Speech log**: `D:\alex\OneDrive\Документы\My Games\Fallout4\F4SE\fallout4access_speech.log`
+Log paths are machine-specific. Check the auto memory file `local-paths.md` for actual paths.
+The logs are in the standard F4SE log directory (`<Documents>\My Games\Fallout4\F4SE\`):
+- **Debug log**: `fallout4access.log`
+- **Speech log**: `fallout4access_speech.log`
 
 ## Analysis Steps
 

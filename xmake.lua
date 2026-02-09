@@ -45,12 +45,12 @@ add_requires("sral", {configs = {shared = false}})
 add_requires("zydis")
 
 -- Project-specific configuration
--- Mod Organizer 2 installation path
-local MO2_MODS_PATH = "E:\\Games\\ModOrganizer\\Fallout 4\\mods"
+-- Mod Organizer 2 installation path (override with XSE_FO4_MODS_PATH env var)
+local MO2_MODS_PATH = os.getenv("XSE_FO4_MODS_PATH") or "E:\\Games\\ModOrganizer\\Fallout 4\\mods"
 local MOD_FOLDER_NAME = "fallout4access"
 
--- Fallout 4 installation path (for Papyrus compiler)
-local FO4_PATH = "E:\\SteamLibrary\\steamapps\\common\\Fallout 4"
+-- Fallout 4 installation path for Papyrus compiler (override with XSE_FO4_GAME_PATH env var)
+local FO4_PATH = os.getenv("XSE_FO4_GAME_PATH") or "E:\\SteamLibrary\\steamapps\\common\\Fallout 4"
 
 -- targets
 target("fallout4access")

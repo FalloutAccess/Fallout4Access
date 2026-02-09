@@ -50,7 +50,7 @@ xmake build && xmake install-mo2
 
 ## Log Files
 
-The plugin creates two log files in `D:\alex\OneDrive\Документы\My Games\Fallout4\F4SE\`:
+The plugin creates two log files in the standard F4SE log directory (`<Documents>\My Games\Fallout4\F4SE\`). See [local-paths memory file](memory note: local-paths.md) for the actual path on this machine.
 
 ### fallout4access.log (Main Debug Log)
 
@@ -212,7 +212,7 @@ When working with Scaleform UI elements, **do not guess paths**. Instead:
 
 FFDec can export SWF contents including scripts, symbols, and structure which reveals the exact Scaleform paths needed for `GetVariable()` calls.
 
-**Extracted BA2 archives location:** `E:/Games/modding/Fallout4/fallout4extract-ba/`
+**Extracted BA2 archives location:** See [local-paths memory file](memory note: local-paths.md) for the path on this machine.
 - Decompiled SWFs are in `Interface/*-extracted/scripts/` subdirectories
 
 **Known Scaleform paths:** See [docs/scaleform-paths.md](docs/scaleform-paths.md) for comprehensive path documentation for all implemented menus.

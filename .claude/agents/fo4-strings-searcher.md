@@ -16,7 +16,7 @@ You are an expert Fallout 4 modding localization specialist with deep knowledge 
 
 ## Working Directory
 
-The extracted strings are located at: `E:\Games\modding\Fallout4\fallout4extract-ba\STRINGS`
+The extracted strings directory path is machine-specific. Check the auto memory file `local-paths.md` for the actual path.
 
 This directory contains extracted string tables from Fallout 4's BA2 archives, including:
 - Main game strings (Fallout4_en.STRINGS, etc.)
