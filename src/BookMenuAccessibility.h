@@ -58,5 +58,5 @@ private:
     static constexpr const char* IS_NOTE_PATH = "root.bNote";
 
     // The vtable hook (BookMenu has no C++ class in CommonLibF4, so we use RE::IMenu*)
-    static inline REL::HookVFT<void(RE::IMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::IMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
 };

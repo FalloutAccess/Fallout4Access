@@ -20,7 +20,7 @@ void ContainerMenuAccessibility::Install()
 
     // Hook ContainerMenu::AdvanceMovie (vtable index 4)
     // VTABLE::ContainerMenu[0] is the primary vtable (IMenu/GameMenuBase)
-    static REL::HookVFT<void(RE::ContainerMenu*, float, std::uint64_t)> advanceHook(
+    static REL::THookVFT<void(RE::ContainerMenu*, float, std::uint64_t)> advanceHook(
         VTABLE::ContainerMenu[0],
         4,  // AdvanceMovie is at index 4
         HookedAdvanceMovie
@@ -35,7 +35,7 @@ void ContainerMenuAccessibility::Install()
 
     // Hook ContainerMenu::OnButtonEvent (BSInputEventUser vtable index 8)
     // VTABLE::ContainerMenu[1] is the BSInputEventUser vtable
-    static REL::HookVFT<void(RE::ContainerMenu*, const RE::ButtonEvent*)> buttonHook(
+    static REL::THookVFT<void(RE::ContainerMenu*, const RE::ButtonEvent*)> buttonHook(
         VTABLE::ContainerMenu[1],
         8,  // OnButtonEvent is at index 8
         HookedOnButtonEvent

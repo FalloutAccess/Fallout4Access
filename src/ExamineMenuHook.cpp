@@ -21,7 +21,7 @@ void ExamineMenuHook::Install()
     bool allSucceeded = true;
 
     // Hook ExamineMenu::AdvanceMovie (vtable index 4)
-    static REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)> examineHook(
+    static REL::THookVFT<void(RE::ExamineMenu*, float, std::uint64_t)> examineHook(
         VTABLE::ExamineMenu[0],
         4,
         HookedExamineAdvanceMovie
@@ -35,7 +35,7 @@ void ExamineMenuHook::Install()
     }
 
     // Hook PowerArmorModMenu::AdvanceMovie (separate callback for correct trampoline)
-    static REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)> powerArmorHook(
+    static REL::THookVFT<void(RE::ExamineMenu*, float, std::uint64_t)> powerArmorHook(
         VTABLE::PowerArmorModMenu[0],
         4,
         HookedPowerArmorAdvanceMovie
@@ -49,7 +49,7 @@ void ExamineMenuHook::Install()
     }
 
     // Hook CookingMenu::AdvanceMovie (no header in CommonLibF4, use raw VTABLE ID)
-    static REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)> cookingHook(
+    static REL::THookVFT<void(RE::ExamineMenu*, float, std::uint64_t)> cookingHook(
         REL::ID(1395125),
         4,
         HookedCookingAdvanceMovie
@@ -63,7 +63,7 @@ void ExamineMenuHook::Install()
     }
 
     // Hook RobotModMenu::AdvanceMovie (no header in CommonLibF4, use raw VTABLE ID)
-    static REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)> robotModHook(
+    static REL::THookVFT<void(RE::ExamineMenu*, float, std::uint64_t)> robotModHook(
         REL::ID(1057885),
         4,
         HookedRobotModAdvanceMovie

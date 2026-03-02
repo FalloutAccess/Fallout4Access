@@ -15,7 +15,7 @@ void LoadingMenuHook::Install()
     }
 
     // Hook LoadingMenu::AdvanceMovie (vtable index 4)
-    static REL::HookVFT<void(RE::LoadingMenu*, float, std::uint64_t)> hook(
+    static REL::THookVFT<void(RE::LoadingMenu*, float, std::uint64_t)> hook(
         VTABLE::LoadingMenu[0],
         4,  // AdvanceMovie is at index 4
         HookedAdvanceMovie

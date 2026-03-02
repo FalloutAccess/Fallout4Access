@@ -31,7 +31,7 @@ void HUDMenuHook::Install()
 
     // Hook HUDMenu::AdvanceMovie (vtable index 4)
     // VTABLE::HUDMenu[0] is the primary vtable (IMenu/GameMenuBase)
-    static REL::HookVFT<void(RE::HUDMenu*, float, std::uint64_t)> hook(
+    static REL::THookVFT<void(RE::HUDMenu*, float, std::uint64_t)> hook(
         VTABLE::HUDMenu[0],
         4,  // AdvanceMovie is at index 4
         HookedAdvanceMovie
@@ -46,7 +46,7 @@ void HUDMenuHook::Install()
 
     // Hook HUDMenu::OnButtonEvent (BSInputEventUser vtable index 8)
     // VTABLE::HUDMenu[1] is the BSInputEventUser vtable
-    static REL::HookVFT<void(RE::HUDMenu*, const RE::ButtonEvent*)> buttonHook(
+    static REL::THookVFT<void(RE::HUDMenu*, const RE::ButtonEvent*)> buttonHook(
         VTABLE::HUDMenu[1],
         8,  // OnButtonEvent is at index 8
         HookedOnButtonEvent

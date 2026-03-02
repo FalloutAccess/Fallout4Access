@@ -28,7 +28,7 @@ void PipBoyCallbackHook::Install()
     // Hook PipboyMenu's Call function (vtable index 1, inherited from SWFToCodeFunctionHandler)
     // VTABLE::PipboyMenu[0] is the primary vtable (SWFToCodeFunctionHandler/IMenu vtable)
     // Index 1 is the Call virtual function
-    static REL::HookVFT<void(RE::PipboyMenu*, const Scaleform::GFx::FunctionHandler::Params&)> hook(
+    static REL::THookVFT<void(RE::PipboyMenu*, const Scaleform::GFx::FunctionHandler::Params&)> hook(
         VTABLE::PipboyMenu[0],  // First vtable entry
         1,                       // Call is at index 1
         HookedCall
@@ -43,7 +43,7 @@ void PipBoyCallbackHook::Install()
     }
 
     // Hook PipboyMenu's AdvanceMovie (vtable index 4) for per-frame state detection
-    static REL::HookVFT<void(RE::PipboyMenu*, float, std::uint64_t)> amHook(
+    static REL::THookVFT<void(RE::PipboyMenu*, float, std::uint64_t)> amHook(
         VTABLE::PipboyMenu[0],
         4,
         HookedAdvanceMovie

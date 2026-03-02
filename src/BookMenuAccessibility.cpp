@@ -16,7 +16,7 @@ void BookMenuAccessibility::Install()
 
     // Hook BookMenu::AdvanceMovie (vtable index 4).
     // BookMenu has no C++ class in CommonLibF4, so we use RE::IMenu* as the this type.
-    static REL::HookVFT<void(RE::IMenu*, float, std::uint64_t)> hook(
+    static REL::THookVFT<void(RE::IMenu*, float, std::uint64_t)> hook(
         VTABLE::BookMenu[0],
         4,  // AdvanceMovie is at index 4 (consistent across all IMenu subclasses)
         HookedAdvanceMovie

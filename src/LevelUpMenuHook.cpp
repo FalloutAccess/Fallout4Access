@@ -18,7 +18,7 @@ void LevelUpMenuHook::Install()
 
     // Hook LevelUpMenu::AdvanceMovie (vtable index 4)
     // VTABLE::LevelUpMenu[0] is the primary vtable (IMenu/GameMenuBase)
-    static REL::HookVFT<void(RE::IMenu*, float, std::uint64_t)> hook(
+    static REL::THookVFT<void(RE::IMenu*, float, std::uint64_t)> hook(
         VTABLE::LevelUpMenu[0],
         4,  // AdvanceMovie is at index 4
         HookedAdvanceMovie

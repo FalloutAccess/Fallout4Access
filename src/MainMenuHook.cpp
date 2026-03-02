@@ -21,7 +21,7 @@ void MainMenuHook::Install()
 
     // Hook MainMenu::AdvanceMovie (vtable index 4)
     // VTABLE::MainMenu[0] is the primary vtable (IMenu/GameMenuBase)
-    static REL::HookVFT<void(RE::MainMenu*, float, std::uint64_t)> hook(
+    static REL::THookVFT<void(RE::MainMenu*, float, std::uint64_t)> hook(
         VTABLE::MainMenu[0],
         4,  // AdvanceMovie is at index 4
         HookedAdvanceMovie
@@ -29,7 +29,7 @@ void MainMenuHook::Install()
 
     // Hook PauseMenu::AdvanceMovie (same vtable index)
     // PauseMenu uses the same SWF (MainMenu.swf) so the same hook function works
-    static REL::HookVFT<void(RE::PauseMenu*, float, std::uint64_t)> pauseHook(
+    static REL::THookVFT<void(RE::PauseMenu*, float, std::uint64_t)> pauseHook(
         VTABLE::PauseMenu[0],
         4,  // AdvanceMovie is at index 4
         reinterpret_cast<void(*)(RE::PauseMenu*, float, std::uint64_t)>(HookedAdvanceMovie)

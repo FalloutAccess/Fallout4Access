@@ -58,5 +58,5 @@ private:
     static constexpr const char* SELECTED_PART_PATH = "root.MenuInstance.SelectedPart";
 
     // The vtable hook
-    static inline REL::HookVFT<void(RE::IMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::IMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
 };

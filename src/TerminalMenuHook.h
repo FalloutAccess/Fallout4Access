@@ -64,5 +64,5 @@ private:
     static constexpr const char* HACKING_ATTEMPTS_PATH = "root.TerminalBase_mc.HackingAttempts_tf.text";
 
     // The vtable hook
-    static inline REL::HookVFT<void(RE::TerminalMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::TerminalMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
 };

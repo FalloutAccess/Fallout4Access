@@ -130,5 +130,5 @@ private:
     static constexpr const char* PERK1_NAME_PATH = "root.WorkshopBase_mc.PerkPanel1_mc.PerkName_tf.text";
 
     // The vtable hook
-    static inline REL::HookVFT<void(RE::WorkshopMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::WorkshopMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
 };

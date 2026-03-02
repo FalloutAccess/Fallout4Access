@@ -17,7 +17,7 @@ void TerminalMenuHook::Install()
 
     // Hook TerminalMenu::AdvanceMovie (vtable index 4)
     // VTABLE::TerminalMenu[0] is the primary vtable (IMenu/GameMenuBase)
-    static REL::HookVFT<void(RE::TerminalMenu*, float, std::uint64_t)> hook(
+    static REL::THookVFT<void(RE::TerminalMenu*, float, std::uint64_t)> hook(
         VTABLE::TerminalMenu[0],
         4,  // AdvanceMovie is at index 4
         HookedAdvanceMovie

@@ -92,6 +92,6 @@ private:
     static constexpr const char* PICKPOCKET_VISIBLE_PATH = "root.PickpocketInfo_mc";
 
     // The vtable hooks
-    static inline REL::HookVFT<void(RE::ContainerMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
-    static inline REL::HookVFT<void(RE::ContainerMenu*, const RE::ButtonEvent*)>* s_buttonEventHook = nullptr;
+    static inline REL::THookVFT<void(RE::ContainerMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::ContainerMenu*, const RE::ButtonEvent*)>* s_buttonEventHook = nullptr;
 };

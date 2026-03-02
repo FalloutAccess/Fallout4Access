@@ -67,5 +67,5 @@ private:
     static constexpr std::int32_t MAX_RETRY_FRAMES = 10;
 
     // The vtable hook
-    static inline REL::HookVFT<void(RE::LoadingMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::LoadingMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
 };

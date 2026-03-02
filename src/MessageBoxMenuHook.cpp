@@ -15,7 +15,7 @@ void MessageBoxMenuHook::Install()
     }
 
     // Hook MessageBoxMenu::AdvanceMovie (vtable index 4)
-    static REL::HookVFT<void(RE::MessageBoxMenu*, float, std::uint64_t)> hook(
+    static REL::THookVFT<void(RE::MessageBoxMenu*, float, std::uint64_t)> hook(
         VTABLE::MessageBoxMenu[0],
         4,  // AdvanceMovie is at index 4
         HookedAdvanceMovie

@@ -19,7 +19,7 @@ void VATSCallbackHook::Install()
     // Hook VATSMenu's Call function (vtable index 1, inherited from SWFToCodeFunctionHandler)
     // VTABLE::VATSMenu[0] is the primary vtable (SWFToCodeFunctionHandler/IMenu vtable)
     // Index 1 is the Call virtual function
-    static REL::HookVFT<void(RE::IMenu*, const Scaleform::GFx::FunctionHandler::Params&)> hook(
+    static REL::THookVFT<void(RE::IMenu*, const Scaleform::GFx::FunctionHandler::Params&)> hook(
         VTABLE::VATSMenu[0],  // First vtable entry
         1,                     // Call is at index 1
         HookedCall

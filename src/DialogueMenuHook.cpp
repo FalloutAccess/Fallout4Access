@@ -17,7 +17,7 @@ void DialogueMenuHook::Install()
 
     // Hook DialogueMenu::AdvanceMovie (vtable index 4)
     // VTABLE::DialogueMenu[0] is the primary vtable (IMenu/GameMenuBase)
-    static REL::HookVFT<void(RE::DialogueMenu*, float, std::uint64_t)> advanceHook(
+    static REL::THookVFT<void(RE::DialogueMenu*, float, std::uint64_t)> advanceHook(
         VTABLE::DialogueMenu[0],
         4,  // AdvanceMovie is at index 4
         HookedAdvanceMovie

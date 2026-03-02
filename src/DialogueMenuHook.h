@@ -61,5 +61,5 @@ private:
     static constexpr const char* DIALOGUE_LIST_PATH = "List_mc";
 
     // The vtable hook
-    static inline REL::HookVFT<void(RE::DialogueMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::DialogueMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
 };

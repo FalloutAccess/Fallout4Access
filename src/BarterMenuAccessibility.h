@@ -89,6 +89,6 @@ private:
     static constexpr const char* CAPS_TRANSFER_PATH = "root.CapsTransferInfo_mc.TransferCaps_tf.text";
 
     // The vtable hooks
-    static inline REL::HookVFT<void(RE::BarterMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
-    static inline REL::HookVFT<void(RE::BarterMenu*, const RE::ButtonEvent*)>* s_buttonEventHook = nullptr;
+    static inline REL::THookVFT<void(RE::BarterMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::BarterMenu*, const RE::ButtonEvent*)>* s_buttonEventHook = nullptr;
 };

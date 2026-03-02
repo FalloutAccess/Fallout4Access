@@ -152,6 +152,6 @@ private:
     static constexpr const char* QUICKLOOT_WIDGET_PATH = "root.CenterGroup_mc.QuickContainerWidget_mc";
 
     // The vtable hooks
-    static inline REL::HookVFT<void(RE::HUDMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
-    static inline REL::HookVFT<void(RE::HUDMenu*, const RE::ButtonEvent*)>* s_buttonEventHook = nullptr;
+    static inline REL::THookVFT<void(RE::HUDMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::HUDMenu*, const RE::ButtonEvent*)>* s_buttonEventHook = nullptr;
 };

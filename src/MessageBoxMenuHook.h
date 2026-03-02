@@ -58,5 +58,5 @@ private:
     static constexpr const char* LIST_PATH = "root.Menu_mc.List_mc";
 
     // The vtable hook
-    static inline REL::HookVFT<void(RE::MessageBoxMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::MessageBoxMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
 };

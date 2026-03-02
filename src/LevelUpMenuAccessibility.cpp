@@ -145,7 +145,7 @@ std::string LevelUpMenuAccessibility::BuildMenuOpenAnnouncement(RE::IMenu* a_men
     return announcement;
 }
 
-std::string LevelUpMenuAccessibility::BuildSelectionAnnouncement(RE::IMenu* a_menu, std::uint32_t a_row, std::uint32_t a_col)
+std::string LevelUpMenuAccessibility::BuildSelectionAnnouncement(RE::IMenu* a_menu, std::uint32_t /*a_row*/, std::uint32_t a_col)
 {
     if (!a_menu || !a_menu->uiMovie) return "";
 

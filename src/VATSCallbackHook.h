@@ -52,5 +52,5 @@ private:
     std::chrono::steady_clock::time_point m_lastAnnouncedTime;  // For time-based dedup
 
     // The vtable hook (uses RE::IMenu* since VATSMenu has no dedicated header)
-    static inline REL::HookVFT<void(RE::IMenu*, const Scaleform::GFx::FunctionHandler::Params&)>* s_callHook = nullptr;
+    static inline REL::THookVFT<void(RE::IMenu*, const Scaleform::GFx::FunctionHandler::Params&)>* s_callHook = nullptr;
 };

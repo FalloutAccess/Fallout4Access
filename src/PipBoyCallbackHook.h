@@ -102,6 +102,6 @@ private:
     bool m_pendingObjectivesAnnounce = false;     // Set by HandleQuestSelection, consumed by HookedCall
 
     // The vtable hooks
-    static inline REL::HookVFT<void(RE::PipboyMenu*, const Scaleform::GFx::FunctionHandler::Params&)>* s_callHook = nullptr;
-    static inline REL::HookVFT<void(RE::PipboyMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::PipboyMenu*, const Scaleform::GFx::FunctionHandler::Params&)>* s_callHook = nullptr;
+    static inline REL::THookVFT<void(RE::PipboyMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
 };

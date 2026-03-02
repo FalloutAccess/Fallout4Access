@@ -64,5 +64,5 @@ private:
     static constexpr const char* DESCRIPTION_TEXT_PATH = "root.Menu_mc.PerkInfo_mc.DescriptionText_tf.text";
 
     // The vtable hook
-    static inline REL::HookVFT<void(RE::IMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::IMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
 };

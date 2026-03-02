@@ -16,7 +16,7 @@ void WorkshopCaravanMenuAccessibility::Install()
 
     // Hook Workshop_CaravanMenu::AdvanceMovie (vtable index 4)
     // No header in CommonLibF4, so use VTABLE ID directly
-    static REL::HookVFT<void(RE::IMenu*, float, std::uint64_t)> hook(
+    static REL::THookVFT<void(RE::IMenu*, float, std::uint64_t)> hook(
         VTABLE::Workshop_CaravanMenu[0],
         4,
         HookedAdvanceMovie

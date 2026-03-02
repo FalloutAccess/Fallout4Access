@@ -18,7 +18,7 @@ void BarterMenuAccessibility::Install()
 
     // Hook BarterMenu::AdvanceMovie (vtable index 4)
     // VTABLE::BarterMenu[0] is the primary vtable (IMenu/GameMenuBase)
-    static REL::HookVFT<void(RE::BarterMenu*, float, std::uint64_t)> advanceHook(
+    static REL::THookVFT<void(RE::BarterMenu*, float, std::uint64_t)> advanceHook(
         VTABLE::BarterMenu[0],
         4,  // AdvanceMovie is at index 4
         HookedAdvanceMovie
@@ -33,7 +33,7 @@ void BarterMenuAccessibility::Install()
 
     // Hook BarterMenu::OnButtonEvent (BSInputEventUser vtable index 8)
     // VTABLE::BarterMenu[1] is the BSInputEventUser vtable
-    static REL::HookVFT<void(RE::BarterMenu*, const RE::ButtonEvent*)> buttonHook(
+    static REL::THookVFT<void(RE::BarterMenu*, const RE::ButtonEvent*)> buttonHook(
         VTABLE::BarterMenu[1],
         8,  // OnButtonEvent is at index 8
         HookedOnButtonEvent

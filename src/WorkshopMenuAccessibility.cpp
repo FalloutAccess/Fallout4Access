@@ -16,7 +16,7 @@ void WorkshopMenuAccessibility::Install()
     }
 
     // Hook WorkshopMenu::AdvanceMovie (vtable index 4)
-    static REL::HookVFT<void(RE::WorkshopMenu*, float, std::uint64_t)> hook(
+    static REL::THookVFT<void(RE::WorkshopMenu*, float, std::uint64_t)> hook(
         VTABLE::WorkshopMenu[0],
         4,
         HookedAdvanceMovie

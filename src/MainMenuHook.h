@@ -99,6 +99,6 @@ private:
     static constexpr const char* SPLASH_TEXT_PATH = "root.Menu_mc.SplashScreenHolder_mc.SplashScreenText_tf.text";
 
     // The vtable hooks
-    static inline REL::HookVFT<void(RE::MainMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
-    static inline REL::HookVFT<void(RE::PauseMenu*, float, std::uint64_t)>* s_pauseMenuAdvanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::MainMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::PauseMenu*, float, std::uint64_t)>* s_pauseMenuAdvanceMovieHook = nullptr;
 };

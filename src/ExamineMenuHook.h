@@ -89,8 +89,8 @@ private:
     static constexpr const char* LEGENDARY_DESC_PATH = "root.LegendaryItemDescription_tf.text";
 
     // The vtable hooks (one per menu type, all call the same HookedAdvanceMovie)
-    static inline REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
-    static inline REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)>* s_powerArmorAdvanceMovieHook = nullptr;
-    static inline REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)>* s_cookingAdvanceMovieHook = nullptr;
-    static inline REL::HookVFT<void(RE::ExamineMenu*, float, std::uint64_t)>* s_robotModAdvanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::ExamineMenu*, float, std::uint64_t)>* s_advanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::ExamineMenu*, float, std::uint64_t)>* s_powerArmorAdvanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::ExamineMenu*, float, std::uint64_t)>* s_cookingAdvanceMovieHook = nullptr;
+    static inline REL::THookVFT<void(RE::ExamineMenu*, float, std::uint64_t)>* s_robotModAdvanceMovieHook = nullptr;
 };
