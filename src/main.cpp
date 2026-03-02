@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "AutoAimAccessibility.h"
+#include "BookMenuAccessibility.h"
 #include "AutoWalk.h"
 #include "BarterMenuAccessibility.h"
 #include "ContainerMenuAccessibility.h"
@@ -86,6 +87,9 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 
     // Install HUD message hook for item pickups, location discoveries, etc.
     HUDMessageHook::GetSingleton()->Install();
+
+    // Install BookMenu hook for book/note/holotape text accessibility
+    BookMenuAccessibility::GetSingleton()->Install();
 
     // Install ExamineMenu hook for workbench accessibility
     ExamineMenuHook::GetSingleton()->Install();

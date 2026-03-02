@@ -51,7 +51,7 @@ RE::BSEventNotifyControl MenuAccessibility::ProcessEvent(
 bool MenuAccessibility::ShouldHandleEvent(const RE::InputEvent*)
 {
     // Only handle events when a tracked menu is open
-    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen || m_examineMenuOpen || m_powerArmorModMenuOpen || m_cookingMenuOpen || m_robotModMenuOpen || m_levelUpMenuOpen || m_workshopMenuOpen;
+    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen || m_examineMenuOpen || m_powerArmorModMenuOpen || m_cookingMenuOpen || m_robotModMenuOpen || m_levelUpMenuOpen || m_workshopMenuOpen || m_bookMenuOpen;
 }
 
 void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
@@ -325,7 +325,11 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
         }
     }
 
-    if (a_menuName == "MainMenu"sv) {
+    if (a_menuName == "BookMenu"sv) {
+        m_bookMenuOpen = true;
+        REX::INFO("BookMenu opened");
+        BookMenuAccessibility::GetSingleton()->OnBookMenuOpened();
+    } else if (a_menuName == "MainMenu"sv) {
         m_mainMenuOpen = true;
         REX::INFO("MainMenu opened");
         // MainMenuHook handles splash screen, menu name, list selection, and confirmation dialogs
@@ -418,7 +422,11 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
 
 void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
 {
-    if (a_menuName == "MainMenu"sv) {
+    if (a_menuName == "BookMenu"sv) {
+        m_bookMenuOpen = false;
+        REX::INFO("BookMenu closed");
+        BookMenuAccessibility::GetSingleton()->OnBookMenuClosed();
+    } else if (a_menuName == "MainMenu"sv) {
         m_mainMenuOpen = false;
         // MainMenuHook handles resetting panel handlers via SetMainMenuOpen(false)
         MainMenuHook::GetSingleton()->SetMainMenuOpen(false);

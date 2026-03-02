@@ -6,6 +6,7 @@
 #include "ExamineMenuAccessibility.h"
 #include "BarterMenuAccessibility.h"
 #include "ContainerMenuAccessibility.h"
+#include "BookMenuAccessibility.h"
 #include "LoadingMenuHook.h"
 #include "WorkshopMenuAccessibility.h"
 #include "WorkshopCaravanMenuAccessibility.h"
@@ -58,6 +59,7 @@ private:
     bool m_barterMenuOpen = false;
     bool m_levelUpMenuOpen = false;
     bool m_loadingMenuOpen = false;
+    bool m_bookMenuOpen = false;
     bool m_workshopMenuOpen = false;
     bool m_caravanMenuOpen = false;
     bool m_inputHandlerRegistered = false;
