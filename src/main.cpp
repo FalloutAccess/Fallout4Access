@@ -9,6 +9,7 @@
 #include "HitMarkerAudioFeedback.h"
 #include "DialogueMenuHook.h"
 #include "ExamineMenuHook.h"
+#include "GameplayStateAnnouncer.h"
 #include "HUDMessageHook.h"
 #include "ItemStatFormatter.h"
 #include "LevelUpMenuHook.h"
@@ -36,6 +37,9 @@ void OnF4SEMessage(F4SE::MessagingInterface::Message* a_msg)
 
         // Register hit marker audio feedback for combat accessibility
         HitMarkerAudioFeedback::GetSingleton()->Register();
+
+        // Register gameplay state announcer (view changes, sneak, detection)
+        GameplayStateAnnouncer::GetSingleton()->Register();
 
         // Load damage type translations
         ItemStatFormatter::LoadTranslations();

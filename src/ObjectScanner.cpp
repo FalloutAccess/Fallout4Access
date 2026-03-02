@@ -2,6 +2,7 @@
 #include "AutoAimAccessibility.h"
 #include "AutoWalk.h"
 #include "ContextualInfoAnnouncer.h"
+#include "GameplayStateAnnouncer.h"
 #include "CorpseLootTracker.h"
 #include "SpeechManager.h"
 #include <SRAL.h>
@@ -81,6 +82,9 @@ bool ObjectScanner::ShouldHandleEvent(const RE::InputEvent* a_event)
 
     // Check for auto-aim on ironsights
     AutoAimAccessibility::GetSingleton()->Update();
+
+    // Check for gameplay state changes (camera, sneak, detection)
+    GameplayStateAnnouncer::GetSingleton()->Update();
 
     if (!a_event) return false;
 
