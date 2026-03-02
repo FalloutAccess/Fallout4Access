@@ -123,7 +123,7 @@ const Scaleform::GFx::Value* PipBoyRadioPage::GetRadioMenuObj(RE::IMenu* a_menu)
 {
     if (!a_menu) return nullptr;
     auto* pipboyMenu = static_cast<RE::PipboyMenu*>(a_menu);
-    return &pipboyMenu->radioMenuObj.menuObj;
+    return pipboyMenu->radioMenuObj.menuObj;
 }
 
 std::int32_t PipBoyRadioPage::GetListSelectedIndex(RE::IMenu* a_menu)

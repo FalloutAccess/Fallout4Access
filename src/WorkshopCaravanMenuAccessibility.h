@@ -1,7 +1,6 @@
 #pragma once
 
 #include "pch.h"
-#include <REL/Hook.h>
 
 // Provides accessibility for the Workshop Caravan (supply line) destination menu
 // This is a separate menu (Workshop_CaravanMenu.swf) with a scrolling settlement list

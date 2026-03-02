@@ -2,7 +2,6 @@
 
 #include "pch.h"
 #include "ItemIdentity.h"
-#include <REL/Hook.h>
 #include <unordered_map>
 
 // Hooks HUDMenu::AdvanceMovie to check for notification changes every frame

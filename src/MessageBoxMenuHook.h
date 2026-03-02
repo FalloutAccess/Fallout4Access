@@ -2,7 +2,6 @@
 
 #include "pch.h"
 #include <RE/M/MessageBoxMenu.h>
-#include <REL/Hook.h>
 
 // Hooks MessageBoxMenu::AdvanceMovie to monitor button selection changes
 // Announces body text and button count on open, selected button on navigation

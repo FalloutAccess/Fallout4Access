@@ -3,7 +3,6 @@
 #include "pch.h"
 #include <RE/M/MainMenu.h>
 #include <RE/P/PauseMenu.h>
-#include <REL/Hook.h>
 
 // Hooks MainMenu and PauseMenu AdvanceMovie to check for state changes every frame
 // This replaces unreliable keystroke polling with efficient per-frame checks

@@ -2,7 +2,6 @@
 
 #include "pch.h"
 #include <Scaleform/G/GFx_FunctionHandler.h>
-#include <REL/Hook.h>
 #include <chrono>
 
 // Hooks VATSMenu's SWFToCodeFunctionHandler::Call to intercept AS-to-C++ callbacks

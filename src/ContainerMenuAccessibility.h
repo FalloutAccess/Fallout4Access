@@ -3,7 +3,6 @@
 #include "pch.h"
 #include "ItemIdentity.h"
 #include <RE/C/ContainerMenu.h>
-#include <REL/Hook.h>
 
 // Provides accessibility for ContainerMenu (looting from containers, corpses, pickpocketing)
 // Uses AdvanceMovie vtable hook for per-frame state tracking

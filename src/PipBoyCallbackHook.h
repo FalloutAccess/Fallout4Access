@@ -4,7 +4,6 @@
 #include "ItemIdentity.h"
 #include <RE/P/PipboyMenu.h>
 #include <Scaleform/G/GFx_FunctionHandler.h>
-#include <REL/Hook.h>
 #include <chrono>
 
 // Hooks PipboyMenu's SWFToCodeFunctionHandler::Call to intercept AS-to-C++ callbacks

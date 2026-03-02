@@ -543,13 +543,13 @@ const Scaleform::GFx::Value* PipBoyStatsPage::GetActiveSubMenuObj(RE::IMenu* a_m
     const Scaleform::GFx::Value* menuObj = nullptr;
     switch (m_currentTab) {
         case Tab::Status:
-            menuObj = &pipboyMenu->statsMenuObj.menuObj;
+            menuObj = pipboyMenu->statsMenuObj.menuObj;
             break;
         case Tab::SPECIAL:
-            menuObj = &pipboyMenu->specialMenuObj.menuObj;
+            menuObj = pipboyMenu->specialMenuObj.menuObj;
             break;
         case Tab::Perks:
-            menuObj = &pipboyMenu->perksMenuObj.menuObj;
+            menuObj = pipboyMenu->perksMenuObj.menuObj;
             break;
     }
 

@@ -3,7 +3,6 @@
 #include "pch.h"
 #include <RE/E/ExamineMenu.h>
 #include <RE/P/PowerArmorModMenu.h>
-#include <REL/Hook.h>
 
 // Hooks ExamineMenu::AdvanceMovie to check for state changes every frame
 // Tracks mode transitions, item selection, mod slot selection, and mod choice selection

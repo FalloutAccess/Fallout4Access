@@ -2,7 +2,6 @@
 
 #include "pch.h"
 #include <RE/L/LoadingMenu.h>
-#include <REL/Hook.h>
 
 // Hooks LoadingMenu::AdvanceMovie to announce loading screen content
 // - Announces player level, VDSG catalog number, and loading tip on menu open

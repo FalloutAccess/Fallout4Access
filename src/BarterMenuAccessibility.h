@@ -3,7 +3,6 @@
 #include "pch.h"
 #include "ItemIdentity.h"
 #include <RE/B/BarterMenu.h>
-#include <REL/Hook.h>
 
 // Provides accessibility for BarterMenu (trading with vendors)
 // Uses AdvanceMovie vtable hook for per-frame state tracking

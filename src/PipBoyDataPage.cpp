@@ -257,14 +257,14 @@ const Scaleform::GFx::Value* PipBoyDataPage::GetWorkshopMenuObj(RE::IMenu* a_men
 {
     if (!a_menu) return nullptr;
     auto* pipboyMenu = static_cast<RE::PipboyMenu*>(a_menu);
-    return &pipboyMenu->workshopMenuObj.menuObj;
+    return pipboyMenu->workshopMenuObj.menuObj;
 }
 
 const Scaleform::GFx::Value* PipBoyDataPage::GetLogMenuObj(RE::IMenu* a_menu)
 {
     if (!a_menu) return nullptr;
     auto* pipboyMenu = static_cast<RE::PipboyMenu*>(a_menu);
-    return &pipboyMenu->logMenuObj.menuObj;
+    return pipboyMenu->logMenuObj.menuObj;
 }
 
 std::int32_t PipBoyDataPage::GetListSelectedIndex(RE::IMenu* a_menu, const Scaleform::GFx::Value& a_menuObj, const char* a_tabName, const char* a_listName)

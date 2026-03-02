@@ -1,7 +1,6 @@
 #pragma once
 
 #include "pch.h"
-#include <REL/Hook.h>
 
 // Hooks VATSMenu::AdvanceMovie to check for state changes every frame
 // Tracks target changes, body part selection, health, and distance

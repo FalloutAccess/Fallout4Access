@@ -2,7 +2,6 @@
 
 #include "pch.h"
 #include <RE/D/DialogueMenu.h>
-#include <REL/Hook.h>
 
 // Provides accessibility for DialogueMenu (NPC conversations)
 // Uses AdvanceMovie vtable hook for per-frame state tracking

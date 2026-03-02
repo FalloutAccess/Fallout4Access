@@ -4,21 +4,46 @@
     },
     ["windows|x64"] = {
         ["cmake#f56260b5"] = {
+            repo = {
+                branch = "master",
+                commit = "bed5a76c968c4cdfd8f3ff47fa61ace4f24859b7",
+                url = "https://gitlab.com/tboox/xmake-repo.git"
+            },
             version = "4.2.2"
         },
         ["ninja#f56260b5"] = {
+            repo = {
+                branch = "master",
+                commit = "bed5a76c968c4cdfd8f3ff47fa61ace4f24859b7",
+                url = "https://gitlab.com/tboox/xmake-repo.git"
+            },
             version = "1.13.2"
         },
         ["spdlog v1.16.0#09c8c173"] = {
+            repo = {
+                branch = "master",
+                commit = "bed5a76c968c4cdfd8f3ff47fa61ace4f24859b7",
+                url = "https://gitlab.com/tboox/xmake-repo.git"
+            },
             version = "v1.16.0"
         },
         ["sral#a0c24696"] = {
             version = "latest"
         },
         ["zycore-c v1.5.2#f56260b5"] = {
+            repo = {
+                branch = "master",
+                commit = "bed5a76c968c4cdfd8f3ff47fa61ace4f24859b7",
+                url = "https://gitlab.com/tboox/xmake-repo.git"
+            },
             version = "v1.5.2"
         },
         ["zydis#f56260b5"] = {
+            repo = {
+                branch = "master",
+                commit = "bed5a76c968c4cdfd8f3ff47fa61ace4f24859b7",
+                url = "https://gitlab.com/tboox/xmake-repo.git"
+            },
             version = "v4.1.1"
         }
     }

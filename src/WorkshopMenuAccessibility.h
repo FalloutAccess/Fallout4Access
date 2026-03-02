@@ -3,7 +3,6 @@
 #include "pch.h"
 #include <RE/W/WorkshopMenu.h>
 #include <RE/W/Workshop.h>
-#include <REL/Hook.h>
 
 // Provides accessibility for the Workshop building menu
 // Uses AdvanceMovie vtable hook for per-frame navigation tracking

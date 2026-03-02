@@ -2,7 +2,6 @@
 
 #include "pch.h"
 #include <RE/T/TerminalMenu.h>
-#include <REL/Hook.h>
 
 // Hooks TerminalMenu::AdvanceMovie to check for state changes every frame
 // This replaces unreliable background thread polling with efficient per-frame checks

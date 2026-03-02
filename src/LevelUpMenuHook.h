@@ -1,7 +1,6 @@
 #pragma once
 
 #include "pch.h"
-#include <REL/Hook.h>
 
 // Hooks LevelUpMenu::AdvanceMovie to check for state changes every frame
 // Tracks perk grid navigation (row/column) and applies platform hotpatch
