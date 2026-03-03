@@ -303,7 +303,11 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
 
     // H key - contextual info depending on active menu
     if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x48) {  // VK_H
-        if (m_pipBoyMenuOpen) {
+        if (m_barterMenuOpen) {
+            BarterMenuAccessibility::GetSingleton()->AnnounceBarterStatus();
+        } else if (m_containerMenuOpen) {
+            ContainerMenuAccessibility::GetSingleton()->AnnounceContainerStatus();
+        } else if (m_pipBoyMenuOpen) {
             PipBoyMenuAccessibility::GetSingleton()->AnnounceInventoryStatus();
         } else if (m_workshopMenuOpen) {
             WorkshopMenuAccessibility::GetSingleton()->AnnounceSettlementStats();

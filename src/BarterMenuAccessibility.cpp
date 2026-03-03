@@ -63,6 +63,8 @@ void BarterMenuAccessibility::OnBarterMenuOpened()
     m_lastPlayerFilterName.clear();
     m_lastSortLabel.clear();
     m_lastCapsTransfer.clear();
+    m_quantityMenuOpen = false;
+    m_lastQuantityValue.clear();
 
     // Schedule deferred announcement (1 frame delay for Scaleform to populate)
     if (auto* taskInterface = F4SE::GetTaskInterface()) {
@@ -115,7 +117,11 @@ void BarterMenuAccessibility::HookedOnButtonEvent(RE::BarterMenu* a_this, const 
         if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x46) {  // F key
             REX::INFO("BarterMenu: F key pressed, switching sides");
             hook->SwitchSides();
-            // Don't return - still call original to let menu process normally
+        }
+
+        // H key - announce caps status
+        if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x48) {  // H key (VK_H)
+            hook->AnnounceBarterStatus();
         }
     }
 
@@ -128,6 +134,10 @@ void BarterMenuAccessibility::HookedOnButtonEvent(RE::BarterMenu* a_this, const 
 void BarterMenuAccessibility::CheckStateChanges(RE::BarterMenu* a_menu)
 {
     if (!a_menu) return;
+
+    // Check quantity picker first - suppress other checks while it's open
+    CheckQuantityMenu(a_menu);
+    if (m_quantityMenuOpen) return;
 
     // Check for focus change (vendor <-> player inventory)
     CheckFocusChange(a_menu);
@@ -531,6 +541,72 @@ std::int32_t BarterMenuAccessibility::GetBarterCount(RE::BarterMenu* a_menu, std
     return 0;
 }
 
+void BarterMenuAccessibility::CheckQuantityMenu(RE::BarterMenu* a_menu)
+{
+    bool isOpen = IsQuantityMenuOpen(a_menu);
+
+    if (isOpen && !m_quantityMenuOpen) {
+        // Picker just opened
+        m_quantityMenuOpen = true;
+        std::string qty = GetQuantityValue(a_menu);
+        m_lastQuantityValue = qty;
+        if (!qty.empty()) {
+            SpeakText(qty);
+        }
+    } else if (!isOpen && m_quantityMenuOpen) {
+        // Picker just closed
+        m_quantityMenuOpen = false;
+        m_lastQuantityValue.clear();
+    } else if (isOpen) {
+        // Picker still open - check for value change
+        std::string qty = GetQuantityValue(a_menu);
+        if (qty != m_lastQuantityValue) {
+            m_lastQuantityValue = qty;
+            SpeakText(qty);
+        }
+    }
+}
+
+bool BarterMenuAccessibility::IsQuantityMenuOpen(RE::BarterMenu* a_menu)
+{
+    if (!a_menu) return false;
+
+    const auto& menuObj = a_menu->menuObj;
+    if (!menuObj.IsObject()) return false;
+
+    Scaleform::GFx::Value quantityMenu;
+    if (!menuObj.GetMember("QuantityMenu_mc", &quantityMenu) || !quantityMenu.IsObject()) return false;
+
+    // Check alpha > 0 (ActionScript sets alpha=1 on open, alpha=0 on close)
+    Scaleform::GFx::Value alpha;
+    if (quantityMenu.GetMember("alpha", &alpha) && alpha.IsNumber()) {
+        return alpha.GetNumber() > 0.0;
+    }
+
+    return false;
+}
+
+std::string BarterMenuAccessibility::GetQuantityValue(RE::BarterMenu* a_menu)
+{
+    if (!a_menu) return "";
+
+    const auto& menuObj = a_menu->menuObj;
+    if (!menuObj.IsObject()) return "";
+
+    Scaleform::GFx::Value quantityMenu;
+    if (!menuObj.GetMember("QuantityMenu_mc", &quantityMenu) || !quantityMenu.IsObject()) return "";
+
+    Scaleform::GFx::Value valueTf;
+    if (!quantityMenu.GetMember("Value_tf", &valueTf) || !valueTf.IsObject()) return "";
+
+    Scaleform::GFx::Value text;
+    if (valueTf.GetMember("text", &text) && text.IsString()) {
+        return text.GetString();
+    }
+
+    return "";
+}
+
 void BarterMenuAccessibility::CheckCapsChange(RE::BarterMenu* a_menu)
 {
     // Skip until opening announcement is done
@@ -543,9 +619,41 @@ void BarterMenuAccessibility::CheckCapsChange(RE::BarterMenu* a_menu)
     if (capsAmount != m_lastCapsTransfer) {
         m_lastCapsTransfer = capsAmount;
         if (!capsAmount.empty()) {
-            SpeakText(capsAmount);
+            // Determine direction from arrow visibility
+            std::string direction = GetCapsTransferDirection(a_menu);
+            SpeakText(direction + capsAmount);
         }
     }
+}
+
+std::string BarterMenuAccessibility::GetCapsTransferDirection(RE::BarterMenu* a_menu)
+{
+    if (!a_menu) return "";
+
+    const auto& menuObj = a_menu->menuObj;
+    if (!menuObj.IsObject()) return "";
+
+    Scaleform::GFx::Value capsInfo;
+    if (!menuObj.GetMember("CapsTransferInfo_mc", &capsInfo) || !capsInfo.IsObject()) return "";
+
+    // CapsArrowRight_mc visible = player pays vendor (cost)
+    // CapsArrowLeft_mc visible = vendor pays player (profit)
+    Scaleform::GFx::Value arrow;
+    Scaleform::GFx::Value arrowVisible;
+
+    if (capsInfo.GetMember("CapsArrowRight_mc", &arrow) && arrow.IsObject()) {
+        if (arrow.GetMember("visible", &arrowVisible) && arrowVisible.IsBoolean() && arrowVisible.GetBoolean()) {
+            return "Cost: ";
+        }
+    }
+
+    if (capsInfo.GetMember("CapsArrowLeft_mc", &arrow) && arrow.IsObject()) {
+        if (arrow.GetMember("visible", &arrowVisible) && arrowVisible.IsBoolean() && arrowVisible.GetBoolean()) {
+            return "Profit: ";
+        }
+    }
+
+    return "";
 }
 
 std::string BarterMenuAccessibility::GetCapsTransferAmount(RE::BarterMenu* a_menu)
@@ -584,6 +692,63 @@ std::string BarterMenuAccessibility::GetCapsTransferAmount(RE::BarterMenu* a_men
     }
 
     return "";
+}
+
+std::string BarterMenuAccessibility::GetCaps(RE::BarterMenu* a_menu, bool a_vendorSide)
+{
+    if (!a_menu) return "";
+
+    const auto& menuObj = a_menu->menuObj;
+    if (!menuObj.IsObject()) return "";
+
+    // Vendor caps: ContainerInventory_mc -> VendorCaps_tf -> text
+    // Player caps: PlayerInventory_mc -> PlayerCaps_tf -> text
+    const char* panelName = a_vendorSide ? "ContainerInventory_mc" : "PlayerInventory_mc";
+    const char* tfName = a_vendorSide ? "VendorCaps_tf" : "PlayerCaps_tf";
+
+    Scaleform::GFx::Value panel;
+    if (!menuObj.GetMember(panelName, &panel) || !panel.IsObject()) return "";
+
+    Scaleform::GFx::Value capsTf;
+    if (!panel.GetMember(tfName, &capsTf) || !capsTf.IsObject()) return "";
+
+    Scaleform::GFx::Value text;
+    if (capsTf.GetMember("text", &text) && text.IsString()) {
+        return text.GetString();
+    }
+
+    return "";
+}
+
+void BarterMenuAccessibility::AnnounceBarterStatus()
+{
+    if (!m_menuOpen) return;
+
+    auto ui = RE::UI::GetSingleton();
+    if (!ui) return;
+
+    auto menu = ui->GetMenu<RE::BarterMenu>();
+    if (!menu) return;
+
+    std::string announcement;
+
+    // Caps for the focused side
+    std::string caps = GetCaps(menu.get(), m_vendorFocused);
+    if (!caps.empty()) {
+        announcement = caps + " caps";
+    }
+
+    // Trade total if there's a pending trade
+    std::string transferAmount = GetCapsTransferAmount(menu.get());
+    if (!transferAmount.empty()) {
+        std::string direction = GetCapsTransferDirection(menu.get());
+        if (!announcement.empty()) announcement += ", ";
+        announcement += direction + transferAmount;
+    }
+
+    if (!announcement.empty()) {
+        SpeakText(announcement);
+    }
 }
 
 void BarterMenuAccessibility::AnnounceBarterOpened(RE::BarterMenu* a_menu)

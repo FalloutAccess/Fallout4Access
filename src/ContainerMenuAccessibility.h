@@ -21,6 +21,9 @@ public:
     // Called by MenuAccessibility when Q key is pressed to switch sides
     void SwitchSides();
 
+    // Announce player carry weight (H key)
+    void AnnounceContainerStatus();
+
 private:
     ContainerMenuAccessibility() = default;
     ~ContainerMenuAccessibility() = default;
@@ -55,6 +58,11 @@ private:
     std::int32_t GetSelectedIndex(RE::ContainerMenu* a_menu, bool a_containerSide);
     ItemIdentity GetItemAtIndex(RE::ContainerMenu* a_menu, std::int32_t a_index, bool a_containerSide);
 
+    // Quantity picker
+    void CheckQuantityMenu(RE::ContainerMenu* a_menu);
+    bool IsQuantityMenuOpen(RE::ContainerMenu* a_menu);
+    std::string GetQuantityValue(RE::ContainerMenu* a_menu);
+
     // Pickpocket mode
     void CheckPickpocketPercentage(RE::ContainerMenu* a_menu);
     std::string GetPickpocketPercentage(RE::ContainerMenu* a_menu);
@@ -82,6 +90,8 @@ private:
     std::string m_lastSortLabel;              // Sort button label (e.g., "SORT (DMG)")
     std::string m_lastPickpocketPercent;
     bool m_isPickpocketMode = false;
+    bool m_quantityMenuOpen = false;
+    std::string m_lastQuantityValue;
 
     // Scaleform paths (no Menu_mc prefix - ContainerMenu uses root directly)
     static constexpr const char* CONTAINER_SELECTED_PATH = "root.containerIsSelected";

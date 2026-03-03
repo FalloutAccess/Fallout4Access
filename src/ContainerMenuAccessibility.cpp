@@ -66,6 +66,8 @@ void ContainerMenuAccessibility::OnContainerMenuOpened()
     m_lastSortLabel.clear();
     m_lastPickpocketPercent.clear();
     m_isPickpocketMode = false;
+    m_quantityMenuOpen = false;
+    m_lastQuantityValue.clear();
 
     // Schedule deferred announcement (1 frame delay for Scaleform to populate)
     if (auto* taskInterface = F4SE::GetTaskInterface()) {
@@ -131,7 +133,11 @@ void ContainerMenuAccessibility::HookedOnButtonEvent(RE::ContainerMenu* a_this, 
         if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x46) {  // F key
             REX::INFO("ContainerMenu: F key pressed, switching sides");
             hook->SwitchSides();
-            // Don't return - still call original to let menu process normally
+        }
+
+        // H key - announce weight status
+        if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x48) {  // H key (VK_H)
+            hook->AnnounceContainerStatus();
         }
     }
 
@@ -144,6 +150,10 @@ void ContainerMenuAccessibility::HookedOnButtonEvent(RE::ContainerMenu* a_this, 
 void ContainerMenuAccessibility::CheckStateChanges(RE::ContainerMenu* a_menu)
 {
     if (!a_menu) return;
+
+    // Check quantity picker first - suppress other checks while it's open
+    CheckQuantityMenu(a_menu);
+    if (m_quantityMenuOpen) return;
 
     // Check for focus change (container <-> player inventory)
     CheckFocusChange(a_menu);
@@ -530,6 +540,72 @@ std::string ContainerMenuAccessibility::GetPickpocketPercentage(RE::ContainerMen
     return "";
 }
 
+void ContainerMenuAccessibility::CheckQuantityMenu(RE::ContainerMenu* a_menu)
+{
+    bool isOpen = IsQuantityMenuOpen(a_menu);
+
+    if (isOpen && !m_quantityMenuOpen) {
+        // Picker just opened
+        m_quantityMenuOpen = true;
+        std::string qty = GetQuantityValue(a_menu);
+        m_lastQuantityValue = qty;
+        if (!qty.empty()) {
+            SpeakText(qty);
+        }
+    } else if (!isOpen && m_quantityMenuOpen) {
+        // Picker just closed
+        m_quantityMenuOpen = false;
+        m_lastQuantityValue.clear();
+    } else if (isOpen) {
+        // Picker still open - check for value change
+        std::string qty = GetQuantityValue(a_menu);
+        if (qty != m_lastQuantityValue) {
+            m_lastQuantityValue = qty;
+            SpeakText(qty);
+        }
+    }
+}
+
+bool ContainerMenuAccessibility::IsQuantityMenuOpen(RE::ContainerMenu* a_menu)
+{
+    if (!a_menu) return false;
+
+    const auto& menuObj = a_menu->menuObj;
+    if (!menuObj.IsObject()) return false;
+
+    Scaleform::GFx::Value quantityMenu;
+    if (!menuObj.GetMember("QuantityMenu_mc", &quantityMenu) || !quantityMenu.IsObject()) return false;
+
+    // Check alpha > 0 (ActionScript sets alpha=1 on open, alpha=0 on close)
+    Scaleform::GFx::Value alpha;
+    if (quantityMenu.GetMember("alpha", &alpha) && alpha.IsNumber()) {
+        return alpha.GetNumber() > 0.0;
+    }
+
+    return false;
+}
+
+std::string ContainerMenuAccessibility::GetQuantityValue(RE::ContainerMenu* a_menu)
+{
+    if (!a_menu) return "";
+
+    const auto& menuObj = a_menu->menuObj;
+    if (!menuObj.IsObject()) return "";
+
+    Scaleform::GFx::Value quantityMenu;
+    if (!menuObj.GetMember("QuantityMenu_mc", &quantityMenu) || !quantityMenu.IsObject()) return "";
+
+    Scaleform::GFx::Value valueTf;
+    if (!quantityMenu.GetMember("Value_tf", &valueTf) || !valueTf.IsObject()) return "";
+
+    Scaleform::GFx::Value text;
+    if (valueTf.GetMember("text", &text) && text.IsString()) {
+        return text.GetString();
+    }
+
+    return "";
+}
+
 bool ContainerMenuAccessibility::IsPickpocketMode(RE::ContainerMenu* a_menu)
 {
     if (!a_menu) {
@@ -551,6 +627,35 @@ bool ContainerMenuAccessibility::IsPickpocketMode(RE::ContainerMenu* a_menu)
     }
 
     return false;
+}
+
+void ContainerMenuAccessibility::AnnounceContainerStatus()
+{
+    if (!m_menuOpen) return;
+
+    auto ui = RE::UI::GetSingleton();
+    if (!ui) return;
+
+    auto menu = ui->GetMenu<RE::ContainerMenu>();
+    if (!menu) return;
+
+    const auto& menuObj = menu->menuObj;
+    if (!menuObj.IsObject()) return;
+
+    // Read PlayerInventory_mc -> PlayerWeight_tf -> text (format: "120/250")
+    Scaleform::GFx::Value playerInv;
+    if (!menuObj.GetMember("PlayerInventory_mc", &playerInv) || !playerInv.IsObject()) return;
+
+    Scaleform::GFx::Value weightTf;
+    if (!playerInv.GetMember("PlayerWeight_tf", &weightTf) || !weightTf.IsObject()) return;
+
+    Scaleform::GFx::Value text;
+    if (weightTf.GetMember("text", &text) && text.IsString()) {
+        std::string weight = text.GetString();
+        if (!weight.empty()) {
+            SpeakText(weight);
+        }
+    }
 }
 
 void ContainerMenuAccessibility::AnnounceContainerOpened(RE::ContainerMenu* a_menu)

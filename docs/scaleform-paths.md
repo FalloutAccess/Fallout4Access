@@ -219,6 +219,7 @@ Player side:              root.PlayerInventory_mc
   - PlayerList_mc         (BSScrollingList) player items
     - selectedIndex       (int) current selection
     - entryList           (array) items
+  - PlayerWeight_tf.text  (string) player carry weight "currWeight/maxWeight"
 
 Item card:                root.ItemCard_mc
   - InfoObj               (array) stat entries (same format as Pip-Boy)
@@ -229,6 +230,13 @@ Sort button:              root.SortButton
 Pickpocket mode:          root.PickpocketInfo_mc
   - visible               (bool) whether pickpocket UI is shown
   - Percent_tf.text       (string) success chance percentage
+
+Quantity picker:          root.QuantityMenu_mc
+  - alpha                 (number) 1=open, 0=closed
+  - Value_tf.text         (string) current quantity
+  - TotalValue_tf.text    (string) total caps value (quantity * unit value)
+  - Label_tf.text         (string) label text
+  - QuantityScrollbar_mc  slider widget (min=0, max=stack count)
 
 Entry properties (entryList[i]):
   - text                  (string) item name

@@ -21,6 +21,9 @@ public:
     // Called by MenuAccessibility when Q key is pressed to switch sides
     void SwitchSides();
 
+    // Announce caps for the currently focused side (H key)
+    void AnnounceBarterStatus();
+
 private:
     BarterMenuAccessibility() = default;
     ~BarterMenuAccessibility() = default;
@@ -56,9 +59,16 @@ private:
     ItemIdentity GetItemAtIndex(RE::BarterMenu* a_menu, std::int32_t a_index, bool a_vendorSide);
     std::int32_t GetBarterCount(RE::BarterMenu* a_menu, std::int32_t a_index, bool a_vendorSide);
 
+    // Quantity picker
+    void CheckQuantityMenu(RE::BarterMenu* a_menu);
+    bool IsQuantityMenuOpen(RE::BarterMenu* a_menu);
+    std::string GetQuantityValue(RE::BarterMenu* a_menu);
+
     // Caps tracking
     void CheckCapsChange(RE::BarterMenu* a_menu);
     std::string GetCapsTransferAmount(RE::BarterMenu* a_menu);
+    std::string GetCapsTransferDirection(RE::BarterMenu* a_menu);
+    std::string GetCaps(RE::BarterMenu* a_menu, bool a_vendorSide);
 
     // Announcement helpers
     void AnnounceBarterOpened(RE::BarterMenu* a_menu);
@@ -81,6 +91,8 @@ private:
     std::string m_lastPlayerFilterName;       // Filter/category name for player inventory
     std::string m_lastSortLabel;              // Sort button label (e.g., "SORT (DMG)")
     std::string m_lastCapsTransfer;           // Last caps transfer amount
+    bool m_quantityMenuOpen = false;
+    std::string m_lastQuantityValue;
 
     // Scaleform paths (same structure as ContainerMenu)
     static constexpr const char* VENDOR_LIST_PATH = "root.ContainerList_mc";
