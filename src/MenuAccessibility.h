@@ -9,6 +9,7 @@
 #include "BookMenuAccessibility.h"
 #include "LoadingMenuHook.h"
 #include "WorkshopMenuAccessibility.h"
+#include "SleepWaitMenuAccessibility.h"
 #include "WorkshopCaravanMenuAccessibility.h"
 
 class MenuAccessibility :
@@ -62,5 +63,7 @@ private:
     bool m_bookMenuOpen = false;
     bool m_workshopMenuOpen = false;
     bool m_caravanMenuOpen = false;
+    bool m_sleepWaitMenuOpen = false;
+    bool m_sitWaitMenuOpen = false;
     bool m_inputHandlerRegistered = false;
 };

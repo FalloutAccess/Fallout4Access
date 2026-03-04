@@ -12,6 +12,7 @@
 #include "BarterMenuAccessibility.h"
 #include "ContainerMenuAccessibility.h"
 #include "LevelUpMenuAccessibility.h"
+#include "ExamineConfirmMenuHook.h"
 #include "MessageBoxMenuHook.h"
 #include "PipBoyMapPage.h"
 #include <SRAL.h>
@@ -51,7 +52,7 @@ RE::BSEventNotifyControl MenuAccessibility::ProcessEvent(
 bool MenuAccessibility::ShouldHandleEvent(const RE::InputEvent*)
 {
     // Only handle events when a tracked menu is open
-    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen || m_examineMenuOpen || m_powerArmorModMenuOpen || m_cookingMenuOpen || m_robotModMenuOpen || m_levelUpMenuOpen || m_workshopMenuOpen || m_bookMenuOpen;
+    return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen || m_examineMenuOpen || m_powerArmorModMenuOpen || m_cookingMenuOpen || m_robotModMenuOpen || m_levelUpMenuOpen || m_workshopMenuOpen || m_bookMenuOpen || m_sleepWaitMenuOpen || m_sitWaitMenuOpen;
 }
 
 void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
@@ -395,6 +396,10 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
         m_robotModMenuOpen = true;
         REX::INFO("RobotModMenu opened");
         ExamineMenuAccessibility::GetSingleton()->OnExamineMenuOpened();
+    } else if (a_menuName == "ExamineConfirmMenu"sv) {
+        REX::INFO("ExamineConfirmMenu opened");
+        ExamineConfirmMenuHook::GetSingleton()->ResetState();
+        ExamineConfirmMenuHook::GetSingleton()->SetMenuOpen(true);
     } else if (a_menuName == "ContainerMenu"sv) {
         m_containerMenuOpen = true;
         REX::INFO("ContainerMenu opened");
@@ -421,6 +426,14 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
         m_caravanMenuOpen = true;
         REX::INFO("Workshop_CaravanMenu opened");
         WorkshopCaravanMenuAccessibility::GetSingleton()->OnCaravanMenuOpened();
+    } else if (a_menuName == "SleepWaitMenu"sv) {
+        m_sleepWaitMenuOpen = true;
+        REX::INFO("SleepWaitMenu opened");
+        SleepWaitMenuAccessibility::GetSingleton()->OnSleepWaitMenuOpened();
+    } else if (a_menuName == "SitWaitMenu"sv) {
+        m_sitWaitMenuOpen = true;
+        REX::INFO("SitWaitMenu opened");
+        SleepWaitMenuAccessibility::GetSingleton()->OnSitWaitMenuOpened();
     }
 }
 
@@ -477,6 +490,9 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
         m_robotModMenuOpen = false;
         REX::INFO("RobotModMenu closed");
         ExamineMenuAccessibility::GetSingleton()->OnExamineMenuClosed();
+    } else if (a_menuName == "ExamineConfirmMenu"sv) {
+        REX::INFO("ExamineConfirmMenu closed");
+        ExamineConfirmMenuHook::GetSingleton()->SetMenuOpen(false);
     } else if (a_menuName == "ContainerMenu"sv) {
         m_containerMenuOpen = false;
         REX::INFO("ContainerMenu closed");
@@ -501,6 +517,14 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
         m_caravanMenuOpen = false;
         REX::INFO("Workshop_CaravanMenu closed");
         WorkshopCaravanMenuAccessibility::GetSingleton()->OnCaravanMenuClosed();
+    } else if (a_menuName == "SleepWaitMenu"sv) {
+        m_sleepWaitMenuOpen = false;
+        REX::INFO("SleepWaitMenu closed");
+        SleepWaitMenuAccessibility::GetSingleton()->OnSleepWaitMenuClosed();
+    } else if (a_menuName == "SitWaitMenu"sv) {
+        m_sitWaitMenuOpen = false;
+        REX::INFO("SitWaitMenu closed");
+        SleepWaitMenuAccessibility::GetSingleton()->OnSitWaitMenuClosed();
     }
 }
 

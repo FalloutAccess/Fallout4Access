@@ -8,6 +8,7 @@
 #include "CrosshairAccessibility.h"
 #include "HitMarkerAudioFeedback.h"
 #include "DialogueMenuHook.h"
+#include "ExamineConfirmMenuHook.h"
 #include "ExamineMenuHook.h"
 #include "GameplayStateAnnouncer.h"
 #include "HUDMessageHook.h"
@@ -19,6 +20,7 @@
 #include "ObjectScanner.h"
 #include "SpeechManager.h"
 #include "VATSCallbackHook.h"
+#include "SleepWaitMenuAccessibility.h"
 #include "VATSMenuHook.h"
 #include "WorkshopCaravanMenuAccessibility.h"
 #include "WorkshopMenuAccessibility.h"
@@ -98,6 +100,9 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
     // Install ExamineMenu hook for workbench accessibility
     ExamineMenuHook::GetSingleton()->Install();
 
+    // Install ExamineConfirmMenu hook for workbench confirmation accessibility
+    ExamineConfirmMenuHook::GetSingleton()->Install();
+
     // Install VATSMenu hooks for VATS accessibility
     VATSMenuHook::GetSingleton()->Install();
     VATSCallbackHook::GetSingleton()->Install();
@@ -122,6 +127,9 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 
     // Install WorkshopMenu hook for building accessibility
     WorkshopMenuAccessibility::GetSingleton()->Install();
+
+    // Install SleepWaitMenu/SitWaitMenu hooks for wait accessibility
+    SleepWaitMenuAccessibility::GetSingleton()->Install();
 
     // Install Workshop_CaravanMenu hook for supply line accessibility
     WorkshopCaravanMenuAccessibility::GetSingleton()->Install();
