@@ -42,7 +42,12 @@ private:
     void CheckStatsSelection(RE::IMenu* a_menu);
     void AnnounceStatsCategory(const Scaleform::GFx::Value& a_entry);
 
+    // Quests tab - polls ObjectivesList_mc.selectedIndex for Miscellaneous objectives
+    void CheckQuestObjectivesSelection(RE::IMenu* a_menu);
+    void AnnounceObjective(const Scaleform::GFx::Value& a_entry);
+
     // Get the menuObj for the appropriate DATA sub-menu
+    const Scaleform::GFx::Value* GetQuestMenuObj(RE::IMenu* a_menu);
     const Scaleform::GFx::Value* GetWorkshopMenuObj(RE::IMenu* a_menu);
     const Scaleform::GFx::Value* GetLogMenuObj(RE::IMenu* a_menu);
 
@@ -58,6 +63,9 @@ private:
 
     // Current tab tracking
     Tab m_currentDataTab = Tab::Quests;
+
+    // Quest objectives selection tracking (Miscellaneous objectives)
+    std::int32_t m_lastObjectivesIndex = -1;
 
     // Workshop selection tracking
     std::int32_t m_lastWorkshopIndex = -1;

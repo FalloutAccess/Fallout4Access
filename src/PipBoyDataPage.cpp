@@ -9,6 +9,7 @@ void PipBoyDataPage::OnPageActivated()
     m_announced = false;
     m_lastSelection = -1;
     m_lastTab = -1;
+    m_lastObjectivesIndex = -1;
     m_lastWorkshopIndex = -1;
     m_lastStatsCategoryIndex = -1;
 
@@ -43,7 +44,9 @@ void PipBoyDataPage::CheckSelection()
 
     switch (m_currentDataTab) {
         case Tab::Quests:
-            // Quest selection is handled by PipBoyCallbackHook callbacks
+            // Quest list selection is handled by PipBoyCallbackHook callbacks.
+            // Miscellaneous objectives navigation is polled here.
+            CheckQuestObjectivesSelection(menu.get());
             break;
         case Tab::Workshops:
             CheckWorkshopSelection(menu.get());
@@ -67,6 +70,7 @@ void PipBoyDataPage::CheckTabChange()
         m_lastTab = currentTab;
         m_currentDataTab = static_cast<Tab>(currentTab);
         m_lastSelection = -1;
+        m_lastObjectivesIndex = -1;
         m_lastWorkshopIndex = -1;
         m_lastStatsCategoryIndex = -1;
 
@@ -84,6 +88,7 @@ void PipBoyDataPage::Reset()
     m_lastSelection = -1;
     m_lastTab = -1;
     m_currentDataTab = Tab::Quests;
+    m_lastObjectivesIndex = -1;
     m_lastWorkshopIndex = -1;
     m_lastStatsCategoryIndex = -1;
     PipBoyCallbackHook::GetSingleton()->ClearQuestState();
@@ -95,6 +100,58 @@ std::string PipBoyDataPage::GetLocalizedTabName(std::int32_t a_tabIndex)
         return LocalizationHelper::Translate(kTabKeys[a_tabIndex]);
     }
     return "Unknown";
+}
+
+// ============================================================================
+// Quests Tab - Miscellaneous Objectives
+// ============================================================================
+
+void PipBoyDataPage::CheckQuestObjectivesSelection(RE::IMenu* a_menu)
+{
+    const auto* questObj = GetQuestMenuObj(a_menu);
+    if (!questObj || !questObj->IsObject()) return;
+
+    std::int32_t selectedIndex = GetListSelectedIndex(a_menu, *questObj, "QuestsTab_mc", "ObjectivesList_mc");
+    if (selectedIndex < 0 || selectedIndex == m_lastObjectivesIndex) return;
+    m_lastObjectivesIndex = selectedIndex;
+
+    Scaleform::GFx::Value entry;
+    if (GetListSelectedEntry(a_menu, *questObj, &entry, "QuestsTab_mc", "ObjectivesList_mc")) {
+        AnnounceObjective(entry);
+    }
+}
+
+void PipBoyDataPage::AnnounceObjective(const Scaleform::GFx::Value& a_entry)
+{
+    std::string text = GetStringMember(a_entry, "text");
+    if (text.empty()) return;
+
+    text = CleanLocalizationString(text);
+    std::string announcement = text;
+
+    // Check completed/active status
+    bool completed = false;
+    bool active = false;
+
+    Scaleform::GFx::Value val;
+    if (a_entry.GetMember("completed", &val)) {
+        if (val.IsBoolean()) completed = val.GetBoolean();
+        else if (val.IsInt()) completed = val.GetInt() != 0;
+        else if (val.IsNumber()) completed = val.GetNumber() != 0.0;
+    }
+    if (a_entry.GetMember("active", &val)) {
+        if (val.IsBoolean()) active = val.GetBoolean();
+        else if (val.IsInt()) active = val.GetInt() != 0;
+        else if (val.IsNumber()) active = val.GetNumber() != 0.0;
+    }
+
+    if (completed) {
+        announcement += ", completed";
+    } else if (active) {
+        announcement += ", active";
+    }
+
+    SpeakText(announcement);
 }
 
 // ============================================================================
@@ -252,6 +309,13 @@ void PipBoyDataPage::AnnounceStatsCategory(const Scaleform::GFx::Value& a_entry)
 // ============================================================================
 // Sub-menu access helpers
 // ============================================================================
+
+const Scaleform::GFx::Value* PipBoyDataPage::GetQuestMenuObj(RE::IMenu* a_menu)
+{
+    if (!a_menu) return nullptr;
+    auto* pipboyMenu = static_cast<RE::PipboyMenu*>(a_menu);
+    return pipboyMenu->questMenuObj.menuObj;
+}
 
 const Scaleform::GFx::Value* PipBoyDataPage::GetWorkshopMenuObj(RE::IMenu* a_menu)
 {
