@@ -17,91 +17,101 @@ void HUDMessageHook::Install()
         return;
     }
 
-    // Get the address of ShowHUDMessage using its ID
-    REL::Relocation<std::uintptr_t> target{ kShowHUDMessageID };
-    auto targetAddr = target.address();
-
-    REX::INFO("HUDMessageHook: Target function at {:X}", targetAddr);
-
-    // We need to create a proper trampoline that:
-    // 1. Executes the original function's first instructions
-    // 2. Jumps back to the rest of the original function
-    //
-    // Use Zydis to automatically detect instruction boundaries.
-    // We need at least sizeof(JMP14) = 14 bytes to write our jump.
     constexpr std::size_t kMinBytesNeeded = sizeof(REL::ASM::JMP14);  // 14 bytes
 
-    std::size_t bytesToCopy = InstructionLength::CalculateMinimumCopySize(targetAddr, kMinBytesNeeded);
-    if (bytesToCopy == 0) {
-        REX::ERROR("HUDMessageHook: Failed to calculate instruction boundary, hook not installed");
+    // --- Calculate trampoline sizes for both hooks ---
+    REL::Relocation<std::uintptr_t> msgTarget{ kShowHUDMessageID };
+    REL::Relocation<std::uintptr_t> notifTarget{ kShowHUDNotificationID };
+    auto msgAddr = msgTarget.address();
+    auto notifAddr = notifTarget.address();
+
+    std::size_t msgBytesToCopy = InstructionLength::CalculateMinimumCopySize(msgAddr, kMinBytesNeeded);
+    std::size_t notifBytesToCopy = InstructionLength::CalculateMinimumCopySize(notifAddr, kMinBytesNeeded);
+
+    if (msgBytesToCopy == 0) {
+        REX::ERROR("HUDMessageHook: Failed to calculate instruction boundary for ShowHUDMessage");
+        return;
+    }
+    if (notifBytesToCopy == 0) {
+        REX::ERROR("HUDMessageHook: Failed to calculate instruction boundary for ShowHUDNotification");
         return;
     }
 
-    REX::INFO("HUDMessageHook: Detected instruction boundary at {} bytes", bytesToCopy);
+    std::size_t msgTrampolineSize = msgBytesToCopy + sizeof(REL::ASM::JMP14);
+    std::size_t notifTrampolineSize = notifBytesToCopy + sizeof(REL::ASM::JMP14);
 
-    std::size_t trampolineSize = bytesToCopy + sizeof(REL::ASM::JMP14);
-
-    // Allocate trampoline memory
+    // Allocate trampoline memory for both hooks
     auto& trampoline = REL::GetTrampoline();
-    trampoline.create(trampolineSize + 64);  // Extra for the branch
+    trampoline.create(msgTrampolineSize + notifTrampolineSize + 128);
 
-    auto* trampolineMem = static_cast<std::byte*>(trampoline.allocate(trampolineSize));
-    if (!trampolineMem) {
-        REX::ERROR("HUDMessageHook: Failed to allocate trampoline memory, hook not installed");
-        // Don't install the hook - we can't call the original function safely
+    // --- Hook ShowHUDMessage ---
+    auto* msgMem = static_cast<std::byte*>(trampoline.allocate(msgTrampolineSize));
+    if (!msgMem) {
+        REX::ERROR("HUDMessageHook: Failed to allocate trampoline for ShowHUDMessage");
         return;
     }
 
-    // Copy original bytes to trampoline
-    std::memcpy(trampolineMem, reinterpret_cast<void*>(targetAddr), bytesToCopy);
+    std::memcpy(msgMem, reinterpret_cast<void*>(msgAddr), msgBytesToCopy);
+    new (reinterpret_cast<REL::ASM::JMP14*>(msgMem + msgBytesToCopy))
+        REL::ASM::JMP14(msgAddr + msgBytesToCopy);
+    s_originalFunc = reinterpret_cast<OriginalFunc_t>(msgMem);
 
-    // Add JMP14 back to original + bytesToCopy
-    auto* jmp = reinterpret_cast<REL::ASM::JMP14*>(trampolineMem + bytesToCopy);
-    new (jmp) REL::ASM::JMP14(targetAddr + bytesToCopy);
+    REL::WriteSafeData(msgAddr,
+        REL::ASM::JMP14(reinterpret_cast<std::uintptr_t>(&HookedShowHUDMessage)));
 
-    // Store the trampoline as our "original" function
-    s_originalFunc = reinterpret_cast<OriginalFunc_t>(trampolineMem);
+    REX::INFO("HUDMessageHook: ShowHUDMessage hooked at {:X}", msgAddr);
 
-    REX::INFO("HUDMessageHook: Trampoline at {:X}, jumping back to {:X}",
-        reinterpret_cast<std::uintptr_t>(trampolineMem),
-        targetAddr + bytesToCopy);
+    // --- Hook ShowHUDNotification (radio signal found/lost) ---
+    auto* notifMem = static_cast<std::byte*>(trampoline.allocate(notifTrampolineSize));
+    if (!notifMem) {
+        REX::ERROR("HUDMessageHook: Failed to allocate trampoline for ShowHUDNotification");
+        // ShowHUDMessage hook is still active, mark as partially installed
+        m_installed = true;
+        return;
+    }
 
-    // Now overwrite the original function entry with a jump to our hook
-    // We need a JMP14 (14 bytes) to reach our hook function
-    REL::ASM::JMP14 hookJmp(reinterpret_cast<std::uintptr_t>(&HookedShowHUDMessage));
+    std::memcpy(notifMem, reinterpret_cast<void*>(notifAddr), notifBytesToCopy);
+    new (reinterpret_cast<REL::ASM::JMP14*>(notifMem + notifBytesToCopy))
+        REL::ASM::JMP14(notifAddr + notifBytesToCopy);
+    s_originalNotificationFunc = reinterpret_cast<OriginalNotificationFunc_t>(notifMem);
 
-    // Write the jump to the original function
-    REL::WriteSafeData(targetAddr, hookJmp);
+    REL::WriteSafeData(notifAddr,
+        REL::ASM::JMP14(reinterpret_cast<std::uintptr_t>(&HookedShowHUDNotification)));
+
+    REX::INFO("HUDMessageHook: ShowHUDNotification hooked at {:X}", notifAddr);
 
     m_installed = true;
-    REX::INFO("HUDMessageHook: Installed successfully at {:X}", targetAddr);
+}
+
+void HUDMessageHook::AnnounceMessage(const char* a_message, const char* a_label)
+{
+    if (!a_message || a_message[0] == '\0') return;
+
+    std::string messageText(a_message);
+    REX::INFO("{}: \"{}\"", a_label, messageText);
+
+    if (ShouldAnnounce(messageText)) {
+        RecordAnnouncement(messageText);
+        SpeakText(messageText);
+    }
 }
 
 void HUDMessageHook::HookedShowHUDMessage(const char* a_message, const char* a_sound,
                                            bool a_throttle, bool a_warning)
 {
-    // Capture the message for screen reader
-    if (a_message && a_message[0] != '\0') {
-        auto* hook = GetSingleton();
-        std::string messageText(a_message);
+    GetSingleton()->AnnounceMessage(a_message, "HUD Message");
 
-        // Log all HUD messages for debugging
-        REX::INFO("HUD Message: \"{}\" (sound={}, throttle={}, warning={})",
-            messageText,
-            a_sound ? a_sound : "none",
-            a_throttle,
-            a_warning);
-
-        // Announce via screen reader if not a duplicate
-        if (hook->ShouldAnnounce(messageText)) {
-            hook->RecordAnnouncement(messageText);
-            hook->SpeakText(messageText);
-        }
-    }
-
-    // Call the original function via our trampoline
     if (s_originalFunc) {
         s_originalFunc(a_message, a_sound, a_throttle, a_warning);
+    }
+}
+
+void HUDMessageHook::HookedShowHUDNotification(const char* a_message)
+{
+    GetSingleton()->AnnounceMessage(a_message, "HUD Notification");
+
+    if (s_originalNotificationFunc) {
+        s_originalNotificationFunc(a_message);
     }
 }
 
