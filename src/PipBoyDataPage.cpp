@@ -326,9 +326,13 @@ void PipBoyDataPage::AnnounceStatsCategory(const Scaleform::GFx::Value& a_entry)
 			}
 
 			if (!valueStr.empty()) {
-				announcement += ". " + statName + ": " + valueStr;
+				announcement += ". ";
+				announcement += statName;
+				announcement += ": ";
+				announcement += valueStr;
 			} else {
-				announcement += ". " + statName;
+				announcement += ". ";
+				announcement += statName;
 			}
 		}
 	}

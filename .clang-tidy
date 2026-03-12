@@ -34,6 +34,12 @@ Checks: >
     -readability-redundant-control-flow,
     -readability-identifier-length,
     -readability-function-cognitive-complexity,
+    -readability-braces-around-statements,
+    -readability-uppercase-literal-suffix,
+    -readability-isolate-declaration,
+    -readability-math-missing-parentheses,
+
+    -misc-const-correctness,
 
 HeaderFilterRegex: 'src/.*\.h$'
 ---

@@ -12,12 +12,15 @@ SpeechManager* SpeechManager::GetSingleton()
 	return &instance;
 }
 
-SpeechManager::~SpeechManager()
+SpeechManager::~SpeechManager() noexcept
 {
-	std::lock_guard<std::mutex> lock(m_logMutex);
-	if (m_speechLog.is_open()) {
-		m_speechLog.flush();
-		m_speechLog.close();
+	try {
+		std::lock_guard<std::mutex> lock(m_logMutex);
+		if (m_speechLog.is_open()) {
+			m_speechLog.flush();
+			m_speechLog.close();
+		}
+	} catch (...) {
 	}
 }
 

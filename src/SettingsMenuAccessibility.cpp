@@ -218,6 +218,8 @@ std::string SettingsMenuAccessibility::GetSettingsOptionValueText(RE::IMenu* a_m
 			bool isOn = valueNum != 0;
 			return isOn ? "On" : "Off";
 		}
+		default:
+			break;
 	}
 
 	return "";

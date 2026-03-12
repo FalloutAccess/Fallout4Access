@@ -35,7 +35,7 @@ public:
 
 private:
 	SpeechManager() = default;
-	~SpeechManager();
+	~SpeechManager() noexcept;
 	SpeechManager(const SpeechManager&) = delete;
 	SpeechManager(SpeechManager&&) = delete;
 	SpeechManager& operator=(const SpeechManager&) = delete;

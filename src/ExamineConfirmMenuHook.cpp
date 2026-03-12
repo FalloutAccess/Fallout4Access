@@ -154,7 +154,9 @@ std::string ExamineConfirmMenuHook::GetComponentList(RE::IMenu* a_menu)
 						if (!result.empty()) {
 							result += ". ";
 						}
-						result += compTexts + " from " + sourceText;
+						result += compTexts;
+						result += " from ";
+						result += sourceText;
 					}
 				}
 			}

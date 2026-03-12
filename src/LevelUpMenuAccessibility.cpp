@@ -294,6 +294,8 @@ const char* LevelUpMenuAccessibility::GetColumnName(std::uint32_t a_col)
 			case 6:
 				info = av->luck;
 				break;
+			default:
+				break;
 		}
 		if (info) {
 			const char* name = info->GetFullName();

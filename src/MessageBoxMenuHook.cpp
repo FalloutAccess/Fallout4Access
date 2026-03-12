@@ -73,8 +73,9 @@ void MessageBoxMenuHook::CheckContentChanges(RE::MessageBoxMenu* a_menu)
 
 	// Build current button label list
 	std::vector<std::string> currentButtonLabels;
+	currentButtonLabels.reserve(currentButtonCount);
 	for (std::int32_t i = 0; i < currentButtonCount; ++i) {
-		currentButtonLabels.push_back(GetButtonText(a_menu, i));
+		currentButtonLabels.emplace_back(GetButtonText(a_menu, i));
 	}
 
 	// Check if content changed (body text or button labels)
@@ -97,7 +98,7 @@ void MessageBoxMenuHook::CheckContentChanges(RE::MessageBoxMenu* a_menu)
 			announcement += std::to_string(currentButtonCount) + " " + buttonWord;
 
 			if (currentSelection >= 0 && currentSelection < currentButtonCount) {
-				std::string buttonText = currentButtonLabels[currentSelection];
+				const std::string& buttonText = currentButtonLabels[currentSelection];
 				if (!buttonText.empty()) {
 					announcement += ". " + LocalizationHelper::Translate(buttonText);
 				}
@@ -121,7 +122,7 @@ void MessageBoxMenuHook::CheckContentChanges(RE::MessageBoxMenu* a_menu)
 		m_lastSelection = currentSelection;
 
 		if (currentSelection < currentButtonCount) {
-			std::string buttonText = currentButtonLabels[currentSelection];
+			const std::string& buttonText = currentButtonLabels[currentSelection];
 			if (!buttonText.empty()) {
 				SpeakText(LocalizationHelper::Translate(buttonText));
 			}

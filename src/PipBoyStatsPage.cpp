@@ -549,7 +549,6 @@ void PipBoyStatsPage::AnnouncePerksRankChange(RE::IMenu* a_menu, const std::stri
 	if (!GetListSelectedEntry(a_menu, "PerksTab_mc", &entry))
 		return;
 
-	std::string  name = GetStringMember(entry, "text");
 	std::int32_t maxRank = GetIntMember(entry, "maxRank", 1);
 
 	// Determine which rank is being viewed by matching description against the array
