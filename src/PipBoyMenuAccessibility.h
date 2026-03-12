@@ -1,7 +1,7 @@
 #pragma once
 
-#include "pch.h"
 #include "PipBoyPageBase.h"
+#include "pch.h"
 #include <memory>
 
 class PipBoyInventoryPage;
@@ -16,60 +16,61 @@ class PipBoyRadioPage;
 class PipBoyMenuAccessibility
 {
 public:
-    static PipBoyMenuAccessibility* GetSingleton();
+	static PipBoyMenuAccessibility* GetSingleton();
 
-    // Lifecycle methods (called by MenuAccessibility)
-    void OnPipBoyMenuOpened();
-    void OnPipBoyMenuClosed();
+	// Lifecycle methods (called by MenuAccessibility)
+	void OnPipBoyMenuOpened();
+	void OnPipBoyMenuClosed();
 
-    // Per-frame state check (called from PipBoyCallbackHook::HookedAdvanceMovie)
-    // Detects page changes, tab changes, and delegates to active page
-    void CheckSelection();
+	// Per-frame state check (called from PipBoyCallbackHook::HookedAdvanceMovie)
+	// Detects page changes, tab changes, and delegates to active page
+	void CheckSelection();
 
-    void Reset();
+	void Reset();
 
-    // Getter for map page (needed by MenuAccessibility for scanner keys)
-    PipBoyMapPage* GetMapPage() { return m_mapPage.get(); }
+	// Getter for map page (needed by MenuAccessibility for scanner keys)
+	PipBoyMapPage* GetMapPage() { return m_mapPage.get(); }
 
-    // Announce carry weight and caps (H key on INV page)
-    void AnnounceInventoryStatus();
+	// Announce carry weight and caps (H key on INV page)
+	void AnnounceInventoryStatus();
 
 private:
-    PipBoyMenuAccessibility();
-    ~PipBoyMenuAccessibility() = default;
-    PipBoyMenuAccessibility(const PipBoyMenuAccessibility&) = delete;
-    PipBoyMenuAccessibility(PipBoyMenuAccessibility&&) = delete;
-    PipBoyMenuAccessibility& operator=(const PipBoyMenuAccessibility&) = delete;
-    PipBoyMenuAccessibility& operator=(PipBoyMenuAccessibility&&) = delete;
+	PipBoyMenuAccessibility();
+	~PipBoyMenuAccessibility() = default;
+	PipBoyMenuAccessibility(const PipBoyMenuAccessibility&) = delete;
+	PipBoyMenuAccessibility(PipBoyMenuAccessibility&&) = delete;
+	PipBoyMenuAccessibility& operator=(const PipBoyMenuAccessibility&) = delete;
+	PipBoyMenuAccessibility& operator=(PipBoyMenuAccessibility&&) = delete;
 
-    // Page management
-    enum class Page {
-        STAT = 0,
-        INV = 1,
-        DATA = 2,
-        MAP = 3,
-        RADIO = 4
-    };
+	// Page management
+	enum class Page
+	{
+		STAT = 0,
+		INV = 1,
+		DATA = 2,
+		MAP = 3,
+		RADIO = 4
+	};
 
-    Page GetCurrentPage(RE::IMenu* a_menu);
-    PipBoyPageBase* GetActivePage();
-    void SwitchToPage(Page a_newPage);
-    std::string GetLocalizedPageName(Page a_page);
+	Page            GetCurrentPage(RE::IMenu* a_menu);
+	PipBoyPageBase* GetActivePage();
+	void            SwitchToPage(Page a_newPage);
+	std::string     GetLocalizedPageName(Page a_page);
 
-    // Tab change detection (called per-frame from CheckSelection)
-    void CheckTabChange();
+	// Tab change detection (called per-frame from CheckSelection)
+	void CheckTabChange();
 
-    // Utilities
-    void SpeakText(const std::string& a_text, bool a_interrupt = false);
+	// Utilities
+	void SpeakText(const std::string& a_text, bool a_interrupt = false);
 
-    // State
-    bool m_isOpen = false;
-    Page m_currentPage = Page::STAT;
+	// State
+	bool m_isOpen = false;
+	Page m_currentPage = Page::STAT;
 
-    // Page handlers
-    std::unique_ptr<PipBoyInventoryPage> m_inventoryPage;
-    std::unique_ptr<PipBoyDataPage> m_dataPage;
-    std::unique_ptr<PipBoyMapPage> m_mapPage;
-    std::unique_ptr<PipBoyStatsPage> m_statsPage;
-    std::unique_ptr<PipBoyRadioPage> m_radioPage;
+	// Page handlers
+	std::unique_ptr<PipBoyInventoryPage> m_inventoryPage;
+	std::unique_ptr<PipBoyDataPage>      m_dataPage;
+	std::unique_ptr<PipBoyMapPage>       m_mapPage;
+	std::unique_ptr<PipBoyStatsPage>     m_statsPage;
+	std::unique_ptr<PipBoyRadioPage>     m_radioPage;
 };

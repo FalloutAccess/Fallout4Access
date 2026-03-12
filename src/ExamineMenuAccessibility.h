@@ -8,22 +8,22 @@
 class ExamineMenuAccessibility
 {
 public:
-    static ExamineMenuAccessibility* GetSingleton();
+	static ExamineMenuAccessibility* GetSingleton();
 
-    void OnExamineMenuOpened();
-    void OnExamineMenuClosed();
-    void Reset();
+	void OnExamineMenuOpened();
+	void OnExamineMenuClosed();
+	void Reset();
 
 private:
-    ExamineMenuAccessibility() = default;
-    ~ExamineMenuAccessibility() = default;
-    ExamineMenuAccessibility(const ExamineMenuAccessibility&) = delete;
-    ExamineMenuAccessibility(ExamineMenuAccessibility&&) = delete;
-    ExamineMenuAccessibility& operator=(const ExamineMenuAccessibility&) = delete;
-    ExamineMenuAccessibility& operator=(ExamineMenuAccessibility&&) = delete;
+	ExamineMenuAccessibility() = default;
+	~ExamineMenuAccessibility() = default;
+	ExamineMenuAccessibility(const ExamineMenuAccessibility&) = delete;
+	ExamineMenuAccessibility(ExamineMenuAccessibility&&) = delete;
+	ExamineMenuAccessibility& operator=(const ExamineMenuAccessibility&) = delete;
+	ExamineMenuAccessibility& operator=(ExamineMenuAccessibility&&) = delete;
 
-    void SpeakText(const std::string& a_text);
-    std::string GetWorkbenchType(RE::ExamineMenu* a_menu);
+	void        SpeakText(const std::string& a_text);
+	std::string GetWorkbenchType(RE::ExamineMenu* a_menu);
 
-    bool m_isOpen = false;
+	bool m_isOpen = false;
 };

@@ -14,44 +14,44 @@
 class AutoWalk
 {
 public:
-    static AutoWalk* GetSingleton();
+	static AutoWalk* GetSingleton();
 
-    // Initialize - find quest form (call after data is loaded)
-    void Initialize();
+	// Initialize - find quest form (call after data is loaded)
+	void Initialize();
 
-    // Start walking to a target reference
-    // Calls Papyrus OnWalkToTarget with FormID as int32
-    void WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance = 100.0f,
-                std::function<void()> a_onArrival = nullptr);
+	// Start walking to a target reference
+	// Calls Papyrus OnWalkToTarget with FormID as int32
+	void WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance = 100.0f,
+		std::function<void()> a_onArrival = nullptr);
 
-    // Stop walking immediately (clears target)
-    void Stop();
+	// Stop walking immediately (clears target)
+	void Stop();
 
-    // Check if currently walking (based on target being set)
-    bool IsWalking() const { return m_targetRef != nullptr; }
+	// Check if currently walking (based on target being set)
+	bool IsWalking() const { return m_targetRef != nullptr; }
 
-    // Called frequently to check status
-    void Update();
+	// Called frequently to check status
+	void Update();
 
 private:
-    AutoWalk() = default;
-    ~AutoWalk() = default;
-    AutoWalk(const AutoWalk&) = delete;
-    AutoWalk& operator=(const AutoWalk&) = delete;
+	AutoWalk() = default;
+	~AutoWalk() = default;
+	AutoWalk(const AutoWalk&) = delete;
+	AutoWalk& operator=(const AutoWalk&) = delete;
 
-    void CheckArrival();
+	void CheckArrival();
 
-    // Quest for Papyrus VM communication
-    RE::TESQuest* m_quest = nullptr;
+	// Quest for Papyrus VM communication
+	RE::TESQuest* m_quest = nullptr;
 
-    // State tracking (for arrival callback)
-    RE::TESObjectREFR* m_targetRef = nullptr;
-    float m_stopDistance = 100.0f;
-    std::function<void()> m_onArrival = nullptr;
+	// State tracking (for arrival callback)
+	RE::TESObjectREFR*    m_targetRef = nullptr;
+	float                 m_stopDistance = 100.0f;
+	std::function<void()> m_onArrival = nullptr;
 
-    // Initialization state
-    bool m_initialized = false;
+	// Initialization state
+	bool m_initialized = false;
 
-    // Constants
-    static constexpr float ARRIVAL_TOLERANCE = 30.0f;
+	// Constants
+	static constexpr float ARRIVAL_TOLERANCE = 30.0f;
 };

@@ -11,37 +11,37 @@
 class PipBoyRadioPage : public PipBoyPageBase
 {
 public:
-    PipBoyRadioPage() = default;
-    ~PipBoyRadioPage() override = default;
+	PipBoyRadioPage() = default;
+	~PipBoyRadioPage() override = default;
 
-    // PipBoyPageBase interface
-    void OnPageActivated() override;
-    void OnPageDeactivated() override;
-    void CheckSelection() override;
-    void CheckTabChange() override;
-    void Reset() override;
+	// PipBoyPageBase interface
+	void OnPageActivated() override;
+	void OnPageDeactivated() override;
+	void CheckSelection() override;
+	void CheckTabChange() override;
+	void Reset() override;
 
 private:
-    // Announce info about the current radio state on page activation
-    void AnnounceRadioState(RE::IMenu* a_menu);
+	// Announce info about the current radio state on page activation
+	void AnnounceRadioState(RE::IMenu* a_menu);
 
-    // Announce the currently selected station
-    void AnnounceStation(const Scaleform::GFx::Value& a_entry);
+	// Announce the currently selected station
+	void AnnounceStation(const Scaleform::GFx::Value& a_entry);
 
-    // Get the radio sub-menu's menuObj for accessing the loaded SWF
-    const Scaleform::GFx::Value* GetRadioMenuObj(RE::IMenu* a_menu);
+	// Get the radio sub-menu's menuObj for accessing the loaded SWF
+	const Scaleform::GFx::Value* GetRadioMenuObj(RE::IMenu* a_menu);
 
-    // Read selectedIndex from List_mc (tries menuObj, then movie path)
-    std::int32_t GetListSelectedIndex(RE::IMenu* a_menu);
+	// Read selectedIndex from List_mc (tries menuObj, then movie path)
+	std::int32_t GetListSelectedIndex(RE::IMenu* a_menu);
 
-    // Read selectedEntry from List_mc (tries menuObj, then movie path)
-    bool GetListSelectedEntry(RE::IMenu* a_menu, Scaleform::GFx::Value* a_outEntry);
+	// Read selectedEntry from List_mc (tries menuObj, then movie path)
+	bool GetListSelectedEntry(RE::IMenu* a_menu, Scaleform::GFx::Value* a_outEntry);
 
-    // Helpers
-    static std::string GetStringMember(const Scaleform::GFx::Value& a_obj, const char* a_name);
-    static bool GetBoolMember(const Scaleform::GFx::Value& a_obj, const char* a_name);
+	// Helpers
+	static std::string GetStringMember(const Scaleform::GFx::Value& a_obj, const char* a_name);
+	static bool        GetBoolMember(const Scaleform::GFx::Value& a_obj, const char* a_name);
 
-    // State
-    std::int32_t m_lastRadioIndex = -1;
-    std::string m_lastStationName;
+	// State
+	std::int32_t m_lastRadioIndex = -1;
+	std::string  m_lastStationName;
 };
