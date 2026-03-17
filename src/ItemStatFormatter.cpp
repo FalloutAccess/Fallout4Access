@@ -29,6 +29,16 @@ std::vector<ItemStatFormatter::FormattedStat> ItemStatFormatter::ParseInfoObj(
 			continue;
 		}
 
+		// Check for component list entries (junk items)
+		Scaleform::GFx::Value componentsVal;
+		if (entry.GetMember("components", &componentsVal) && componentsVal.IsArray()) {
+			auto stat = ParseComponentEntry(entry, componentsVal);
+			if (!stat.components.empty()) {
+				stats.push_back(std::move(stat));
+			}
+			continue;
+		}
+
 		auto stat = ParseStatEntry(entry);
 		// Include stats with values, or descriptions with labels
 		if (!stat.value.empty() || (stat.isDescription && !stat.label.empty())) {
@@ -103,6 +113,61 @@ ItemStatFormatter::FormattedStat ItemStatFormatter::ParseStatEntry(
 
 	// Translate label
 	result.label = TranslateLabel(rawLabel);
+
+	return result;
+}
+
+ItemStatFormatter::FormattedStat ItemStatFormatter::ParseComponentEntry(
+	const Scaleform::GFx::Value& a_entry, const Scaleform::GFx::Value& a_components)
+{
+	FormattedStat result;
+	result.isComponentList = true;
+
+	// Get the header label (e.g., "$COMPONENTS") and translate it
+	Scaleform::GFx::Value labelVal;
+	if (a_entry.GetMember("text", &labelVal) && labelVal.IsString()) {
+		result.label = TranslateLabel(labelVal.GetString());
+	}
+
+	std::uint32_t count = a_components.GetArraySize();
+	result.components.reserve(count);
+
+	for (std::uint32_t i = 0; i < count; ++i) {
+		Scaleform::GFx::Value comp;
+		if (!a_components.GetElement(i, &comp) || !comp.IsObject()) {
+			continue;
+		}
+
+		ComponentInfo info;
+
+		// Component display name (already localized from BGSComponent::TESFullName)
+		Scaleform::GFx::Value nameVal;
+		if (comp.GetMember("text", &nameVal) && nameVal.IsString()) {
+			info.name = nameVal.GetString();
+		}
+		if (info.name.empty()) {
+			continue;
+		}
+
+		// Component count
+		Scaleform::GFx::Value countVal;
+		if (comp.GetMember("count", &countVal)) {
+			if (countVal.IsInt())
+				info.count = countVal.GetInt();
+			else if (countVal.IsUInt())
+				info.count = static_cast<std::int32_t>(countVal.GetUInt());
+			else if (countVal.IsNumber())
+				info.count = static_cast<std::int32_t>(countVal.GetNumber());
+		}
+
+		// Tagged for search (component search in workshop mode)
+		Scaleform::GFx::Value taggedVal;
+		if (comp.GetMember("taggedForSearch", &taggedVal) && taggedVal.IsBoolean()) {
+			info.taggedForSearch = taggedVal.GetBoolean();
+		}
+
+		result.components.push_back(std::move(info));
+	}
 
 	return result;
 }
@@ -356,7 +421,27 @@ std::string ItemStatFormatter::BuildStatAnnouncement(
 	bool        announcedDamageResistLabel = false;
 
 	for (const auto& stat : a_stats) {
-		if (stat.isDescription) {
+		if (stat.isComponentList) {
+			// Junk item component list: "Components: Steel, Gears 2, Screws 3 tagged"
+			if (stat.components.empty())
+				continue;
+			std::string compStr;
+			if (!stat.label.empty()) {
+				compStr = stat.label + ": ";
+			}
+			for (size_t i = 0; i < stat.components.size(); ++i) {
+				if (i > 0)
+					compStr += ", ";
+				compStr += stat.components[i].name;
+				if (stat.components[i].count > 1) {
+					compStr += " " + std::to_string(stat.components[i].count);
+				}
+				if (stat.components[i].taggedForSearch) {
+					compStr += " tagged";
+				}
+			}
+			result += ", " + compStr;
+		} else if (stat.isDescription) {
 			// Effect/description text - only read FIRST effect
 			// UI shows only one, but InfoObj may contain duplicates (e.g., English + Russian)
 			if (effectCount >= 1)

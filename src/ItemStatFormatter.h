@@ -9,14 +9,23 @@
 class ItemStatFormatter
 {
 public:
+	struct ComponentInfo
+	{
+		std::string  name;
+		std::int32_t count = 0;
+		bool         taggedForSearch = false;
+	};
+
 	struct FormattedStat
 	{
-		std::string  label;          // Translated label (e.g., "Damage", "Weight")
-		std::string  value;          // Formatted value (e.g., "45", "5.5", "Medium")
-		bool         isDescription;  // true if this is effect text, not a stat
-		std::int32_t damageType;     // -1 = not resistance, 0=phys, 1=energy, 2=rad, 3=poison
+		std::string                label;            // Translated label (e.g., "Damage", "Weight")
+		std::string                value;            // Formatted value (e.g., "45", "5.5", "Medium")
+		bool                       isDescription;    // true if this is effect text, not a stat
+		bool                       isComponentList;  // true if this is a junk item's component list
+		std::int32_t               damageType;       // -1 = not resistance, 0=phys, 1=energy, 2=rad, 3=poison
+		std::vector<ComponentInfo> components;
 
-		FormattedStat() : isDescription(false), damageType(-1) {}
+		FormattedStat() : isDescription(false), isComponentList(false), damageType(-1) {}
 	};
 
 	// Load plugin's translation file for damage type names
@@ -34,6 +43,8 @@ public:
 
 private:
 	static FormattedStat ParseStatEntry(const Scaleform::GFx::Value& a_entry);
+	static FormattedStat ParseComponentEntry(const Scaleform::GFx::Value& a_entry,
+		const Scaleform::GFx::Value&                                      a_components);
 	static std::string   FormatNumericValue(double a_value, const std::string& a_label);
 	static std::string   TranslateLabel(const std::string& a_label);
 	static std::string   CleanLabel(const std::string& a_label);
