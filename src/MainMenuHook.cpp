@@ -1,5 +1,6 @@
 #include "MainMenuHook.h"
 #include "LocalizationHelper.h"
+#include "MCMAccessibility.h"
 #include "SaveLoadMenuAccessibility.h"
 #include "SettingsMenuAccessibility.h"
 #include "SpeechManager.h"
@@ -77,6 +78,7 @@ void MainMenuHook::SetMainMenuOpen(bool a_open)
 		// Menu closed, reset panel handlers
 		SettingsMenuAccessibility::GetSingleton()->Reset();
 		SaveLoadMenuAccessibility::GetSingleton()->Reset();
+		MCMAccessibility::GetSingleton()->Reset();
 	}
 }
 
@@ -87,6 +89,7 @@ void MainMenuHook::SetPauseMenuOpen(bool a_open)
 		// Menu closed, reset panel handlers
 		SettingsMenuAccessibility::GetSingleton()->Reset();
 		SaveLoadMenuAccessibility::GetSingleton()->Reset();
+		MCMAccessibility::GetSingleton()->Reset();
 	}
 }
 
@@ -135,6 +138,14 @@ void MainMenuHook::CheckStateChanges(RE::MainMenu* a_menu)
 		return;
 	}
 
+	// MCM overlays the pause menu — its own handler owns every per-frame state
+	// check and must suppress the underlying main-list poll, otherwise the mod
+	// list behind it gets spoken on top of MCM navigation.
+	if (currentPanel == ActivePanel::MCM) {
+		MCMAccessibility::GetSingleton()->CheckState(a_menu);
+		return;
+	}
+
 	// Always check main list selection regardless of detected panel
 	// The main list selection only changes when user navigates it, not when in subpanels
 	// This avoids issues with unreliable panel visibility detection
@@ -148,6 +159,13 @@ void MainMenuHook::CheckStateChanges(RE::MainMenu* a_menu)
 
 MainMenuHook::ActivePanel MainMenuHook::DetectActivePanel(RE::MainMenu* a_menu)
 {
+	// MCM is checked first: it overlays the pause menu and its own conflict
+	// popup is drawn inside MCM's clips, not the base game's ConfirmPanel_mc,
+	// so placing MCM above Confirm here is safe (see plan note on priority).
+	if (MCMAccessibility::IsMCMVisible(a_menu)) {
+		return ActivePanel::MCM;
+	}
+
 	bool confirmVis = IsPanelVisible(a_menu, CONFIRM_PANEL_PATH);
 	bool settingsVis = IsPanelVisible(a_menu, SETTINGS_PANEL_PATH);
 	bool saveloadVis = IsPanelVisible(a_menu, SAVELOAD_PANEL_PATH);
@@ -230,6 +248,10 @@ void MainMenuHook::OnPanelChanged(RE::MainMenu* a_menu, ActivePanel a_newPanel)
 
 		case ActivePanel::Confirm:
 			OnConfirmDialog(a_menu);
+			break;
+
+		case ActivePanel::MCM:
+			MCMAccessibility::GetSingleton()->OnOpened();
 			break;
 
 		default:

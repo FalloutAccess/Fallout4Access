@@ -51,7 +51,8 @@ private:
 		MainList,
 		Settings,
 		SaveLoad,
-		Confirm
+		Confirm,
+		MCM  // Mod Configuration Menu injected into MainMenu.swf by f4mcm
 	};
 
 	// State checking
