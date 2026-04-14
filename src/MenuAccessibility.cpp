@@ -1,21 +1,16 @@
 #include "MenuAccessibility.h"
-#include "BarterMenuAccessibility.h"
-#include "ContainerMenuAccessibility.h"
-#include "ContextualInfoAnnouncer.h"
 #include "DialogueMenuHook.h"
 #include "ExamineConfirmMenuHook.h"
 #include "LevelUpMenuAccessibility.h"
-#include "LocalizationHelper.h"
+#include "MCMKeybindDispatcher.h"
 #include "MainMenuHook.h"
 #include "MessageBoxMenuHook.h"
-#include "PipBoyMapPage.h"
 #include "SPECIALMenuAccessibility.h"
 #include "SaveLoadMenuAccessibility.h"
 #include "SettingsMenuAccessibility.h"
 #include "SpeechManager.h"
 #include "TerminalMenuAccessibility.h"
 #include "VATSMenuAccessibility.h"
-#include <REX/W32/USER32.h>
 #include <SRAL.h>
 
 MenuAccessibility* MenuAccessibility::GetSingleton()
@@ -61,27 +56,28 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
 		return;
 	}
 
-	// Check for navigation keys
-	auto idCode = a_event->QIDCode();
-	auto device = a_event->device.get();
-
-	bool isNavigationKey = false;
-
-	// Keyboard navigation keys (Windows Virtual Key codes)
-	if (device == RE::INPUT_DEVICE::kKeyboard) {
-		if (idCode == 0x26 || idCode == 0x28) {  // Up/Down arrows
-			isNavigationKey = true;
-		}
-		if (idCode == 0x57 || idCode == 0x53) {  // W/S
-			isNavigationKey = true;
-		}
-	}
-	// Gamepad: DPad Up/Down
-	else if (device == RE::INPUT_DEVICE::kGamepad) {
-		if (idCode == 0x0001 || idCode == 0x0002) {  // DPad Up/Down
-			isNavigationKey = true;
+	// MCM's keybind handler is gated by `numPauseGame == 0` in f4mcm/src/MCMInput.cpp,
+	// so MCM keybinds never fire while pausing menus are open. Route those through
+	// our own dispatcher so users' configured keys still work.
+	//
+	// Only fire in menus where MCM is blocked. These all pause the game, so there's
+	// no risk of MCM double-firing, but we enumerate them explicitly to be safe.
+	const bool shouldDispatchOurKeybinds = m_pipBoyMenuOpen ||
+	                                       m_containerMenuOpen ||
+	                                       m_barterMenuOpen;
+	if (shouldDispatchOurKeybinds) {
+		if (MCMKeybindDispatcher::GetSingleton()->TryDispatch(a_event)) {
+			return;
 		}
 	}
+
+	// Use QRawUserEvent() for device-agnostic input (respects game key remaps)
+	auto userEvent = std::string(a_event->QRawUserEvent().c_str());
+
+	// Navigation: Up/Down user events (covers arrows, DPad, and any remapped keys)
+	// Also check Forward/Back for W/S keys which map to gameplay context
+	bool isNavigationKey = (userEvent == "Up" || userEvent == "Down" ||
+							userEvent == "Forward" || userEvent == "Back");
 
 	if (isNavigationKey) {
 		// Delay the check to next frame so the game has time to update the selection
@@ -105,28 +101,12 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
 		}
 	}
 
-	// F key to switch between container/vendor and player inventory
-	if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x46) {  // F key
-		if (m_containerMenuOpen) {
-			ContainerMenuAccessibility::GetSingleton()->SwitchSides();
-		}
-		if (m_barterMenuOpen) {
-			BarterMenuAccessibility::GetSingleton()->SwitchSides();
-		}
-	}
-
-	// Handle left/right arrows for settings value changes
-	// Also handle A/D keys which are used for left/right in menus
-	bool isValueChangeKey = false;
-	if (device == RE::INPUT_DEVICE::kKeyboard) {
-		isValueChangeKey = (idCode == 0x25 || idCode == 0x27 ||  // Left, Right arrows
-							idCode == 0x41 || idCode == 0x44);   // A, D keys
-	} else if (device == RE::INPUT_DEVICE::kGamepad) {
-		isValueChangeKey = (idCode == 0x0004 || idCode == 0x0008);  // DPad Left, Right
-	}
+	// Value change: Left/Right user events (covers arrows, DPad, and remapped keys)
+	// Also check StrafeLeft/StrafeRight for A/D keys in gameplay context
+	bool isValueChangeKey = (userEvent == "Left" || userEvent == "Right" ||
+							 userEvent == "StrafeLeft" || userEvent == "StrafeRight");
 
 	if (isValueChangeKey) {
-		REX::DEBUG("Value change key pressed: device={} idCode=0x{:X}", static_cast<int>(device), idCode);
 		if (auto* taskInterface = F4SE::GetTaskInterface()) {
 			// Double-defer to give the game time to update the value in Scaleform
 			taskInterface->AddTask([this]() {
@@ -143,105 +123,12 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
 		}
 	}
 
-	// PipBoy page/tab changes are detected per-frame via AdvanceMovie hook.
-	// Only scanner keys for Map page remain as key-press-driven (custom accessibility actions).
+	// PipBoy Map page scanner keys (next/prev marker, announce, set reference,
+	// cycle filter) are handled via MCM keybinds in KeybindActions. The keybind
+	// handlers dispatch to PipBoyMapPage when the map page is active.
 
-	// Scanner keys for Pip-Boy Map page navigation (Windows VK codes)
-	// These keys are only handled on the Map page (page 3)
-	if (m_pipBoyMenuOpen && device == RE::INPUT_DEVICE::kKeyboard) {
-		// Check if we're on the map page
-		auto* mapPage = PipBoyMenuAccessibility::GetSingleton()->GetMapPage();
-
-		// Only handle scanner keys if map page is active and we have a valid page pointer
-		bool onMapPage = (mapPage != nullptr);
-
-		// Verify we're actually on the map page by checking current page
-		auto ui = RE::UI::GetSingleton();
-		if (ui) {
-			auto menu = ui->GetMenu("PipboyMenu"sv);
-			if (menu) {
-				auto* pipboyMenu = static_cast<RE::PipboyMenu*>(menu.get());
-				if (pipboyMenu && !pipboyMenu->dataObj.IsUndefined() && pipboyMenu->dataObj.IsObject()) {
-					Scaleform::GFx::Value pageValue;
-					if (pipboyMenu->dataObj.GetMember("CurrentPage", &pageValue)) {
-						int pageNum = 0;
-						if (pageValue.IsInt())
-							pageNum = pageValue.GetInt();
-						else if (pageValue.IsNumber())
-							pageNum = static_cast<int>(pageValue.GetNumber());
-						else if (pageValue.IsUInt())
-							pageNum = static_cast<int>(pageValue.GetUInt());
-						onMapPage = (pageNum == 3);  // MAP page is 3
-					}
-				}
-			}
-		}
-
-		if (onMapPage && mapPage) {
-			bool shiftHeld = REX::W32::GetKeyState(REX::W32::VK_SHIFT) < 0;
-
-			// Page Down (0x22 / VK_NEXT) - Next marker
-			if (idCode == 0x22) {
-				if (auto* taskInterface = F4SE::GetTaskInterface()) {
-					taskInterface->AddTask([mapPage]() {
-						mapPage->OnNextMarker();
-					});
-				}
-			}
-			// Page Up (0x21 / VK_PRIOR) - Previous marker
-			else if (idCode == 0x21) {
-				if (auto* taskInterface = F4SE::GetTaskInterface()) {
-					taskInterface->AddTask([mapPage]() {
-						mapPage->OnPreviousMarker();
-					});
-				}
-			}
-			// Home (0x24 / VK_HOME) - Announce details or set reference point
-			else if (idCode == 0x24) {
-				if (shiftHeld) {
-					// Shift+Home: Set current marker as distance reference point
-					if (auto* taskInterface = F4SE::GetTaskInterface()) {
-						taskInterface->AddTask([mapPage]() {
-							mapPage->OnSetReferencePoint();
-						});
-					}
-				} else {
-					// Home: Announce full marker details
-					if (auto* taskInterface = F4SE::GetTaskInterface()) {
-						taskInterface->AddTask([mapPage]() {
-							mapPage->OnAnnounceDetails();
-						});
-					}
-				}
-			}
-			// End (0x23 / VK_END) - Cycle filter
-			else if (idCode == 0x23) {
-				if (auto* taskInterface = F4SE::GetTaskInterface()) {
-					taskInterface->AddTask([mapPage]() {
-						mapPage->OnCycleFilter();
-					});
-				}
-			}
-		}
-	}
-
-	// Debug logging for Pip-Boy input
-	if (m_pipBoyMenuOpen) {
-		REX::DEBUG("PipBoy key press: device={} idCode=0x{:X}", static_cast<int>(device), idCode);
-	}
-
-	// For terminal menu, log key presses for debugging
-	if (m_terminalMenuOpen) {
-		REX::DEBUG("Terminal key press: device={} idCode=0x{:X}", static_cast<int>(device), idCode);
-	}
-
-	// Check for Accept keys (Enter=0x0D, E=0x45 - Windows virtual key codes)
-	bool isAcceptKey = false;
-	if (device == RE::INPUT_DEVICE::kKeyboard) {
-		isAcceptKey = (idCode == 0x0D || idCode == 0x45);  // Enter, E
-	} else if (device == RE::INPUT_DEVICE::kGamepad) {
-		isAcceptKey = (idCode == 0x1000);  // A button
-	}
+	// Accept: user events "Accept" (Enter) and "Activate" (E key)
+	bool isAcceptKey = (userEvent == "Accept" || userEvent == "Activate");
 
 	if (isAcceptKey) {
 		// Terminal: AdvanceMovie hook handles mode changes per-frame
@@ -254,13 +141,8 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
 		}
 	}
 
-	// Check for Back/Cancel keys (Escape=0x1B, Tab=0x09 - Windows virtual key codes)
-	bool isBackKey = false;
-	if (device == RE::INPUT_DEVICE::kKeyboard) {
-		isBackKey = (idCode == 0x1B || idCode == 0x09);  // Escape, Tab
-	} else if (device == RE::INPUT_DEVICE::kGamepad) {
-		isBackKey = (idCode == 0x2000);  // B button
-	}
+	// Cancel: user event "Cancel" (Tab/Escape/B button)
+	bool isBackKey = (userEvent == "Cancel");
 
 	if (isBackKey) {
 		if (auto* taskInterface = F4SE::GetTaskInterface()) {
@@ -272,14 +154,7 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
 
 	// VATS-specific key handlers
 	if (m_vatsMenuOpen) {
-		// Q key (queue attack) - VK_Q = 0x51
-		bool isQueueKey = false;
-		if (device == RE::INPUT_DEVICE::kKeyboard) {
-			isQueueKey = (idCode == 0x51);  // Q key
-		} else if (device == RE::INPUT_DEVICE::kGamepad) {
-			isQueueKey = (idCode == 0x0100);  // R2/RT trigger (queue in VATS)
-		}
-
+		bool isQueueKey = (userEvent == "VATS");
 		if (isQueueKey) {
 			if (auto* taskInterface = F4SE::GetTaskInterface()) {
 				taskInterface->AddTask([]() {
@@ -288,14 +163,7 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
 			}
 		}
 
-		// Space key (critical) - VK_SPACE = 0x20
-		bool isCriticalKey = false;
-		if (device == RE::INPUT_DEVICE::kKeyboard) {
-			isCriticalKey = (idCode == 0x20);  // Space key
-		} else if (device == RE::INPUT_DEVICE::kGamepad) {
-			isCriticalKey = (idCode == 0x4000);  // X button (critical in VATS)
-		}
-
+		bool isCriticalKey = (userEvent == "ApplyCritical");
 		if (isCriticalKey) {
 			if (auto* taskInterface = F4SE::GetTaskInterface()) {
 				taskInterface->AddTask([]() {
@@ -305,21 +173,7 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
 		}
 	}
 
-	// H key - contextual info depending on active menu
-	if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x48) {  // VK_H
-		if (m_barterMenuOpen) {
-			BarterMenuAccessibility::GetSingleton()->AnnounceBarterStatus();
-		} else if (m_containerMenuOpen) {
-			ContainerMenuAccessibility::GetSingleton()->AnnounceContainerStatus();
-		} else if (m_pipBoyMenuOpen) {
-			PipBoyMenuAccessibility::GetSingleton()->AnnounceInventoryStatus();
-		} else if (m_workshopMenuOpen) {
-			WorkshopMenuAccessibility::GetSingleton()->AnnounceSettlementStats();
-		} else {
-			REX::INFO("MenuAccessibility: H pressed, announcing combat stats");
-			ContextualInfoAnnouncer::GetSingleton()->AnnounceCombatStats();
-		}
-	}
+	// F and H key actions are now handled via MCM keybinds (KeybindActions).
 }
 
 void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
@@ -382,6 +236,8 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
 	} else if (a_menuName == "PipboyMenu"sv) {
 		m_pipBoyMenuOpen = true;
 		REX::INFO("PipboyMenu opened");
+		// Pick up any keybind remaps the user made since last open
+		MCMKeybindDispatcher::GetSingleton()->LoadFromFile();
 		PipBoyMenuAccessibility::GetSingleton()->OnPipBoyMenuOpened();
 	} else if (a_menuName == "ExamineMenu"sv) {
 		m_examineMenuOpen = true;
@@ -406,10 +262,12 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
 	} else if (a_menuName == "ContainerMenu"sv) {
 		m_containerMenuOpen = true;
 		REX::INFO("ContainerMenu opened");
+		MCMKeybindDispatcher::GetSingleton()->LoadFromFile();
 		ContainerMenuAccessibility::GetSingleton()->OnContainerMenuOpened();
 	} else if (a_menuName == "BarterMenu"sv) {
 		m_barterMenuOpen = true;
 		REX::INFO("BarterMenu opened");
+		MCMKeybindDispatcher::GetSingleton()->LoadFromFile();
 		BarterMenuAccessibility::GetSingleton()->OnBarterMenuOpened();
 	} else if (a_menuName == "LevelUpMenu"sv) {
 		m_levelUpMenuOpen = true;

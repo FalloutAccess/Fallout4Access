@@ -14,6 +14,7 @@
 #include "ItemStatFormatter.h"
 #include "LevelUpMenuHook.h"
 #include "LoadingMenuHook.h"
+#include "MCMKeybindDispatcher.h"
 #include "MenuAccessibility.h"
 #include "MessageBoxMenuHook.h"
 #include "ObjectScanner.h"
@@ -84,6 +85,12 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 	} else {
 		REX::WARN("No speech engine available");
 	}
+
+	// Load MCM keybindings from settings.ini so our dispatcher has current
+	// assignments. We handle dispatch ourselves (not MCM) so we can work in
+	// pausing menus (Pip-Boy, Container, Barter) and skip MCM's conflict
+	// checks against game controls.
+	MCMKeybindDispatcher::GetSingleton()->LoadFromFile();
 
 	// Register menu accessibility event handler
 	MenuAccessibility::GetSingleton()->Register();

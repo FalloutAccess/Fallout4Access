@@ -108,23 +108,8 @@ void BarterMenuAccessibility::HookedAdvanceMovie(RE::BarterMenu* a_this, float a
 
 void BarterMenuAccessibility::HookedOnButtonEvent(RE::BarterMenu* a_this, const RE::ButtonEvent* a_event)
 {
-	auto* hook = GetSingleton();
-
-	// Check for Q key to switch sides
-	if (a_event && a_event->QJustPressed() && hook->m_menuOpen) {
-		auto device = a_event->device.get();
-		auto idCode = a_event->QIDCode();
-
-		if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x46) {  // F key
-			REX::INFO("BarterMenu: F key pressed, switching sides");
-			hook->SwitchSides();
-		}
-
-		// H key - announce caps status
-		if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x48) {  // H key (VK_H)
-			hook->AnnounceBarterStatus();
-		}
-	}
+	// F key (switch sides) and H key (announce status) are now handled
+	// by MCM keybinds via KeybindActions::SwitchMenuSide / AnnounceStats.
 
 	// Call original OnButtonEvent
 	if (s_buttonEventHook) {

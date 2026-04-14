@@ -124,23 +124,8 @@ void ContainerMenuAccessibility::HookedAdvanceMovie(RE::ContainerMenu* a_this, f
 
 void ContainerMenuAccessibility::HookedOnButtonEvent(RE::ContainerMenu* a_this, const RE::ButtonEvent* a_event)
 {
-	auto* hook = GetSingleton();
-
-	// Check for Q key to switch sides
-	if (a_event && a_event->QJustPressed() && hook->m_menuOpen) {
-		auto device = a_event->device.get();
-		auto idCode = a_event->QIDCode();
-
-		if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x46) {  // F key
-			REX::INFO("ContainerMenu: F key pressed, switching sides");
-			hook->SwitchSides();
-		}
-
-		// H key - announce weight status
-		if (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x48) {  // H key (VK_H)
-			hook->AnnounceContainerStatus();
-		}
-	}
+	// F key (switch sides) and H key (announce status) are now handled
+	// by MCM keybinds via KeybindActions::SwitchMenuSide / AnnounceStats.
 
 	// Call original OnButtonEvent
 	if (s_buttonEventHook) {

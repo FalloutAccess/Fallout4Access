@@ -46,6 +46,11 @@ float property CheckInterval = 0.25 auto hidden
 
 float fStopDistance = 100.0
 
+; Stuck detection
+float fLastDistance = 0.0
+int iStuckCount = 0
+int iMaxStuckCount = 20 ; ~5 seconds at 0.25s interval
+
 ; Timer ID for arrival checking
 int TimerArrivalCheck = 1 const
 
@@ -128,6 +133,10 @@ Function StartWalkingTo(ObjectReference akTarget)
     Debug.Trace("F4A:AutoWalk - Starting walk, distance: " + distance)
     Debug.Notification("Walking to target")
 
+    ; Reset stuck detection
+    fLastDistance = distance
+    iStuckCount = 0
+
     ; Force target into destination alias - Scene's Travel package uses this
     DstMarker.ForceRefTo(akTarget)
 
@@ -136,9 +145,12 @@ Function StartWalkingTo(ObjectReference akTarget)
 
     ; Enable AI-driven movement
     Game.SetPlayerAIDriven(true)
+    Debug.Trace("F4A:AutoWalk - SetPlayerAIDriven(true)")
 
     ; Start the walking scene - this handles movement with proper animation/audio
     WalkScene.Start()
+    Utility.Wait(0.5)
+    Debug.Trace("F4A:AutoWalk - WalkScene.Start() called, IsPlaying=" + WalkScene.IsPlaying())
 
     IsWalking = true
 
@@ -185,6 +197,21 @@ Function CheckArrival()
         ; Look at target
         PlayerRef.SetLookAt(CurrentTarget, true)
     else
+        ; Stuck detection: check if we're making progress
+        if fLastDistance - distance >= 5.0
+            ; Making progress
+            iStuckCount = 0
+            fLastDistance = distance
+        else
+            iStuckCount += 1
+            if iStuckCount >= iMaxStuckCount
+                Debug.Trace("F4A:AutoWalk - Stuck, no progress after " + iMaxStuckCount + " checks")
+                Debug.Notification("Can't reach target")
+                StopWalking(false)
+                return
+            endIf
+        endIf
+
         ; Continue checking
         StartTimer(CheckInterval, TimerArrivalCheck)
     endIf

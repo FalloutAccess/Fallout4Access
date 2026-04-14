@@ -11,6 +11,14 @@
             },
             version = "4.2.2"
         },
+        ["glaze v7.0.0#f56260b5"] = {
+            repo = {
+                branch = "master",
+                commit = "811aa2bb219ae8079957aaace2d006902a184fb5",
+                url = "https://gitlab.com/tboox/xmake-repo.git"
+            },
+            version = "v7.0.0"
+        },
         ["ninja#f56260b5"] = {
             repo = {
                 branch = "master",

@@ -993,24 +993,24 @@ void HUDMenuHook::HookedOnButtonEvent(RE::HUDMenu* a_this, const RE::ButtonEvent
 {
 	auto* hook = GetSingleton();
 
-	// Check for arrow keys when Quick Loot is visible
+	// Check for Up/Down navigation when Quick Loot is visible
+	// HUD stays in gameplay input context (not menu nav), so arrow keys may not have
+	// a QRawUserEvent. Check both user events and raw VK codes for full coverage.
 	if (a_event && a_event->QJustPressed() && hook->m_quickLootVisible) {
+		auto userEvent = std::string(a_event->QRawUserEvent().c_str());
 		auto device = a_event->device.get();
 		auto idCode = a_event->QIDCode();
+		bool isUpKey = (userEvent == "Up") || (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x26);
+		bool isDownKey = (userEvent == "Down") || (device == RE::INPUT_DEVICE::kKeyboard && idCode == 0x28);
 
-		// Only handle keyboard input
-		if (device == RE::INPUT_DEVICE::kKeyboard) {
-			// Up arrow (0x26) or Down arrow (0x28)
-			if (idCode == 0x26 || idCode == 0x28) {
-				// IMPORTANT: a_this is BSInputEventUser* at offset 0x10, NOT HUDMenu*
-				// Get the actual HUDMenu from UI system instead
-				auto ui = RE::UI::GetSingleton();
-				if (ui) {
-					auto menu = ui->GetMenu<RE::HUDMenu>();
-					if (menu) {
-						bool isUp = (idCode == 0x26);
-						hook->HandleQuickLootNavigation(menu.get(), isUp);
-					}
+		if (isUpKey || isDownKey) {
+			// IMPORTANT: a_this is BSInputEventUser* at offset 0x10, NOT HUDMenu*
+			// Get the actual HUDMenu from UI system instead
+			auto ui = RE::UI::GetSingleton();
+			if (ui) {
+				auto menu = ui->GetMenu<RE::HUDMenu>();
+				if (menu) {
+					hook->HandleQuickLootNavigation(menu.get(), isUpKey);
 				}
 			}
 		}

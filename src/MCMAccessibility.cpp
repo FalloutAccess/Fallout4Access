@@ -291,6 +291,7 @@ void MCMAccessibility::Reset()
 	m_lastHint.clear();
 	m_lastSpokenText.clear();
 	m_lastRightValueText.clear();
+	m_lastSectionName.clear();
 }
 
 void MCMAccessibility::CheckState(RE::MainMenu* a_menu)
@@ -359,6 +360,7 @@ void MCMAccessibility::CheckState(RE::MainMenu* a_menu)
 		m_focusedPane = Pane::Right;
 	} else if (rightIdx < 0 && m_focusedPane == Pane::Right) {
 		m_focusedPane = Pane::Left;
+		m_lastSectionName.clear();  // Re-announce section when returning to right pane
 	}
 
 	// Step 3: detect selection change in the focused pane and speak it.
@@ -376,9 +378,18 @@ void MCMAccessibility::CheckState(RE::MainMenu* a_menu)
 			BuildRightEntryParts(mcmRoot, rightIdx, label, valueText);
 
 			if (rowChanged) {
+				// Announce section heading when entering a new group
+				std::string section = FindSectionForIndex(mcmRoot, rightIdx);
+				if (!section.empty() && section != m_lastSectionName) {
+					m_lastSectionName = section;
+					announcement = section + ". ";
+				} else if (section.empty()) {
+					m_lastSectionName.clear();
+				}
+
 				// Full row announcement: "label: value" (or just label if the
 				// row has no value to report).
-				announcement = label;
+				announcement += label;
 				if (!valueText.empty()) {
 					announcement += ": " + valueText;
 				}
@@ -870,6 +881,43 @@ std::string MCMAccessibility::GetRenderedRightValueText(
 		default:
 			return "";
 	}
+}
+
+std::string MCMAccessibility::FindSectionForIndex(Scaleform::GFx::Value& a_mcmRoot, std::int32_t a_index)
+{
+	if (a_index < 0) {
+		return "";
+	}
+
+	Scaleform::GFx::Value configList;
+	if (!WalkMembers(a_mcmRoot, { "configPanel_mc", "configList_mc" }, configList)) {
+		return "";
+	}
+
+	Scaleform::GFx::Value entryList;
+	if (!configList.GetMember("entryList", &entryList) || !entryList.IsArray()) {
+		return "";
+	}
+
+	// Walk backwards from a_index to find the nearest SECTION entry
+	for (std::int32_t i = a_index; i >= 0; --i) {
+		Scaleform::GFx::Value entry;
+		if (!entryList.GetElement(static_cast<std::uint32_t>(i), &entry) || !entry.IsObject()) {
+			continue;
+		}
+
+		Scaleform::GFx::Value movieTypeVal;
+		std::int32_t          movieType = -1;
+		if (entry.GetMember("movieType", &movieTypeVal)) {
+			ReadNumberAsInt(movieTypeVal, movieType);
+		}
+
+		if (movieType == MOVIETYPE_SECTION) {
+			return LocalizationHelper::Translate(ReadStringMember(entry, "text"));
+		}
+	}
+
+	return "";
 }
 
 std::string MCMAccessibility::GetHintText(Scaleform::GFx::Value& a_mcmRoot)

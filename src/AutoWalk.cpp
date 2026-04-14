@@ -63,6 +63,8 @@ void AutoWalk::WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance,
 	m_targetRef = a_target;
 	m_stopDistance = a_stopDistance;
 	m_onArrival = a_onArrival;
+	m_lastDistance = distance;
+	m_stuckFrames = 0;
 
 	// Dispatch to Papyrus with FormID as int32 (no float precision loss)
 	auto* gameVM = RE::GameVM::GetSingleton();
@@ -74,8 +76,8 @@ void AutoWalk::WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance,
 
 	auto& handlePolicy = vm->GetObjectHandlePolicy();
 	auto  handle = handlePolicy.GetHandleForObject(
-        RE::BSScript::GetVMTypeID<RE::TESQuest>(),
-        m_quest);
+		RE::BSScript::GetVMTypeID<RE::TESQuest>(),
+		m_quest);
 
 	if (handle == handlePolicy.EmptyHandle()) {
 		REX::ERROR("AutoWalk: Failed to get quest VM handle");
@@ -99,9 +101,12 @@ void AutoWalk::WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance,
 		return;
 	}
 
-	const char* name = a_target->GetDisplayFullName();
+	const char*  name = a_target->GetDisplayFullName();
+	RE::NiPoint3 tpos = a_target->GetPosition();
 	REX::INFO("AutoWalk: Dispatched walk to FormID {:08X} for {}, distance: {}",
 		a_target->GetFormID(), name ? name : "<unnamed>", distance);
+	REX::INFO("AutoWalk: Player pos: ({:.0f}, {:.0f}, {:.0f}), Target pos: ({:.0f}, {:.0f}, {:.0f})",
+		playerPos.x, playerPos.y, playerPos.z, tpos.x, tpos.y, tpos.z);
 }
 
 void AutoWalk::Stop()
@@ -116,8 +121,8 @@ void AutoWalk::Stop()
 			if (vm) {
 				auto& handlePolicy = vm->GetObjectHandlePolicy();
 				auto  handle = handlePolicy.GetHandleForObject(
-                    RE::BSScript::GetVMTypeID<RE::TESQuest>(),
-                    m_quest);
+					RE::BSScript::GetVMTypeID<RE::TESQuest>(),
+					m_quest);
 
 				if (handle != handlePolicy.EmptyHandle()) {
 					vm->DispatchMethodCall(
@@ -142,19 +147,36 @@ void AutoWalk::Update()
 	if (!m_targetRef)
 		return;
 
-	// Check for cancel keys (WASD, Escape, Space) using key state polling
-	// This works even when AI-driven movement blocks normal input events
-	// Virtual key codes: W=0x57, A=0x41, S=0x53, D=0x44, Escape=0x1B, Space=0x20
-	if (GetAsyncKeyState(0x57) & 0x8000 ||  // W
-		GetAsyncKeyState(0x41) & 0x8000 ||  // A
-		GetAsyncKeyState(0x53) & 0x8000 ||  // S
-		GetAsyncKeyState(0x44) & 0x8000 ||  // D
-		GetAsyncKeyState(0x1B) & 0x8000 ||  // Escape
-		GetAsyncKeyState(0x20) & 0x8000) {  // Space
-		REX::INFO("AutoWalk: Cancel key detected, stopping");
-		SpeechManager::GetSingleton()->Speak("Stopped");
-		Stop();
-		return;
+	// Check for cancel keys using ControlMap to respect remapped controls.
+	// Uses GetAsyncKeyState polling because AI-driven movement blocks normal input events.
+	auto* controlMap = RE::ControlMap::GetSingleton();
+	if (controlMap) {
+		// Look up the VK codes for movement actions from the game's control map
+		const std::pair<const char*, RE::UserEvents::INPUT_CONTEXT_ID> cancelEvents[] = {
+			{ "Forward", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
+			{ "Back", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
+			{ "StrafeLeft", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
+			{ "StrafeRight", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
+			{ "Sprint", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
+			{ "Jump", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
+			{ "Pause", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
+		};
+
+		bool cancelPressed = false;
+		for (const auto& [eventName, context] : cancelEvents) {
+			auto vk = controlMap->GetMappedKey(eventName, RE::INPUT_DEVICE::kKeyboard, context);
+			if (vk != RE::ControlMap::kInvalid && (GetAsyncKeyState(vk) & 0x8000)) {
+				cancelPressed = true;
+				break;
+			}
+		}
+
+		if (cancelPressed) {
+			REX::INFO("AutoWalk: Cancel key detected, stopping");
+			SpeechManager::GetSingleton()->Speak("Stopped");
+			Stop();
+			return;
+		}
 	}
 
 	// Check if target is still valid
@@ -189,6 +211,21 @@ void AutoWalk::CheckArrival()
 
 		if (callback) {
 			callback();
+		}
+		return;
+	}
+
+	// Stuck detection: check if we're making progress
+	if (m_lastDistance - distance >= PROGRESS_THRESHOLD) {
+		// Making progress - reset stuck counter
+		m_stuckFrames = 0;
+		m_lastDistance = distance;
+	} else {
+		m_stuckFrames++;
+		if (m_stuckFrames >= STUCK_FRAME_LIMIT) {
+			REX::WARN("AutoWalk: Stuck - no progress after {} frames", STUCK_FRAME_LIMIT);
+			SpeechManager::GetSingleton()->Speak("Can't reach target");
+			Stop();
 		}
 	}
 }

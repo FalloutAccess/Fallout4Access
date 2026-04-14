@@ -48,6 +48,17 @@ public:
 	bool ShouldHandleEvent(const RE::InputEvent* a_event) override;
 	void OnButtonEvent(const RE::ButtonEvent* a_event) override;
 
+	// Scanner actions (called by KeybindActions from MCM keybinds)
+	void ScanAndAnnounce();
+	void SelectNext();
+	void SelectPrevious();
+	void NextCategory();
+	void PreviousCategory();
+	void CycleSubcategory();
+	void AnnounceCurrentObject();
+	void LookAtCurrentObject();
+	void WalkToCurrentObject();
+
 private:
 	ObjectScanner();
 	~ObjectScanner() override = default;
@@ -63,24 +74,11 @@ private:
 	void ScanCompassMarkers();
 	void ScanCompanions();
 	void ScanPowerArmor();
-	void ScanAndAnnounce();
 	bool NeedsRescan();
 	void ScanIfNeeded();
-
-	// Navigation
-	void SelectNext();
-	void SelectPrevious();
-	void AnnounceCurrentObject();
-	void LookAtCurrentObject();
-	void WalkToCurrentObject();
-
-	// Categories
-	void NextCategory();
-	void PreviousCategory();
 	bool MatchesCategory(RE::TESObjectREFR* a_ref, ScanCategory a_category);
 
 	// Subcategories
-	void        CycleSubcategory();
 	bool        HasSubcategories(ScanCategory a_category);
 	bool        MatchesSubcategory(RE::TESObjectREFR* a_ref, ScanSubcategory a_subcategory);
 	const char* GetSubcategoryName(ScanSubcategory a_subcategory);
@@ -136,12 +134,4 @@ private:
 	// Constants
 	static constexpr float RESCAN_DISTANCE_THRESHOLD = 100.0f;
 	static constexpr float ELEVATION_THRESHOLD = 256.0f;  // Vertical difference to trigger above/below indicator (~1 floor height)
-
-	// Key codes (from BS_BUTTON_CODE.h)
-	static constexpr std::uint32_t NUMPAD_5 = 0x65;
-	static constexpr std::uint32_t PAGE_UP = 0x21;
-	static constexpr std::uint32_t PAGE_DOWN = 0x22;
-	static constexpr std::uint32_t HOME = 0x24;
-	static constexpr std::uint32_t END_KEY = 0x23;  // VK_END - Subcategory cycling
-	static constexpr std::uint32_t H_KEY = 0x48;    // VK_H - Combat stats announcement
 };

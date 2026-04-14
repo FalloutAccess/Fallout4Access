@@ -1,9 +1,9 @@
 #include "ObjectScanner.h"
 #include "AutoAimAccessibility.h"
 #include "AutoWalk.h"
-#include "ContextualInfoAnnouncer.h"
 #include "CorpseLootTracker.h"
 #include "GameplayStateAnnouncer.h"
+#include "MCMKeybindDispatcher.h"
 #include "SpeechManager.h"
 #include <RE/E/ExtraTeleport.h>
 #include <RE/G/GridCellArray.h>
@@ -103,78 +103,23 @@ void ObjectScanner::OnButtonEvent(const RE::ButtonEvent* a_event)
 		return;
 	}
 
-	auto device = a_event->device.get();
-	auto idCode = a_event->QIDCode();
-
-	if (device != RE::INPUT_DEVICE::kKeyboard) {
+	// Dispatch configured MCM keybinds in gameplay context. ShouldHandleEvent
+	// already gates us out of menu mode, so we're the correct dispatch site
+	// for gameplay.
+	if (MCMKeybindDispatcher::GetSingleton()->TryDispatch(a_event)) {
 		return;
 	}
 
-	// Cancel walking on WASD keys (DirectX scan codes)
+	// AutoWalk cancel uses QRawUserEvent() so remapped movement keys still cancel.
 	if (AutoWalk::GetSingleton()->IsWalking()) {
-		// WASD scan codes: W=0x11, A=0x1E, S=0x1F, D=0x20
-		// Also Escape=0x01 and Space=0x39
-		if (idCode == 0x11 || idCode == 0x1E || idCode == 0x1F || idCode == 0x20 ||
-			idCode == 0x01 || idCode == 0x39) {
+		auto userEvent = std::string(a_event->QRawUserEvent().c_str());
+		if (userEvent == "Forward" || userEvent == "Back" ||
+			userEvent == "StrafeLeft" || userEvent == "StrafeRight" ||
+			userEvent == "Sprint" || userEvent == "Jump" ||
+			userEvent == "Pause") {
 			AutoWalk::GetSingleton()->Stop();
 			SpeakText("Stopped");
-			return;
 		}
-	}
-
-	// Check modifier keys using REX::W32 (returns negative if key is down)
-	bool shiftHeld = REX::W32::GetKeyState(REX::W32::VK_SHIFT) < 0;
-	bool ctrlHeld = REX::W32::GetKeyState(REX::W32::VK_CONTROL) < 0;
-
-	if (idCode == NUMPAD_5) {
-		REX::INFO("ObjectScanner: Numpad 5 pressed, scanning...");
-		ScanAndAnnounce();
-	} else if (idCode == PAGE_DOWN) {
-		if (shiftHeld) {
-			REX::INFO("ObjectScanner: Shift+Page Down pressed, next category");
-			NextCategory();
-		} else {
-			REX::INFO("ObjectScanner: Page Down pressed");
-			SelectNext();
-		}
-	} else if (idCode == PAGE_UP) {
-		if (shiftHeld) {
-			REX::INFO("ObjectScanner: Shift+Page Up pressed, previous category");
-			PreviousCategory();
-		} else {
-			REX::INFO("ObjectScanner: Page Up pressed");
-			SelectPrevious();
-		}
-	} else if (idCode == HOME) {
-		if (ctrlHeld && shiftHeld) {
-			REX::INFO("ObjectScanner: Ctrl+Shift+Home pressed, debug info");
-			DebugAnnounceCurrentObject();
-		} else if (shiftHeld) {
-			// Toggle: if already walking, stop; otherwise start walking
-			if (AutoWalk::GetSingleton()->IsWalking()) {
-				REX::INFO("ObjectScanner: Shift+Home pressed, stopping walk");
-				AutoWalk::GetSingleton()->Stop();
-				SpeakText("Stopped");
-			} else {
-				REX::INFO("ObjectScanner: Shift+Home pressed, walking to object");
-				WalkToCurrentObject();
-			}
-		} else {
-			REX::INFO("ObjectScanner: Home pressed");
-			LookAtCurrentObject();
-			AnnounceCurrentObject();
-		}
-	} else if (idCode == END_KEY) {
-		REX::INFO("ObjectScanner: End pressed, cycling subcategory");
-		CycleSubcategory();
-	} else if (idCode == H_KEY) {
-		// Skip if workshop menu is open — it handles H key for settlement stats
-		auto* ui = RE::UI::GetSingleton();
-		if (ui && ui->GetMenu("WorkshopMenu"sv)) {
-			return;
-		}
-		REX::INFO("ObjectScanner: H pressed, announcing combat stats");
-		ContextualInfoAnnouncer::GetSingleton()->AnnounceCombatStats();
 	}
 }
 
@@ -1629,52 +1574,52 @@ void ObjectScanner::ScanPowerArmor()
 	// Lambda to scan a cell for power armor
 	auto* paKeyword = RE::PowerArmor::GetArmorKeyword();
 	auto  scanCellForPowerArmor = [&](RE::TESObjectCELL* cell) {
-        if (!cell)
-            return;
-        if (cell->cellState != RE::TESObjectCELL::CELL_STATE::kAttached)
-            return;
+		if (!cell)
+			return;
+		if (cell->cellState != RE::TESObjectCELL::CELL_STATE::kAttached)
+			return;
 
-        for (auto& refPtr : cell->references) {
-            auto* ref = refPtr.get();
-            if (!ref || ref == player)
-                continue;
-            if (ref->IsDeleted() || ref->IsDisabled())
-                continue;
+		for (auto& refPtr : cell->references) {
+			auto* ref = refPtr.get();
+			if (!ref || ref == player)
+				continue;
+			if (ref->IsDeleted() || ref->IsDisabled())
+				continue;
 
-            auto* baseObj = ref->GetObjectReference();
-            if (!baseObj)
-                continue;
+			auto* baseObj = ref->GetObjectReference();
+			if (!baseObj)
+				continue;
 
-            // Check if this is a furniture object (power armor frames are furniture)
-            if (baseObj->GetFormType() != RE::ENUM_FORM_ID::kFURN)
-                continue;
+			// Check if this is a furniture object (power armor frames are furniture)
+			if (baseObj->GetFormType() != RE::ENUM_FORM_ID::kFURN)
+				continue;
 
-            // Cast to TESFurniture to access HasKeyword (via BGSKeywordForm inheritance)
-            auto* furniture = static_cast<RE::TESFurniture*>(baseObj);
+			// Cast to TESFurniture to access HasKeyword (via BGSKeywordForm inheritance)
+			auto* furniture = static_cast<RE::TESFurniture*>(baseObj);
 
-            // Check if it has the power armor keyword
-            if (paKeyword && furniture->HasKeyword(paKeyword)) {
-                // Check if already added (avoid duplicates with lastUsedPowerArmor)
-                bool alreadyAdded = false;
-                for (const auto& existing : tempPowerArmor) {
-                    if (existing.ref == ref) {
-                        alreadyAdded = true;
-                        break;
-                    }
-                }
+			// Check if it has the power armor keyword
+			if (paKeyword && furniture->HasKeyword(paKeyword)) {
+				// Check if already added (avoid duplicates with lastUsedPowerArmor)
+				bool alreadyAdded = false;
+				for (const auto& existing : tempPowerArmor) {
+					if (existing.ref == ref) {
+						alreadyAdded = true;
+						break;
+					}
+				}
 
-                if (!alreadyAdded) {
-                    const char*  name = ref->GetDisplayFullName();
-                    std::string  displayName = (name && name[0] != '\0') ? name : "Power Armor Frame";
-                    RE::NiPoint3 paPos = ref->GetPosition();
-                    float        dist = playerPos.GetDistance(paPos);
-                    float        zDiff = paPos.z - playerZ;
+				if (!alreadyAdded) {
+					const char*  name = ref->GetDisplayFullName();
+					std::string  displayName = (name && name[0] != '\0') ? name : "Power Armor Frame";
+					RE::NiPoint3 paPos = ref->GetPosition();
+					float        dist = playerPos.GetDistance(paPos);
+					float        zDiff = paPos.z - playerZ;
 
-                    tempPowerArmor.push_back({ ref, displayName, dist, zDiff });
-                    REX::INFO("ObjectScanner: Found power armor frame '{}' dist={:.0f}", displayName, dist);
-                }
-            }
-        }
+					tempPowerArmor.push_back({ ref, displayName, dist, zDiff });
+					REX::INFO("ObjectScanner: Found power armor frame '{}' dist={:.0f}", displayName, dist);
+				}
+			}
+		}
 	};
 
 	// Get TES singleton for cell grid access

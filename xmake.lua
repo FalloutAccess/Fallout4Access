@@ -2,6 +2,7 @@
 set_xmakever("2.8.2")
 
 -- includes
+set_config("commonlib_json", true)
 includes("lib/commonlibf4")
 
 -- set project

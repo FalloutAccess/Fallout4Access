@@ -136,6 +136,11 @@ private:
 		std::int32_t           a_movieType,
 		Scaleform::GFx::Value& a_entry);
 
+	// Find the nearest MOVIETYPE_SECTION entry at or before a_index in the
+	// right pane's entryList. Returns the section text (translated), or ""
+	// if no section header precedes the entry.
+	std::string FindSectionForIndex(Scaleform::GFx::Value& a_mcmRoot, std::int32_t a_index);
+
 	// Read configPanel_mc.hint_tf.text. Returns empty string on failure.
 	std::string GetHintText(Scaleform::GFx::Value& a_mcmRoot);
 
@@ -156,6 +161,7 @@ private:
 	std::string   m_lastHint;
 	std::string   m_lastSpokenText;
 	std::string   m_lastRightValueText;  // just the value part of the focused right row (for value-change detection without row change)
+	std::string   m_lastSectionName;     // nearest preceding section header in the right pane (for group-change announcements)
 
 	// Scaleform paths
 	static constexpr const char* MCM_ROOT_PATH = "root.mcm_loader.content.mcmMenu";

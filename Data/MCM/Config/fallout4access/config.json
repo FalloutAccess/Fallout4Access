@@ -1,0 +1,93 @@
+{
+  "modName": "fallout4access",
+  "displayName": "Fallout 4 Accessibility",
+  "pages": [
+    {
+      "pageDisplayName": "Keybindings",
+      "content": [
+        {
+          "text": "Object Scanner",
+          "type": "section"
+        },
+        {
+          "id": "sScanObjects:Keybinds",
+          "text": "Scan Objects",
+          "type": "keyinput",
+          "valueOptions": { "sourceType": "ModSettingString" },
+          "help": "Scan for nearby objects and announce count."
+        },
+        {
+          "id": "sNextObject:Keybinds",
+          "text": "Next Object",
+          "type": "keyinput",
+          "valueOptions": { "sourceType": "ModSettingString" },
+          "help": "Select next scanned object. On the Pip-Boy Map page, selects the next marker."
+        },
+        {
+          "id": "sPrevObject:Keybinds",
+          "text": "Previous Object",
+          "type": "keyinput",
+          "valueOptions": { "sourceType": "ModSettingString" },
+          "help": "Select previous scanned object. On the Pip-Boy Map page, selects the previous marker."
+        },
+        {
+          "id": "sNextCategory:Keybinds",
+          "text": "Next Category",
+          "type": "keyinput",
+          "valueOptions": { "sourceType": "ModSettingString" },
+          "help": "Switch to the next scanner category filter."
+        },
+        {
+          "id": "sPrevCategory:Keybinds",
+          "text": "Previous Category",
+          "type": "keyinput",
+          "valueOptions": { "sourceType": "ModSettingString" },
+          "help": "Switch to the previous scanner category filter."
+        },
+        {
+          "id": "sCycleSubcategory:Keybinds",
+          "text": "Cycle Subcategory",
+          "type": "keyinput",
+          "valueOptions": { "sourceType": "ModSettingString" },
+          "help": "Cycle through subcategory filters. On the Pip-Boy Map page, cycles the marker filter."
+        },
+        {
+          "id": "sAnnounceObject:Keybinds",
+          "text": "Announce Object",
+          "type": "keyinput",
+          "valueOptions": { "sourceType": "ModSettingString" },
+          "help": "Announce and look at the currently selected object. On the Map page, announces marker details."
+        },
+        {
+          "id": "sWalkToObject:Keybinds",
+          "text": "Walk to Object",
+          "type": "keyinput",
+          "valueOptions": { "sourceType": "ModSettingString" },
+          "help": "Walk to the currently selected object (toggles off if already walking). On the Map page, sets the distance reference point."
+        },
+        {
+          "text": "Information",
+          "type": "section"
+        },
+        {
+          "id": "sAnnounceStats:Keybinds",
+          "text": "Announce Stats",
+          "type": "keyinput",
+          "valueOptions": { "sourceType": "ModSettingString" },
+          "help": "Announce contextual stats. Combat stats in gameplay, caps in barter, weight in containers, carry weight in Pip-Boy, settlement stats in workshop."
+        },
+        {
+          "text": "Inventory Menus",
+          "type": "section"
+        },
+        {
+          "id": "sSwitchMenuSide:Keybinds",
+          "text": "Switch Menu Side",
+          "type": "keyinput",
+          "valueOptions": { "sourceType": "ModSettingString" },
+          "help": "Switch between vendor/container and player inventory in barter and container menus."
+        }
+      ]
+    }
+  ]
+}
