@@ -87,6 +87,18 @@ void SpeechManager::Speak(const std::string& a_text, bool a_interrupt)
 	SRAL_Speak(a_text.c_str(), a_interrupt);
 }
 
+void SpeechManager::StopSpeech()
+{
+	// No engine, nothing to stop. Don't log "no engine" — this is called on
+	// every relevant key press and would flood the log when no screen reader
+	// is running.
+	if (SRAL_GetCurrentEngine() == 0) {
+		return;
+	}
+
+	SRAL_StopSpeech();
+}
+
 void SpeechManager::LogSpeech(const std::string& a_text)
 {
 	std::lock_guard<std::mutex> lock(m_logMutex);

@@ -168,6 +168,16 @@ namespace KeybindActions
 
 	bool Dispatch(std::string_view a_actionId)
 	{
+		// All MCM-bound actions are user-initiated key presses where the user
+		// expects an immediate, fresh announcement. Stop any in-flight speech
+		// before invoking the action so its Speak() calls aren't queued behind
+		// a stale announcement. Screen readers' built-in key-interrupt heuristic
+		// only fires for a fixed set of keys (Ctrl, arrows), so we can't rely
+		// on it now that users can rebind to arbitrary keys via MCM.
+		// Done once here so individual actions don't need interrupt=true at
+		// each Speak() callsite (some actions speak multiple times).
+		SpeechManager::GetSingleton()->StopSpeech();
+
 		// Action IDs match the INI key names (with 's' prefix required for
 		// Bethesda's Setting class to treat them as strings).
 		if (a_actionId == "sScanObjects") {

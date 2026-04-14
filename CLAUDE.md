@@ -110,14 +110,23 @@ All speech output goes through the centralized `SpeechManager` singleton:
 // Speak text (logs to fallout4access_speech.log automatically)
 SpeechManager::GetSingleton()->Speak("Hello world");
 
-// With interrupt parameter (should always be false per project rules)
-SpeechManager::GetSingleton()->Speak(text, false);
+// Stop any in-flight speech (used by input dispatchers, see policy below)
+SpeechManager::GetSingleton()->StopSpeech();
 ```
 
 **Rules:**
-- **Never call `SRAL_Speak()` directly** - always use `SpeechManager::GetSingleton()->Speak()`
-- **Never use interrupt=true** - always use `interrupt=false` (the default)
-- Speech is automatically logged to `fallout4access_speech.log` with timestamps
+- **Never call `SRAL_Speak()` / `SRAL_StopSpeech()` directly** — always go through `SpeechManager`.
+- **Don't pass `interrupt=true` to `Speak()` from per-feature code.** Interruption is now centralized — see the policy below. The parameter still exists for the rare callsite that needs to interrupt independently of any input event.
+- Speech is automatically logged to `fallout4access_speech.log` with timestamps.
+
+#### Speech interruption policy
+
+Users can rebind our actions to arbitrary keys via MCM. Screen readers (NVDA/JAWS) only auto-stop speech on a fixed key set (Ctrl, arrows), so when a user remaps "next object" to e.g. F2 their announcements would stack on top of stale ones. To handle this we stop speech at the dispatcher level, not at individual `Speak()` callsites:
+
+- **`KeybindActions::Dispatch`** calls `StopSpeech()` once at the top — every MCM-bound action interrupts.
+- **`MenuAccessibility::OnButtonEvent`** calls `StopSpeech()` for navigation/value-change keys (Up/Down/Left/Right/Forward/Back/StrafeLeft/StrafeRight). **Not** for Accept/Cancel — those are confirmations, not selection churn.
+- Pip-Boy callbacks (`onInvItemSelection`, `onQuestSelection`) and per-frame Scaleform polling fire 1–2 frames after the input handler runs, so their `Speak()` calls naturally play after the dispatcher's `StopSpeech()`. No callsite changes needed.
+- **Don't add `interrupt=true` at new `Speak()` callsites.** If you find yourself reaching for it, the trigger is probably an input event — handle it in the dispatcher instead.
 
 ## Common Mistakes
 

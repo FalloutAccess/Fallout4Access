@@ -26,8 +26,24 @@ public:
 	// Main speech output function
 	// All speech should go through this method
 	// a_text: Text to speak via screen reader
-	// a_interrupt: Whether to interrupt current speech (should always be false per CLAUDE.md)
+	// a_interrupt: Whether to interrupt current speech. Prefer leaving this false
+	//   and using StopSpeech() at the dispatcher level instead — see StopSpeech()
+	//   docs and CLAUDE.md "Speech interruption policy".
 	void Speak(const std::string& a_text, bool a_interrupt = false);
+
+	// Stop any currently-playing speech.
+	//
+	// This exists because users can rebind our actions to non-standard keys
+	// via MCM, and screen readers (NVDA/JAWS) only auto-interrupt speech on
+	// a fixed set of keys (Ctrl, arrows). When a user remaps "next object"
+	// to e.g. F2, pressing it would stack new announcements on top of stale
+	// ones unless we explicitly stop the current speech first.
+	//
+	// Called centrally from input dispatchers (KeybindActions::Dispatch and
+	// MenuAccessibility::OnButtonEvent for navigation keys) before invoking
+	// the action handler. Individual Speak() callsites do not need to use
+	// interrupt=true — the dispatcher-level stop covers them implicitly.
+	void StopSpeech();
 
 	// Optional: Mute support for future features (thread-safe)
 	void SetMuted(bool a_muted) { m_muted.store(a_muted, std::memory_order_relaxed); }

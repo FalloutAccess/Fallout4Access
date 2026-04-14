@@ -79,6 +79,22 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
 	bool isNavigationKey = (userEvent == "Up" || userEvent == "Down" ||
 							userEvent == "Forward" || userEvent == "Back");
 
+	// Value change: Left/Right user events (covers arrows, DPad, and remapped keys)
+	// Also check StrafeLeft/StrafeRight for A/D keys in gameplay context
+	bool isValueChangeKey = (userEvent == "Left" || userEvent == "Right" ||
+							 userEvent == "StrafeLeft" || userEvent == "StrafeRight");
+
+	// Stop in-flight speech for selection/value changes so the next
+	// announcement (which arrives 1-2 frames later via the deferred check or
+	// a Scaleform callback) plays cleanly. Screen readers only auto-interrupt
+	// on a fixed key set; we can't rely on that, especially since menu nav
+	// uses arrow/WASD/DPad which the user can remap. Accept/Cancel are
+	// intentionally excluded — those are confirmations, not selection churn,
+	// so cutting off prior speech there feels jarring.
+	if (isNavigationKey || isValueChangeKey) {
+		SpeechManager::GetSingleton()->StopSpeech();
+	}
+
 	if (isNavigationKey) {
 		// Delay the check to next frame so the game has time to update the selection
 		if (auto* taskInterface = F4SE::GetTaskInterface()) {
@@ -100,11 +116,6 @@ void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
 			});
 		}
 	}
-
-	// Value change: Left/Right user events (covers arrows, DPad, and remapped keys)
-	// Also check StrafeLeft/StrafeRight for A/D keys in gameplay context
-	bool isValueChangeKey = (userEvent == "Left" || userEvent == "Right" ||
-							 userEvent == "StrafeLeft" || userEvent == "StrafeRight");
 
 	if (isValueChangeKey) {
 		if (auto* taskInterface = F4SE::GetTaskInterface()) {
