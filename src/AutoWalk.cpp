@@ -3,6 +3,34 @@
 #include <Windows.h>
 #undef ERROR
 
+// Control-map events whose keyboard mappings cancel an in-progress autowalk.
+// Indices must match the size of AutoWalk::m_cancelKeyLatched.
+namespace
+{
+	struct CancelEvent
+	{
+		const char*                      name;
+		RE::UserEvents::INPUT_CONTEXT_ID context;
+	};
+
+	constexpr CancelEvent kCancelEvents[] = {
+		{ "Forward", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
+		{ "Back", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
+		{ "StrafeLeft", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
+		{ "StrafeRight", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
+		{ "Sprint", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
+		{ "Jump", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
+		{ "Pause", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
+	};
+	static_assert(std::size(kCancelEvents) == AutoWalk::CANCEL_KEY_COUNT,
+		"kCancelEvents must match AutoWalk::CANCEL_KEY_COUNT");
+
+	bool IsKeyPressedNow(std::uint32_t a_vk)
+	{
+		return a_vk != RE::ControlMap::kInvalid && (GetAsyncKeyState(static_cast<int>(a_vk)) & 0x8000) != 0;
+	}
+}
+
 static AutoWalk* s_singleton = nullptr;
 
 AutoWalk* AutoWalk::GetSingleton()
@@ -65,6 +93,25 @@ void AutoWalk::WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance,
 	m_onArrival = a_onArrival;
 	m_lastDistance = distance;
 	m_stuckFrames = 0;
+
+	// Seed the cancel-key latches. If the user's autowalk hotkey shares a
+	// key with any cancel action (the common case is Shift: autowalk bound
+	// to Shift+E, Sprint bound to Shift), that key will still be held in
+	// the first Update() tick. Mark each currently-held cancel key as
+	// latched so it won't trigger a cancel until the user releases it.
+	auto* controlMap = RE::ControlMap::GetSingleton();
+	for (std::size_t i = 0; i < CANCEL_KEY_COUNT; ++i) {
+		m_cancelKeyLatched[i] = false;
+		if (!controlMap) {
+			continue;
+		}
+		auto vk = controlMap->GetMappedKey(kCancelEvents[i].name,
+			RE::INPUT_DEVICE::kKeyboard,
+			kCancelEvents[i].context);
+		if (IsKeyPressedNow(vk)) {
+			m_cancelKeyLatched[i] = true;
+		}
+	}
 
 	// Dispatch to Papyrus with FormID as int32 (no float precision loss)
 	auto* gameVM = RE::GameVM::GetSingleton();
@@ -148,34 +195,34 @@ void AutoWalk::Update()
 		return;
 
 	// Check for cancel keys using ControlMap to respect remapped controls.
-	// Uses GetAsyncKeyState polling because AI-driven movement blocks normal input events.
+	// Uses GetAsyncKeyState polling because AI-driven movement blocks normal
+	// input events. Edge-triggered: any cancel key that was already held at
+	// WalkTo() time (the m_cancelKeyLatched flag) must be released before it
+	// can trigger a cancel, otherwise autowalk would self-cancel instantly
+	// whenever the hotkey shares a key with a cancel action.
 	auto* controlMap = RE::ControlMap::GetSingleton();
 	if (controlMap) {
-		// Look up the VK codes for movement actions from the game's control map
-		const std::pair<const char*, RE::UserEvents::INPUT_CONTEXT_ID> cancelEvents[] = {
-			{ "Forward", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
-			{ "Back", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
-			{ "StrafeLeft", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
-			{ "StrafeRight", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
-			{ "Sprint", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
-			{ "Jump", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
-			{ "Pause", RE::UserEvents::INPUT_CONTEXT_ID::kMainGameplay },
-		};
+		for (std::size_t i = 0; i < CANCEL_KEY_COUNT; ++i) {
+			auto vk = controlMap->GetMappedKey(kCancelEvents[i].name,
+				RE::INPUT_DEVICE::kKeyboard,
+				kCancelEvents[i].context);
+			bool pressed = IsKeyPressedNow(vk);
 
-		bool cancelPressed = false;
-		for (const auto& [eventName, context] : cancelEvents) {
-			auto vk = controlMap->GetMappedKey(eventName, RE::INPUT_DEVICE::kKeyboard, context);
-			if (vk != RE::ControlMap::kInvalid && (GetAsyncKeyState(vk) & 0x8000)) {
-				cancelPressed = true;
-				break;
+			if (m_cancelKeyLatched[i]) {
+				// Still latched from the start of the walk. Clear the
+				// latch once the key is released; skip this key until then.
+				if (!pressed) {
+					m_cancelKeyLatched[i] = false;
+				}
+				continue;
 			}
-		}
 
-		if (cancelPressed) {
-			REX::INFO("AutoWalk: Cancel key detected, stopping");
-			SpeechManager::GetSingleton()->Speak("Stopped");
-			Stop();
-			return;
+			if (pressed) {
+				REX::INFO("AutoWalk: Cancel key '{}' detected, stopping", kCancelEvents[i].name);
+				SpeechManager::GetSingleton()->Speak("Stopped");
+				Stop();
+				return;
+			}
 		}
 	}
 

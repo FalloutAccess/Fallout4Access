@@ -33,6 +33,10 @@ public:
 	// Called frequently to check status
 	void Update();
 
+	// Number of cancel keys polled by Update(). Public so the cpp-side
+	// table can static_assert it matches the latch array size.
+	static constexpr std::size_t CANCEL_KEY_COUNT = 7;
+
 private:
 	AutoWalk() = default;
 	~AutoWalk() = default;
@@ -52,6 +56,13 @@ private:
 	// Stuck detection
 	float m_lastDistance = 0.0f;
 	int   m_stuckFrames = 0;
+
+	// Cancel-key edge detection: true for each cancel key that was already
+	// held when WalkTo() started. Those keys must be released at least once
+	// before they're allowed to trigger a cancel, so that sharing a modifier
+	// with the autowalk hotkey (e.g. Shift+E when Shift == Sprint) doesn't
+	// stop us instantly on the first Update() tick.
+	bool m_cancelKeyLatched[CANCEL_KEY_COUNT] = {};
 
 	// Initialization state
 	bool m_initialized = false;
