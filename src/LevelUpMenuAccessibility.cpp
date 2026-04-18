@@ -2,6 +2,7 @@
 #include "LevelUpMenuHook.h"
 #include "LocalizationHelper.h"
 #include "SpeechManager.h"
+#include <RE/P/PipboyMenu.h>
 #include <Scaleform/G/GFx_Value.h>
 
 using Scaleform::GFx::Value;
@@ -104,6 +105,64 @@ void LevelUpMenuAccessibility::AnnounceConfirmation(bool a_confirming)
 	if (a_confirming) {
 		SpeakText(LocalizationHelper::Translate("$F4A_confirming_perk"));
 	}
+}
+
+bool LevelUpMenuAccessibility::AnnounceLevelAndXP()
+{
+	if (!m_isOpen)
+		return false;
+
+	auto* ui = RE::UI::GetSingleton();
+	if (!ui)
+		return false;
+
+	auto menu = ui->GetMenu("LevelUpMenu"sv);
+	if (!menu || !menu->uiMovie)
+		return false;
+
+	// Level: LevelUpMenu.as exposes it as root.Menu_mc.playerLevel
+	// (already used for the menu-open announcement, see PLAYER_LEVEL_PATH).
+	int   level = 0;
+	Value levelValue;
+	if (menu->uiMovie->GetVariable(&levelValue, PLAYER_LEVEL_PATH)) {
+		if (levelValue.IsUInt()) {
+			level = static_cast<int>(levelValue.GetUInt());
+		} else if (levelValue.IsInt()) {
+			level = levelValue.GetInt();
+		} else if (levelValue.IsNumber()) {
+			level = static_cast<int>(levelValue.GetNumber());
+		}
+	}
+
+	if (level <= 0)
+		return false;
+
+	// LevelUpMenu has no reachable XP% — GhostBarMeter stores _Value/_MaxValue
+	// as AS3 private. The Pip-Boy menu, however, is usually still live in
+	// memory while LevelUpMenu is on top (user enters perk chart from the
+	// Pipboy Stats page). Piggyback its dataObj.XPProgressPct — same source
+	// the on-screen XP meter renders from.
+	std::int32_t xpPercent = -1;
+	if (auto pipboy = ui->GetMenu("PipboyMenu"sv)) {
+		auto*       pipboyMenu = static_cast<RE::PipboyMenu*>(pipboy.get());
+		const auto& dataObj = pipboyMenu->dataObj;
+		if (dataObj.IsObject()) {
+			Value pctValue;
+			if (dataObj.GetMember("XPProgressPct", &pctValue) && pctValue.IsNumber()) {
+				// Same formula as LoadingMenuHook::GetXPProgressPercent,
+				// just with the ratio pre-normalized by the game.
+				xpPercent = static_cast<std::int32_t>(pctValue.GetNumber() * 100.0);
+			}
+		}
+	}
+
+	std::string announcement = LocalizationHelper::Translate("$F4A_level") + " " + std::to_string(level);
+	if (xpPercent >= 0) {
+		announcement += ", " + std::to_string(xpPercent) + "% to next level";
+	}
+
+	SpeakText(announcement);
+	return true;
 }
 
 std::string LevelUpMenuAccessibility::BuildMenuOpenAnnouncement(RE::IMenu* a_menu)

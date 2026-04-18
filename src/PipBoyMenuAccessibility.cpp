@@ -217,15 +217,81 @@ std::string PipBoyMenuAccessibility::GetLocalizedPageName(Page a_page)
 	return "Unknown";
 }
 
-void PipBoyMenuAccessibility::AnnounceInventoryStatus()
+void PipBoyMenuAccessibility::AnnouncePageStats()
 {
-	if (!m_isOpen || m_currentPage != Page::INV) {
+	if (!m_isOpen) {
 		return;
 	}
 
-	if (m_inventoryPage) {
-		m_inventoryPage->AnnounceCarryWeightAndCaps();
+	// Match what the Pipboy bottom bar renders on each page
+	// (Pipboy_BottomBar.as:60-142). Only INV and STAT expose player stats
+	// in-game, so those are the only pages H announces here. DATA/MAP/
+	// RADIO intentionally stay silent — the in-game bottom bar switches
+	// to date/time/location on those pages, not player stats.
+	switch (m_currentPage) {
+		case Page::INV:
+			if (m_inventoryPage) {
+				m_inventoryPage->AnnounceCarryWeightAndCaps();
+			}
+			break;
+		case Page::STAT:
+			AnnounceLevelAndXP();
+			break;
+		default:
+			break;
 	}
+}
+
+void PipBoyMenuAccessibility::AnnounceLevelAndXP()
+{
+	auto* ui = RE::UI::GetSingleton();
+	if (!ui) {
+		return;
+	}
+
+	auto menu = ui->GetMenu("PipboyMenu"sv);
+	if (!menu) {
+		return;
+	}
+
+	auto*       pipboyMenu = static_cast<RE::PipboyMenu*>(menu.get());
+	const auto& dataObj = pipboyMenu->dataObj;
+	if (dataObj.IsUndefined() || !dataObj.IsObject()) {
+		return;
+	}
+
+	// XPLevel (uint) — same field Pipboy_BottomBar reads for "$LEVEL N"
+	int                   level = 0;
+	Scaleform::GFx::Value levelValue;
+	if (dataObj.GetMember("XPLevel", &levelValue)) {
+		if (levelValue.IsUInt()) {
+			level = static_cast<int>(levelValue.GetUInt());
+		} else if (levelValue.IsInt()) {
+			level = levelValue.GetInt();
+		} else if (levelValue.IsNumber()) {
+			level = static_cast<int>(levelValue.GetNumber());
+		}
+	}
+
+	// XPProgressPct is already 0.0-1.0, the same ratio the XP meter renders.
+	// Matches LoadingMenuHook::GetXPProgressPercent — (levelProgress /
+	// levelThreshold) * 100, just with the ratio pre-computed by the game.
+	std::int32_t          xpPercent = -1;
+	Scaleform::GFx::Value pctValue;
+	if (dataObj.GetMember("XPProgressPct", &pctValue) && pctValue.IsNumber()) {
+		xpPercent = static_cast<std::int32_t>(pctValue.GetNumber() * 100.0);
+	}
+
+	if (level <= 0) {
+		return;
+	}
+
+	std::string announcement = LocalizationHelper::Translate("$F4A_level") + " " + std::to_string(level);
+	if (xpPercent >= 0) {
+		announcement += ", " + std::to_string(xpPercent) + "% to next level";
+	}
+
+	SpeakText(announcement);
 }
 
 void PipBoyMenuAccessibility::SpeakText(const std::string& a_text, bool a_interrupt)

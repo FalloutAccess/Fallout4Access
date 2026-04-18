@@ -87,6 +87,31 @@ The log is truncated on each game launch (fresh log per session).
 | `/check-logs` | Quick analysis of F4SE logs for errors |
 | `/commit` | Create a git commit |
 
+### Changelog Maintenance
+
+`CHANGELOG.md` is a **user-facing** document for blind Fallout 4 players, not a developer log. Update it as part of every commit that introduces a user-visible change.
+
+**Workflow:**
+1. Before finalizing a commit, decide whether the change is user-visible (see criteria below).
+2. If yes, add an entry under an `## Unreleased` section at the top of `CHANGELOG.md` (create the section if it doesn't exist). Categorize under `### New Features`, `### Bug Fixes`, or `### Improvements`.
+3. Stage `CHANGELOG.md` alongside the code changes in the same commit.
+4. At release time, rename `## Unreleased` to `## vX.Y.Z (date range)`.
+
+**User-visible (goes in changelog):**
+- New menus or features the user interacts with
+- Bug fixes that change in-game behavior the user would notice
+- Changes to announcements, speech, sounds, or keybindings
+- Performance or responsiveness improvements users would feel
+
+**Internal (do NOT add to changelog):**
+- Refactors, code style, clang-format/tidy changes
+- Build system, tooling, hooks, CI
+- Submodule updates (unless they fix a user-facing bug — describe the user effect, not the submodule bump)
+- Fixing build warnings or compiler errors
+- Test-only changes
+
+**Describe the user effect, not the implementation.** Bad: "Centralize `StopSpeech()` calls in dispatcher." Good: "Fix announcements stacking on top of stale speech when using rebound keys."
+
 ### Subagents
 
 Use these specialized agents for complex tasks:

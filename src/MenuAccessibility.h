@@ -42,6 +42,12 @@ private:
 	void OnMenuClosed(const RE::BSFixedString& a_menuName);
 	void SpeakText(const std::string& a_text, bool a_interrupt = false);
 
+	// True when the open menu is one whose contextual handler in
+	// KeybindActions responds to our MCM-configured bindings. Keep in
+	// sync with the menu checks in KeybindActions::AnnounceStats and
+	// KeybindActions::SwitchMenuSide (and any future per-menu actions).
+	bool IsKeybindDispatchContext() const;
+
 	// Menu tracking
 	bool m_mainMenuOpen = false;
 	bool m_pauseMenuOpen = false;

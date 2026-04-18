@@ -3,6 +3,7 @@
 #include "BarterMenuAccessibility.h"
 #include "ContainerMenuAccessibility.h"
 #include "ContextualInfoAnnouncer.h"
+#include "LevelUpMenuAccessibility.h"
 #include "ObjectScanner.h"
 #include "PipBoyMapPage.h"
 #include "PipBoyMenuAccessibility.h"
@@ -140,8 +141,15 @@ namespace KeybindActions
 					ContainerMenuAccessibility::GetSingleton()->AnnounceContainerStatus();
 					return;
 				}
+				// LevelUpMenu sits on top of PipboyMenu, so check it first.
+				if (ui->GetMenu("LevelUpMenu"sv)) {
+					LevelUpMenuAccessibility::GetSingleton()->AnnounceLevelAndXP();
+					return;
+				}
 				if (ui->GetMenu("PipboyMenu"sv)) {
-					PipBoyMenuAccessibility::GetSingleton()->AnnounceInventoryStatus();
+					// Mirrors the in-game bottom bar: carry weight + caps
+					// on INV, level + XP % on STAT, silent on the rest.
+					PipBoyMenuAccessibility::GetSingleton()->AnnouncePageStats();
 					return;
 				}
 				if (ui->GetMenu("WorkshopMenu"sv)) {

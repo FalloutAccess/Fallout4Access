@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.0.3 (Mar 2 - Apr 14, 2026)
+
+### New Features
+- **MCM (Mod Configuration Menu)** - Full screen reader accessibility for the menu itself: mod headers with page counts, page entries, right-pane option labels with live values (switchers, sliders, steppers, dropdowns, key bindings), hint text, and sub-mode transitions (remap, text input, conflict)
+- **Customizable Keybindings via MCM** - All 10 accessibility actions (scan objects, navigate objects and map markers, announce stats, switch menu sides, etc.) are now rebindable to keyboard, mouse, or gamepad inputs
+- **BookMenu** - Book and note reading with automatic page turn detection, works with any input method (keyboard, gamepad, remapped controls)
+- **Gameplay State Announcer** - Announces camera view changes (first/third person, free camera), sneak enter/exit, and detection state changes while sneaking
+- **SleepWaitMenu & SitWaitMenu** - Wait/sleep menu accessibility with mode, hours, and current time announcements
+- **Barter Menu Enhancements** - H key announces caps for focused side and pending trade total with direction; trade cost/profit spoken when staging items; quantity picker speaks value changes
+- **Container Menu Enhancements** - H key announces carry weight; quantity picker speaks value changes
+- **Level and XP Announcement** - H key announces current level and XP % toward next level on the Pip-Boy Stats page and the Perk chart
+- **Pip-Boy Miscellaneous Quest Objectives** - Navigate and hear individual Misc objectives in the Quests tab
+- **Junk Component Lists** - Component breakdown (e.g., "Components: Gears 2, Screws 3 tagged, Steel") now read aloud in Container, Barter, Pip-Boy, and Examine menus
+- **MCM Section Headings** - Right-pane section headings announced when entering a new section
+
+### Bug Fixes
+- Fix autowalk self-cancelling when the rebound hotkey shares a key with a cancel action (e.g., Shift+E hotkey vs. Sprint bound to Shift)
+- Fix radio signal found/lost notifications not being announced
+- Fix announcements stacking on top of stale speech when using MCM-rebound keys (speech now interrupts consistently on user-initiated actions)
+- Menu navigation now respects the game's own key remaps instead of hardcoded WASD/defaults
+
 ## v0.0.2 (Jan 18 - Feb 8, 2026)
 
 ### New Features

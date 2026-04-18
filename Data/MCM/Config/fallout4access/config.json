@@ -74,7 +74,7 @@
           "text": "Announce Stats",
           "type": "keyinput",
           "valueOptions": { "sourceType": "ModSettingString" },
-          "help": "Announce contextual stats. Combat stats in gameplay, caps in barter, weight in containers, carry weight in Pip-Boy, settlement stats in workshop."
+          "help": "Announce contextual stats. Combat stats in gameplay, caps in barter, weight in containers, carry weight on the Pip-Boy inventory page, level and XP on the Pip-Boy stats page and the perk chart, settlement stats in workshop."
         },
         {
           "text": "Inventory Menus",

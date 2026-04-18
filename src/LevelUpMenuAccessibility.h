@@ -20,6 +20,13 @@ public:
 	// Called when user confirms perk selection
 	void AnnounceConfirmation(bool a_confirming);
 
+	// Announce current player level and XP % toward next level.
+	// Reads root.Menu_mc.playerLevel for the level; piggybacks PipboyMenu's
+	// dataObj (if it's still open beneath) for the XP %, since LevelUpMenu
+	// itself doesn't expose the Meter_mc internals. Falls back to
+	// level-only when XP% isn't reachable.
+	bool AnnounceLevelAndXP();
+
 private:
 	LevelUpMenuAccessibility() = default;
 	~LevelUpMenuAccessibility() = default;

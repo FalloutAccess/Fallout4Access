@@ -31,8 +31,11 @@ public:
 	// Getter for map page (needed by MenuAccessibility for scanner keys)
 	PipBoyMapPage* GetMapPage() { return m_mapPage.get(); }
 
-	// Announce carry weight and caps (H key on INV page)
-	void AnnounceInventoryStatus();
+	// H-key entry point. Announces whatever the Pipboy bottom bar would
+	// render for the current page: carry weight + caps on INV, level +
+	// XP % on STAT. Silent on DATA/MAP/RADIO (the game's bottom bar
+	// doesn't surface player stats there either).
+	void AnnouncePageStats();
 
 private:
 	PipBoyMenuAccessibility();
@@ -59,6 +62,13 @@ private:
 
 	// Tab change detection (called per-frame from CheckSelection)
 	void CheckTabChange();
+
+	// Announce current player level and XP % toward next level.
+	// Reads PipboyMenu::dataObj (XPLevel, XPProgressPct) — same source the
+	// game's Pipboy_BottomBar uses to render "LEVEL N" and the XP meter.
+	// Private because the H-key entry point is AnnouncePageStats; callers
+	// outside the class should go through that.
+	void AnnounceLevelAndXP();
 
 	// Utilities
 	void SpeakText(const std::string& a_text, bool a_interrupt = false);

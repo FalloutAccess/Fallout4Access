@@ -50,22 +50,29 @@ bool MenuAccessibility::ShouldHandleEvent(const RE::InputEvent*)
 	return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen || m_examineMenuOpen || m_powerArmorModMenuOpen || m_cookingMenuOpen || m_robotModMenuOpen || m_levelUpMenuOpen || m_workshopMenuOpen || m_bookMenuOpen || m_sleepWaitMenuOpen || m_sitWaitMenuOpen;
 }
 
+bool MenuAccessibility::IsKeybindDispatchContext() const
+{
+	return m_pipBoyMenuOpen ||
+	       m_containerMenuOpen ||
+	       m_barterMenuOpen ||
+	       m_levelUpMenuOpen ||
+	       m_workshopMenuOpen;
+}
+
 void MenuAccessibility::OnButtonEvent(const RE::ButtonEvent* a_event)
 {
 	if (!a_event || !a_event->QJustPressed()) {
 		return;
 	}
 
-	// MCM's keybind handler is gated by `numPauseGame == 0` in f4mcm/src/MCMInput.cpp,
-	// so MCM keybinds never fire while pausing menus are open. Route those through
-	// our own dispatcher so users' configured keys still work.
-	//
-	// Only fire in menus where MCM is blocked. These all pause the game, so there's
-	// no risk of MCM double-firing, but we enumerate them explicitly to be safe.
-	const bool shouldDispatchOurKeybinds = m_pipBoyMenuOpen ||
-	                                       m_containerMenuOpen ||
-	                                       m_barterMenuOpen;
-	if (shouldDispatchOurKeybinds) {
+	// Dispatch MCM-configured accessibility keybinds (H, F, scanner keys,
+	// etc.) in menus whose contextual handlers in KeybindActions actually
+	// do something — see KeybindActions::AnnounceStats / SwitchMenuSide.
+	// Other tracked menus (MainMenu, PauseMenu, SaveLoad, Settings, Book,
+	// Terminal, Dialogue, VATS, …) are excluded on purpose: none of our
+	// actions have a meaningful behavior there, and firing would just
+	// produce a spurious "Stats unavailable" or similar.
+	if (IsKeybindDispatchContext()) {
 		if (MCMKeybindDispatcher::GetSingleton()->TryDispatch(a_event)) {
 			return;
 		}

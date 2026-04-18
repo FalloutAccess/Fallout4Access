@@ -8,10 +8,12 @@
 # folders
 build*/
 vs*/
+__pycache__/
 
 # files
 *.zip
 *.pex
+*.pyc
 compile_commands.json
 
 .claude/settings.local.json                                                                                                                                                                              
