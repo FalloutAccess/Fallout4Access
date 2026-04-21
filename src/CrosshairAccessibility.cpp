@@ -1,4 +1,5 @@
 #include "CrosshairAccessibility.h"
+#include "FreedomTrailAccessibility.h"
 #include "SpeechManager.h"
 #include <SRAL.h>
 #include <chrono>
@@ -119,6 +120,11 @@ void CrosshairAccessibility::AnnounceTarget(RE::TESObjectREFR* a_ref)
 			return;
 		}
 		announcement = name;
+	}
+
+	// Append current letter for Freedom Trail Ring activators.
+	if (auto suffix = FreedomTrailAccessibility::GetSingleton()->GetLetterSuffix(a_ref)) {
+		announcement += *suffix;
 	}
 
 	REX::INFO("CrosshairAccessibility: '{}'", announcement);

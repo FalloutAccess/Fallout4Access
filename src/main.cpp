@@ -8,6 +8,7 @@
 #include "DialogueMenuHook.h"
 #include "ExamineConfirmMenuHook.h"
 #include "ExamineMenuHook.h"
+#include "FreedomTrailAccessibility.h"
 #include "GameplayStateAnnouncer.h"
 #include "HUDMessageHook.h"
 #include "HitMarkerAudioFeedback.h"
@@ -43,6 +44,10 @@ void OnF4SEMessage(F4SE::MessagingInterface::Message* a_msg)
 
 		// Register gameplay state announcer (view changes, sneak, detection)
 		GameplayStateAnnouncer::GetSingleton()->Register();
+
+		// Register Freedom Trail Ring puzzle accessibility (reports current letter
+		// at the pointer when the player interacts with the ring)
+		FreedomTrailAccessibility::GetSingleton()->Register();
 
 		// Load damage type translations
 		ItemStatFormatter::LoadTranslations();

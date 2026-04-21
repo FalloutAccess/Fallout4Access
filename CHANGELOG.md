@@ -1,8 +1,9 @@
 # Changelog
 
-## v0.0.3 (Mar 2 - Apr 14, 2026)
+## v0.0.3 (Mar 2 - Apr 21, 2026)
 
 ### New Features
+- **Freedom Trail Ring puzzle (Old North Church)** — Looking at the rotate-clockwise, rotate-counter-clockwise, or center activator now announces the letter currently at the pointer. After each rotation, the new letter is announced when the ring settles; activating the center speaks the submitted letter. Blind players can now solve the "RAILROAD" puzzle without sight.
 - **MCM (Mod Configuration Menu)** - Full screen reader accessibility for the menu itself: mod headers with page counts, page entries, right-pane option labels with live values (switchers, sliders, steppers, dropdowns, key bindings), hint text, and sub-mode transitions (remap, text input, conflict)
 - **Customizable Keybindings via MCM** - All 10 accessibility actions (scan objects, navigate objects and map markers, announce stats, switch menu sides, etc.) are now rebindable to keyboard, mouse, or gamepad inputs
 - **BookMenu** - Book and note reading with automatic page turn detection, works with any input method (keyboard, gamepad, remapped controls)
