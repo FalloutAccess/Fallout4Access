@@ -7,7 +7,7 @@ includes("lib/commonlibf4")
 
 -- set project
 set_project("fallout4access")
-set_version("0.0.2")
+set_version("0.0.3")
 set_license("MIT")
 
 -- set defaults
