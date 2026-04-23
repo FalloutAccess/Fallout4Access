@@ -41,6 +41,13 @@ public:
 	static std::string BuildStatAnnouncement(const std::vector<FormattedStat>& a_stats,
 		size_t                                                                 a_maxEffects = 2);
 
+	// Build a stat-delta announcement for workbench mod browsing.
+	// Iterates a_infoObj (root.ItemCardList_mc.InfoObj), filters by the UI's own
+	// abs(difference) >= 10^(-precision) threshold, and returns a comma-joined
+	// phrase such as "Damage +7, Accuracy +5, Weight +1".
+	// Returns empty string when no entry has a meaningful delta.
+	static std::string BuildStatDeltaAnnouncement(const Scaleform::GFx::Value& a_infoObj);
+
 private:
 	static FormattedStat ParseStatEntry(const Scaleform::GFx::Value& a_entry);
 	static FormattedStat ParseComponentEntry(const Scaleform::GFx::Value& a_entry,

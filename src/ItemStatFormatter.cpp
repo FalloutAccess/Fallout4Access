@@ -409,6 +409,113 @@ static std::string GetDamageTypeName(std::int32_t damageType)
 	return fallback ? fallback : "";
 }
 
+// Read a numeric field from a Scaleform entry, accepting Int / UInt / Number representations.
+// Returns true when the member exists and is numeric; *a_out is only written on success.
+static bool ReadNumericMember(const Scaleform::GFx::Value& a_entry, const char* a_name, double* a_out)
+{
+	Scaleform::GFx::Value v;
+	if (!a_entry.GetMember(a_name, &v))
+		return false;
+	if (v.IsNumber()) {
+		*a_out = v.GetNumber();
+		return true;
+	}
+	if (v.IsInt()) {
+		*a_out = static_cast<double>(v.GetInt());
+		return true;
+	}
+	if (v.IsUInt()) {
+		*a_out = static_cast<double>(v.GetUInt());
+		return true;
+	}
+	return false;
+}
+
+std::string ItemStatFormatter::BuildStatDeltaAnnouncement(const Scaleform::GFx::Value& a_infoObj)
+{
+	if (!a_infoObj.IsArray())
+		return "";
+
+	std::string   result;
+	std::uint32_t count = a_infoObj.GetArraySize();
+
+	for (std::uint32_t i = 0; i < count; ++i) {
+		Scaleform::GFx::Value entry;
+		if (!a_infoObj.GetElement(i, &entry) || !entry.IsObject())
+			continue;
+
+		// Must have a signed numeric difference to be a delta entry.
+		double difference = 0.0;
+		if (!ReadNumericMember(entry, "difference", &difference))
+			continue;
+
+		// Apply the same precision threshold the UI uses (ItemCard_Entry::ShouldShowDifference):
+		// abs(difference) >= 10^(-precision). Default precision is 0 (integer stats).
+		std::uint32_t         precision = 0;
+		Scaleform::GFx::Value precisionVal;
+		if (entry.GetMember("precision", &precisionVal)) {
+			if (precisionVal.IsUInt())
+				precision = precisionVal.GetUInt();
+			else if (precisionVal.IsInt() && precisionVal.GetInt() >= 0)
+				precision = static_cast<std::uint32_t>(precisionVal.GetInt());
+			else if (precisionVal.IsNumber() && precisionVal.GetNumber() >= 0.0)
+				precision = static_cast<std::uint32_t>(precisionVal.GetNumber());
+		}
+
+		double threshold = 1.0;
+		for (std::uint32_t p = 0; p < precision; ++p)
+			threshold /= 10.0;
+		if (std::abs(difference) < threshold)
+			continue;
+
+		// Label (same translation path as regular stat announcements).
+		std::string           rawLabel;
+		Scaleform::GFx::Value labelVal;
+		if (entry.GetMember("text", &labelVal) && labelVal.IsString())
+			rawLabel = labelVal.GetString();
+		std::string label = TranslateLabel(rawLabel);
+
+		// Format the signed delta.
+		char        buf[64];
+		const char* fmt = (precision == 0) ? "%+.0f" :
+		                  (precision == 1) ? "%+.1f" :
+		                  (precision == 2) ? "%+.2f" :
+		                                     "%+.3f";
+		snprintf(buf, sizeof(buf), fmt, difference);
+		std::string delta = buf;
+
+		// Percent suffix — mirrors ItemCard_Entry::PopulateEntry.
+		Scaleform::GFx::Value percentVal;
+		if (entry.GetMember("showAsPercent", &percentVal) && percentVal.IsBoolean() && percentVal.GetBoolean())
+			delta += "%";
+
+		// Damage-type suffix for resistance stats (e.g. "+14 energy").
+		std::string           typeName;
+		Scaleform::GFx::Value damageTypeVal;
+		if (entry.GetMember("damageType", &damageTypeVal)) {
+			std::int32_t damageType = -1;
+			if (damageTypeVal.IsInt())
+				damageType = damageTypeVal.GetInt();
+			else if (damageTypeVal.IsUInt())
+				damageType = static_cast<std::int32_t>(damageTypeVal.GetUInt());
+			else if (damageTypeVal.IsNumber())
+				damageType = static_cast<std::int32_t>(damageTypeVal.GetNumber());
+			if (damageType >= 0)
+				typeName = GetDamageTypeName(damageType);
+		}
+
+		if (!result.empty())
+			result += ", ";
+		if (!label.empty())
+			result += label + " ";
+		result += delta;
+		if (!typeName.empty())
+			result += " " + typeName;
+	}
+
+	return result;
+}
+
 std::string ItemStatFormatter::BuildStatAnnouncement(
 	const std::vector<FormattedStat>& a_stats, size_t a_maxEffects)
 {

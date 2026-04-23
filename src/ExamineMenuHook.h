@@ -51,6 +51,18 @@ private:
 	void OnRequirementsMode(RE::ExamineMenu* a_menu);
 	void OnConfirmMode(RE::ExamineMenu* a_menu);
 
+	// Speaks the list of mods currently installed on the selected weapon/armor
+	// when the CurrentModsBase panel becomes visible or its contents change.
+	// No-op for CookingMenu (the panel stays hidden there).
+	void        CheckCurrentModsAnnouncement(RE::ExamineMenu* a_menu);
+	std::string GetCurrentModsList(RE::ExamineMenu* a_menu);
+	std::string BuildCurrentModsAnnouncement(const Scaleform::GFx::Value& a_entryList);
+
+	// Fetches root.ItemCardList_mc.InfoObj via two-step GetMember access (which
+	// invokes the AS3 getter, unlike single-shot GetVariable paths). Returns true
+	// and writes the InfoObj array to *a_outInfoObj on success.
+	bool GetItemCardInfoObj(RE::ExamineMenu* a_menu, Scaleform::GFx::Value* a_outInfoObj);
+
 	// Data extraction helpers
 	std::int32_t GetSelectedIndex(const Scaleform::GFx::Value& a_list);
 	std::string  GetItemName(RE::ExamineMenu* a_menu);
@@ -76,6 +88,11 @@ private:
 	std::int32_t                        m_lastModChoiceSelection = -1;
 	std::string                         m_lastSpokenText;  // For deduplication
 
+	// Signature of the last current-mods list we announced, so we only re-speak
+	// when the list content actually changes (user commits a different item, or
+	// installs a mod). Cleared while the panel is hidden.
+	std::string m_lastCurrentModsSignature;
+
 	// Frame delay constants
 	static constexpr int FRAME_DELAY_AFTER_MODE_CHANGE = 3;  // Wait 3 frames for Scaleform to populate
 
@@ -84,7 +101,6 @@ private:
 	static constexpr const char* INVENTORY_LIST_PATH = "root.InventoryBase_mc.InventoryList_mc";
 	static constexpr const char* MOD_SLOT_LIST_PATH = "root.ModSlotBase_mc.ModSlotList_mc";
 	static constexpr const char* SLOT_LABEL_PATH = "root.ModSlotBase_mc.SlotsLabel_tf.text";
-	static constexpr const char* ITEM_CARD_PATH = "root.ItemCardList_mc.InfoObj";
 	static constexpr const char* MOD_DESCRIPTION_PATH = "root.ModDescriptionBase_mc.ModDescription_tf.text";
 	static constexpr const char* LEGENDARY_DESC_PATH = "root.LegendaryItemDescription_tf.text";
 

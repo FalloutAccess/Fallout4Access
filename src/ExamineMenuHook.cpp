@@ -89,6 +89,7 @@ void ExamineMenuHook::ResetState()
 	m_firstCheck = true;
 	m_frameDelay = FRAME_DELAY_AFTER_MODE_CHANGE;  // Wait for Scaleform to populate on menu open
 	m_lastSpokenText.clear();                      // Clear deduplication cache
+	m_lastCurrentModsSignature.clear();
 }
 
 void ExamineMenuHook::HookedExamineAdvanceMovie(RE::ExamineMenu* a_this, float a_timeDelta, std::uint64_t a_time)
@@ -152,6 +153,10 @@ void ExamineMenuHook::CheckStateChanges(RE::ExamineMenu* a_menu)
 
 	// Check mod choice list (which mod to install)
 	OnModChoiceMode(a_menu);
+
+	// Announce mods already on the selected item (weapon/armor/power-armor/robot).
+	// Cooking menu keeps this panel hidden, so the check naturally no-ops there.
+	CheckCurrentModsAnnouncement(a_menu);
 }
 
 void ExamineMenuHook::OnModeChanged(RE::ExamineMenu* a_menu, RE::ExamineMenu::INSPECT_MODE_STATE a_newMode)
@@ -283,6 +288,17 @@ void ExamineMenuHook::OnModChoiceMode(RE::ExamineMenu* a_menu)
 
 		std::string announcement = modName;
 
+		// Stat deltas vs. currently installed mod — reads the same InfoObj the UI
+		// populates, so the "Standard" / already-installed choice yields no deltas
+		// and we fall back to name + description.
+		Scaleform::GFx::Value infoObj;
+		if (GetItemCardInfoObj(a_menu, &infoObj)) {
+			std::string deltas = ItemStatFormatter::BuildStatDeltaAnnouncement(infoObj);
+			if (!deltas.empty()) {
+				announcement += ". " + deltas;
+			}
+		}
+
 		// Get mod description
 		std::string description = GetModDescription(a_menu);
 		if (!description.empty()) {
@@ -310,6 +326,102 @@ void ExamineMenuHook::OnConfirmMode(RE::ExamineMenu* a_menu)
 {
 	// Confirmation mode - usually just a yes/no dialog
 	(void)a_menu;
+}
+
+void ExamineMenuHook::CheckCurrentModsAnnouncement(RE::ExamineMenu* a_menu)
+{
+	if (!a_menu || !a_menu->uiMovie)
+		return;
+
+	// Two-step access — walk root → CurrentModsBase_mc → ModSlotList_mc → entryList.
+	// Whole-path GetVariable skips AS3 property getters, so we mirror the pattern
+	// used by BarterMenu / ContainerMenu for InfoObj reads.
+	Scaleform::GFx::Value base;
+	if (!a_menu->uiMovie->GetVariable(&base, "root.CurrentModsBase_mc") || !base.IsObject()) {
+		m_lastCurrentModsSignature.clear();
+		return;
+	}
+	Scaleform::GFx::Value visibleVal;
+	if (!base.GetMember("visible", &visibleVal) || !visibleVal.IsBoolean() || !visibleVal.GetBoolean()) {
+		m_lastCurrentModsSignature.clear();
+		return;
+	}
+	Scaleform::GFx::Value modSlotList;
+	if (!base.GetMember("ModSlotList_mc", &modSlotList) || !modSlotList.IsObject()) {
+		m_lastCurrentModsSignature.clear();
+		return;
+	}
+	Scaleform::GFx::Value entryList;
+	if (!modSlotList.GetMember("entryList", &entryList) || !entryList.IsArray()) {
+		m_lastCurrentModsSignature.clear();
+		return;
+	}
+
+	std::string announcement = BuildCurrentModsAnnouncement(entryList);
+
+	if (announcement == m_lastCurrentModsSignature)
+		return;
+
+	REX::INFO("ExamineMenuHook: current-mods signature changed from '{}' to '{}'",
+		m_lastCurrentModsSignature, announcement);
+	m_lastCurrentModsSignature = announcement;
+
+	if (!announcement.empty()) {
+		SpeakText(announcement);
+	}
+}
+
+std::string ExamineMenuHook::GetCurrentModsList(RE::ExamineMenu* a_menu)
+{
+	if (!a_menu || !a_menu->uiMovie)
+		return "";
+
+	Scaleform::GFx::Value base;
+	if (!a_menu->uiMovie->GetVariable(&base, "root.CurrentModsBase_mc") || !base.IsObject())
+		return "";
+	Scaleform::GFx::Value modSlotList;
+	if (!base.GetMember("ModSlotList_mc", &modSlotList) || !modSlotList.IsObject())
+		return "";
+	Scaleform::GFx::Value entryList;
+	if (!modSlotList.GetMember("entryList", &entryList) || !entryList.IsArray())
+		return "";
+
+	return BuildCurrentModsAnnouncement(entryList);
+}
+
+std::string ExamineMenuHook::BuildCurrentModsAnnouncement(const Scaleform::GFx::Value& a_entryList)
+{
+	if (!a_entryList.IsArray())
+		return "";
+
+	std::uint32_t count = a_entryList.GetArraySize();
+	if (count == 0) {
+		// Panel is shown but item has no mod rows — worth saying so.
+		return "No mods installed";
+	}
+
+	std::string result;
+	for (std::uint32_t i = 0; i < count; ++i) {
+		Scaleform::GFx::Value entry;
+		if (!a_entryList.GetElement(i, &entry) || !entry.IsObject())
+			continue;
+
+		Scaleform::GFx::Value textVal;
+		if (!entry.GetMember("text", &textVal) || !textVal.IsString())
+			continue;
+
+		std::string text = CleanLocalizationString(textVal.GetString());
+		if (text.empty())
+			continue;
+
+		if (!result.empty())
+			result += ", ";
+		result += text;
+	}
+
+	if (result.empty())
+		return "No mods installed";
+	return "Installed: " + result;
 }
 
 std::int32_t ExamineMenuHook::GetSelectedIndex(const Scaleform::GFx::Value& a_list)
@@ -349,18 +461,32 @@ std::string ExamineMenuHook::GetItemName(RE::ExamineMenu* a_menu)
 
 std::string ExamineMenuHook::GetItemStats(RE::ExamineMenu* a_menu)
 {
-	if (!a_menu || !a_menu->uiMovie)
-		return "";
-
-	// Get item card stats via Scaleform path (member itemInfoList is never populated)
 	Scaleform::GFx::Value infoObj;
-	if (!a_menu->uiMovie->GetVariable(&infoObj, ITEM_CARD_PATH) || !infoObj.IsArray()) {
+	if (!GetItemCardInfoObj(a_menu, &infoObj))
 		return "";
-	}
 
 	// Use ItemStatFormatter to parse and build announcement
 	auto stats = ItemStatFormatter::ParseInfoObj(infoObj);
 	return ItemStatFormatter::BuildStatAnnouncement(stats);
+}
+
+bool ExamineMenuHook::GetItemCardInfoObj(RE::ExamineMenu* a_menu, Scaleform::GFx::Value* a_outInfoObj)
+{
+	if (!a_menu || !a_menu->uiMovie || !a_outInfoObj)
+		return false;
+
+	// Two-step access: fetch the ItemCard MovieClip, then read its InfoObj getter
+	// via GetMember. Path-based access through GetVariable does not invoke AS3
+	// property getters, so `root.ItemCardList_mc.InfoObj` returns undefined here
+	// even though the getter itself returns the populated array.
+	Scaleform::GFx::Value itemCard;
+	if (!a_menu->uiMovie->GetVariable(&itemCard, "root.ItemCardList_mc") || !itemCard.IsObject())
+		return false;
+
+	if (!itemCard.GetMember("InfoObj", a_outInfoObj) || !a_outInfoObj->IsArray())
+		return false;
+
+	return true;
 }
 
 std::string ExamineMenuHook::GetModSlotName(RE::ExamineMenu* a_menu, std::int32_t a_index)
