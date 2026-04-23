@@ -86,6 +86,17 @@
           "type": "keyinput",
           "valueOptions": { "sourceType": "ModSettingString" },
           "help": "Switch between vendor/container and player inventory in barter and container menus."
+        },
+        {
+          "text": "Pip-Boy Map",
+          "type": "section"
+        },
+        {
+          "id": "sActivateMarker:Keybinds",
+          "text": "Activate Marker (Fast Travel)",
+          "type": "keyinput",
+          "valueOptions": { "sourceType": "ModSettingString" },
+          "help": "Fast travel to the selected map marker on the Pip-Boy world map. Scanner next/previous keys pick the target marker; local map, undiscovered, and quest markers are not fast-travelable."
         }
       ]
     }

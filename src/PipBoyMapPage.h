@@ -26,6 +26,7 @@ public:
 	void OnAnnounceDetails();    // Home
 	void OnSetReferencePoint();  // Shift+Home
 	void OnCycleFilter();        // End
+	void OnActivateMarker();     // MCM-bound: fast travel to the selected marker
 
 private:
 	// Map marker data structure
@@ -90,6 +91,12 @@ private:
 
 	// Game selection tracking (polls uiSelectedMarkerIndex)
 	std::int32_t m_lastGameSelectedIndex = -1;
+
+	// Ignore CheckSelection writeback for a few frames after a keyboard scanner
+	// nav, giving the game's FindClosestMarkerIndex time to react to the newly
+	// positioned cursor. Without this the poll reads stale selectedMarkerInfo
+	// and snaps m_currentIndex back to the previous marker.
+	std::int32_t m_scannerNavSuppressFrames = 0;
 
 	// Embedded message box state (PipboyMessageBox.swf loaded into MessageHolder_mc)
 	bool                     m_messageBoxOpen = false;

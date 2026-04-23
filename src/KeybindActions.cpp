@@ -160,6 +160,28 @@ namespace KeybindActions
 			ContextualInfoAnnouncer::GetSingleton()->AnnounceCombatStats();
 		}
 
+		void ActivateMarker()
+		{
+			auto* ui = RE::UI::GetSingleton();
+			if (!ui) {
+				return;
+			}
+
+			// PipboyMenu.CurrentPage stays at MAP (3) while a sub-menu like
+			// the Perk Chart (LevelUpMenu) is up on top. Without this gate,
+			// GetActiveMapPage() returns the map page and we'd fast travel on
+			// the user's Enter/Accept inside the overlay.
+			if (ui->GetMenu("LevelUpMenu"sv)) {
+				return;
+			}
+
+			auto* mapPage = GetActiveMapPage();
+			if (!mapPage) {
+				return;
+			}
+			RunOnTask([mapPage]() { mapPage->OnActivateMarker(); });
+		}
+
 		void SwitchMenuSide()
 		{
 			auto* ui = RE::UI::GetSingleton();
@@ -208,6 +230,8 @@ namespace KeybindActions
 			AnnounceStats();
 		} else if (a_actionId == "sSwitchMenuSide") {
 			SwitchMenuSide();
+		} else if (a_actionId == "sActivateMarker") {
+			ActivateMarker();
 		} else {
 			return false;
 		}

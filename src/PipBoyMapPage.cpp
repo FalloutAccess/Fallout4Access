@@ -3,6 +3,8 @@
 #include "SpeechManager.h"
 #include <RE/M/MenuCursor.h>
 #include <RE/P/PlayerCharacter.h>
+#include <Scaleform/G/GFx_MovieDef.h>
+#include <Scaleform/G/GFx_Viewport.h>
 #include <algorithm>
 #include <cmath>
 
@@ -68,6 +70,16 @@ void PipBoyMapPage::CheckSelection()
 	CheckMessageBox();
 	if (m_messageBoxOpen)
 		return;
+
+	// After scanner-key nav, give the game's RefreshSelectedMarker a few frames
+	// to react to the repositioned cursor. Without this grace window, we read
+	// pre-update selectedMarkerInfo and snap m_currentIndex back to the prior
+	// marker — which in turn drives the next scanner press off the wrong base
+	// and the scanner appears to cycle through a small stuck subset.
+	if (m_scannerNavSuppressFrames > 0) {
+		--m_scannerNavSuppressFrames;
+		return;
+	}
 
 	// Poll selectedMarkerInfo from the map holder (uses mapPageObj, not root.Menu_mc)
 	auto ui = RE::UI::GetSingleton();
@@ -362,6 +374,7 @@ void PipBoyMapPage::Reset()
 	m_referenceY = 0;
 	m_referenceName.clear();
 	m_lastGameSelectedIndex = -1;
+	m_scannerNavSuppressFrames = 0;
 	m_messageBoxOpen = false;
 	m_messageBoxLastSelection = -1;
 	m_messageBoxLastBodyText.clear();
@@ -433,57 +446,99 @@ void PipBoyMapPage::CenterOnCurrentMarker()
 
 	auto& marker = m_markers[m_filteredIndices[m_currentIndex]];
 
-	// Get the map holder from mapPageObj (it's a child, not under root.Menu_mc)
+	// Bail if the map hasn't loaded — SetCenterMarker no-ops until bMapLoaded.
 	const char*           holderName = m_isLocalMap ? "LocalMapHolder_mc" : "WorldMapHolder_mc";
 	Scaleform::GFx::Value holder;
 	if (!const_cast<Scaleform::GFx::Value&>(mapPageObj).GetMember(holderName, &holder) || !holder.IsObject())
 		return;
-
-	// Check if map is loaded
 	Scaleform::GFx::Value mapLoaded;
 	if (holder.GetMember("mapLoaded", &mapLoaded) && mapLoaded.IsBoolean() && !mapLoaded.GetBoolean())
 		return;
 
-	// Find positional index in markerArray (PUBLIC getter for MarkerInfoA)
-	// Set visual selection via private backing fields
-	Scaleform::GFx::Value markerArray;
-	if (holder.GetMember("markerArray", &markerArray) && markerArray.IsArray()) {
-		std::uint32_t arraySize = markerArray.GetArraySize();
-		for (std::uint32_t i = 0; i < arraySize; ++i) {
-			Scaleform::GFx::Value elem;
-			if (!markerArray.GetElement(i, &elem) || !elem.IsObject())
-				continue;
-
-			Scaleform::GFx::Value arrIdxVal;
-			if (!elem.GetMember("arrayIndex", &arrIdxVal))
-				continue;
-
-			std::uint32_t elemArrayIndex = 0;
-			if (arrIdxVal.IsUInt())
-				elemArrayIndex = arrIdxVal.GetUInt();
-			else if (arrIdxVal.IsNumber())
-				elemArrayIndex = static_cast<std::uint32_t>(arrIdxVal.GetNumber());
-
-			if (elemArrayIndex == marker.arrayIndex) {
-				Scaleform::GFx::Value posIdx;
-				posIdx = i;
-				holder.SetMember("_uiSelectedMarkerIndex", posIdx);
-
-				Scaleform::GFx::Value markerId;
-				markerId = marker.arrayIndex;
-				holder.SetMember("_uiSelectedMarkerId", markerId);
-
-				m_lastGameSelectedIndex = static_cast<std::int32_t>(marker.arrayIndex);
-				break;
-			}
-		}
-	}
-
-	// Call SetCenterMarker to center the map view
+	// MapHolder.RefreshSelectedMarker overwrites _uiSelectedMarkerIndex every
+	// frame with FindClosestMarkerIndex() (cursor-proximity lookup against
+	// MarkerHolder_mc-local coords). So we can't SetMember the selection; we
+	// have to move the cursor over the target so the game picks it up itself.
 	Scaleform::GFx::Value args[1];
 	args[0] = marker.arrayIndex;
 	Scaleform::GFx::Value result;
 	const_cast<Scaleform::GFx::Value&>(mapPageObj).Invoke("SetCenterMarker", &result, args, 1);
+
+	// Compute the target marker's stage position via localToGlobal on its
+	// display clip, then map stage coords to screen pixels via the movie's
+	// frame rect and viewport. MenuCursor::CenterCursor alone isn't enough —
+	// it centers in the Pip-Boy constraint rect, which doesn't match the
+	// map area's center, so FindClosestMarkerIndex picks a nearby wrong
+	// marker and CheckSelection loops us back to it.
+	bool cursorMoved = false;
+	do {
+		Scaleform::GFx::Value markerArray;
+		if (!holder.GetMember("MarkerInfoA", &markerArray) || !markerArray.IsArray())
+			break;
+
+		Scaleform::GFx::Value markerInfoObj;
+		if (!markerArray.GetElement(marker.arrayIndex, &markerInfoObj) || !markerInfoObj.IsObject())
+			break;
+
+		Scaleform::GFx::Value clip;
+		if (!markerInfoObj.GetMember("clip", &clip) || !clip.IsObject())
+			break;
+
+		Scaleform::GFx::Value ptArgs[2];
+		ptArgs[0] = 0.0;
+		ptArgs[1] = 0.0;
+		Scaleform::GFx::Value pt;
+		menu->uiMovie->CreateObject(&pt, "flash.geom.Point", ptArgs, 2);
+		if (!pt.IsObject())
+			break;
+
+		Scaleform::GFx::Value stagePt;
+		if (!clip.Invoke("localToGlobal", &stagePt, &pt, 1) || !stagePt.IsObject())
+			break;
+
+		Scaleform::GFx::Value xVal, yVal;
+		if (!stagePt.GetMember("x", &xVal) || !stagePt.GetMember("y", &yVal))
+			break;
+
+		double stageX = xVal.GetNumber();
+		double stageY = yVal.GetNumber();
+
+		auto* movieDef = menu->uiMovie->GetMovieDef();
+		if (!movieDef)
+			break;
+		auto   frame = movieDef->GetFrameRect();
+		double stageW = static_cast<double>(frame.x2 - frame.x1);
+		double stageH = static_cast<double>(frame.y2 - frame.y1);
+		if (stageW <= 0.0 || stageH <= 0.0)
+			break;
+
+		Scaleform::GFx::Viewport vp{};
+		menu->uiMovie->GetViewport(&vp);
+		double scaleX = static_cast<double>(vp.width) / stageW;
+		double scaleY = static_cast<double>(vp.height) / stageH;
+		int    screenX = static_cast<int>((stageX - frame.x1) * scaleX + vp.left);
+		int    screenY = static_cast<int>((stageY - frame.y1) * scaleY + vp.top);
+
+		if (auto* cursor = RE::MenuCursor::GetSingleton()) {
+			cursor->cursorPosX = screenX;
+			cursor->cursorPosY = screenY;
+			cursorMoved = true;
+		}
+	} while (false);
+
+	if (!cursorMoved) {
+		// Fallback: constraint-center is wrong for most markers, but it at
+		// least keeps cursor inside the map area so the user isn't stranded.
+		if (auto* cursor = RE::MenuCursor::GetSingleton()) {
+			cursor->CenterCursor();
+		}
+	}
+
+	// Expected selection after the next frame settles — CheckSelection uses
+	// this to detect no-op polls. Also suppress its m_currentIndex writeback
+	// for a few frames while RefreshSelectedMarker catches up to the new cursor.
+	m_lastGameSelectedIndex = static_cast<std::int32_t>(marker.arrayIndex);
+	m_scannerNavSuppressFrames = 6;
 }
 
 void PipBoyMapPage::OnSetReferencePoint()
@@ -524,6 +579,88 @@ void PipBoyMapPage::OnSetReferencePoint()
 
 	RecalculateAllDistances();
 	SpeakText("Distance from: " + marker.name);
+}
+
+void PipBoyMapPage::OnActivateMarker()
+{
+	// If a confirmation dialog is already up (e.g. $ConfirmFastTravel),
+	// let the user answer it instead of spawning another activation.
+	if (m_messageBoxOpen) {
+		return;
+	}
+
+	if (m_isLocalMap) {
+		SpeakText("Fast travel not available on local map");
+		return;
+	}
+
+	auto ui = RE::UI::GetSingleton();
+	if (!ui)
+		return;
+	auto menu = ui->GetMenu("PipboyMenu"sv);
+	if (!menu)
+		return;
+
+	auto*       pipboyMenu = static_cast<RE::PipboyMenu*>(menu.get());
+	const auto& mapPageObj = pipboyMenu->mapMenuObj.mapPageObj;
+	if (!mapPageObj.IsObject())
+		return;
+
+	// Peek at the live selection just enough to reject cases the AS3 handler
+	// doesn't cleanly reject (nothing selected, or a non-travelable type that
+	// would otherwise open a misleading fast-travel dialog).
+	Scaleform::GFx::Value holder;
+	if (!const_cast<Scaleform::GFx::Value&>(mapPageObj).GetMember("WorldMapHolder_mc", &holder) || !holder.IsObject())
+		return;
+
+	Scaleform::GFx::Value markerInfo;
+	if (!holder.GetMember("selectedMarkerInfo", &markerInfo) ||
+		markerInfo.GetType() == Scaleform::GFx::Value::ValueType::kNull ||
+		markerInfo.GetType() == Scaleform::GFx::Value::ValueType::kUndefined ||
+		!markerInfo.IsObject()) {
+		SpeakText("No marker selected");
+		return;
+	}
+
+	std::uint32_t         markerType = 0;
+	Scaleform::GFx::Value val;
+	if (markerInfo.GetMember("type", &val)) {
+		if (val.IsUInt())
+			markerType = val.GetUInt();
+		else if (val.IsNumber())
+			markerType = static_cast<std::uint32_t>(val.GetNumber());
+		else if (val.IsInt())
+			markerType = static_cast<std::uint32_t>(val.GetInt());
+	}
+
+	// Mirror the types MapHolder.FindClosestMarkerIndex filters out of click
+	// targets (PlayerLoc is explicitly skipped there). If our cursor ever
+	// lands on one of these we don't want to fire a dialog.
+	switch (markerType) {
+		case 77:  // Door
+		case 78:  // Quest
+		case 79:  // Quest Door
+		case 80:  // Quest (alt)
+		case 81:  // Custom / PlayerSet
+		case 82:  // Player Location
+		case 83:  // Power Armor
+			SpeakText("Cannot fast travel to " + GetMarkerTypeName(markerType));
+			return;
+		default:
+			break;
+	}
+
+	// Invoke the same AS3 handler a left-click triggers. onMarkerActivated
+	// opens $ConfirmFastTravel for a discovered non-gated marker,
+	// $FastTravelUndiscovered for an undiscovered one, or
+	// $HardcorePreventedFastTravel when survival gates the destination —
+	// all three dialogs are read aloud by our embedded MessageBox
+	// announcer. AS3's `private` modifier doesn't block Scaleform's
+	// C++ Invoke path.
+	Scaleform::GFx::Value result;
+	if (!const_cast<Scaleform::GFx::Value&>(mapPageObj).Invoke("onMarkerActivated", &result, nullptr, 0)) {
+		REX::WARN("OnActivateMarker: onMarkerActivated invoke failed");
+	}
 }
 
 void PipBoyMapPage::OnCycleFilter()
@@ -711,7 +848,13 @@ void PipBoyMapPage::SelectMarkerAtIndex(std::int32_t a_index)
 		return;
 	}
 
-	// Just announce the marker - centering is done on Home key press
+	// Scanner nav is pure in-memory cycling — speak the marker, don't pan the
+	// map or move the cursor. In dense marker clusters on the zoomed-out world
+	// map, neighbours sit within SELECT_RADIUS of each other, so per-press
+	// cursor positioning races the game's FindClosestMarkerIndex and produces
+	// wandering loops. The deliberate-commit step (Home: OnAnnounceDetails) is
+	// where we pan + position cursor — once per destination instead of once
+	// per press.
 	AnnounceCurrentMarker();
 }
 
