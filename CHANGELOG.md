@@ -16,6 +16,9 @@
 - **Junk Component Lists** - Component breakdown (e.g., "Components: Gears 2, Screws 3 tagged, Steel") now read aloud in Container, Barter, Pip-Boy, and Examine menus
 - **MCM Section Headings** - Right-pane section headings announced when entering a new section
 
+### Improvements
+- **Autowalk no longer aborts on its own.** The previous stuck-detection and combat-entry auto-stop would cut walks short when briefly bumping into a pillar or when a distant enemy engaged — annoying on long traversals across the Commonwealth. Autowalk now only stops on arrival or when you press a cancel key, so you stay in control.
+
 ### Bug Fixes
 - Fix autowalk self-cancelling when the rebound hotkey shares a key with a cancel action (e.g., Shift+E hotkey vs. Sprint bound to Shift)
 - Fix radio signal found/lost notifications not being announced

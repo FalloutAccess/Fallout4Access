@@ -46,11 +46,6 @@ float property CheckInterval = 0.25 auto hidden
 
 float fStopDistance = 100.0
 
-; Stuck detection
-float fLastDistance = 0.0
-int iStuckCount = 0
-int iMaxStuckCount = 20 ; ~5 seconds at 0.25s interval
-
 ; Timer ID for arrival checking
 int TimerArrivalCheck = 1 const
 
@@ -58,17 +53,6 @@ int TimerArrivalCheck = 1 const
 
 Event OnInit()
     Debug.Trace("F4A:AutoWalk initialized")
-EndEvent
-
-Event Actor.OnCombatStateChanged(Actor akSender, Actor akTarget, int aeCombatState)
-    ; 0 = Not in combat, 1 = In combat, 2 = Searching
-    if akSender == PlayerRef && aeCombatState == 1
-        if IsWalking
-            Debug.Notification("Combat detected - stopping walk")
-            Debug.Trace("F4A:AutoWalk - Combat started, stopping")
-            StopWalking(true)
-        endIf
-    endIf
 EndEvent
 
 ; === Functions called from C++ via DispatchMethodCall ===
@@ -133,15 +117,8 @@ Function StartWalkingTo(ObjectReference akTarget)
     Debug.Trace("F4A:AutoWalk - Starting walk, distance: " + distance)
     Debug.Notification("Walking to target")
 
-    ; Reset stuck detection
-    fLastDistance = distance
-    iStuckCount = 0
-
     ; Force target into destination alias - Scene's Travel package uses this
     DstMarker.ForceRefTo(akTarget)
-
-    ; Register for combat events
-    RegisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
 
     ; Enable AI-driven movement
     Game.SetPlayerAIDriven(true)
@@ -197,21 +174,6 @@ Function CheckArrival()
         ; Look at target
         PlayerRef.SetLookAt(CurrentTarget, true)
     else
-        ; Stuck detection: check if we're making progress
-        if fLastDistance - distance >= 5.0
-            ; Making progress
-            iStuckCount = 0
-            fLastDistance = distance
-        else
-            iStuckCount += 1
-            if iStuckCount >= iMaxStuckCount
-                Debug.Trace("F4A:AutoWalk - Stuck, no progress after " + iMaxStuckCount + " checks")
-                Debug.Notification("Can't reach target")
-                StopWalking(false)
-                return
-            endIf
-        endIf
-
         ; Continue checking
         StartTimer(CheckInterval, TimerArrivalCheck)
     endIf
@@ -234,9 +196,6 @@ Function StopWalkingInternal()
 
     ; Stop the walking scene
     WalkScene.Stop()
-
-    ; Unregister combat events
-    UnregisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
 
     ; Restore player control
     Game.SetPlayerAIDriven(false)

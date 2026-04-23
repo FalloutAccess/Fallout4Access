@@ -91,8 +91,6 @@ void AutoWalk::WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance,
 	m_targetRef = a_target;
 	m_stopDistance = a_stopDistance;
 	m_onArrival = a_onArrival;
-	m_lastDistance = distance;
-	m_stuckFrames = 0;
 
 	// Seed the cancel-key latches. If the user's autowalk hotkey shares a
 	// key with any cancel action (the common case is Shift: autowalk bound
@@ -258,21 +256,6 @@ void AutoWalk::CheckArrival()
 
 		if (callback) {
 			callback();
-		}
-		return;
-	}
-
-	// Stuck detection: check if we're making progress
-	if (m_lastDistance - distance >= PROGRESS_THRESHOLD) {
-		// Making progress - reset stuck counter
-		m_stuckFrames = 0;
-		m_lastDistance = distance;
-	} else {
-		m_stuckFrames++;
-		if (m_stuckFrames >= STUCK_FRAME_LIMIT) {
-			REX::WARN("AutoWalk: Stuck - no progress after {} frames", STUCK_FRAME_LIMIT);
-			SpeechManager::GetSingleton()->Speak("Can't reach target");
-			Stop();
 		}
 	}
 }

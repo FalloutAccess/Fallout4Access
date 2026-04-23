@@ -53,10 +53,6 @@ private:
 	float                 m_stopDistance = 100.0f;
 	std::function<void()> m_onArrival = nullptr;
 
-	// Stuck detection
-	float m_lastDistance = 0.0f;
-	int   m_stuckFrames = 0;
-
 	// Cancel-key edge detection: true for each cancel key that was already
 	// held when WalkTo() started. Those keys must be released at least once
 	// before they're allowed to trigger a cancel, so that sharing a modifier
@@ -69,6 +65,4 @@ private:
 
 	// Constants
 	static constexpr float ARRIVAL_TOLERANCE = 30.0f;
-	static constexpr int   STUCK_FRAME_LIMIT = 300;    // ~5 seconds at 60fps
-	static constexpr float PROGRESS_THRESHOLD = 5.0f;  // minimum distance decrease to count as progress
 };
