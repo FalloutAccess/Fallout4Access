@@ -3,6 +3,7 @@
 #include "LocalizationHelper.h"
 #include "SpeechManager.h"
 #include <RE/P/PipboyMenu.h>
+#include <RE/P/PlayerCharacter.h>
 #include <Scaleform/G/GFx_Value.h>
 
 using Scaleform::GFx::Value;
@@ -116,24 +117,13 @@ bool LevelUpMenuAccessibility::AnnounceLevelAndXP()
 	if (!ui)
 		return false;
 
-	auto menu = ui->GetMenu("LevelUpMenu"sv);
-	if (!menu || !menu->uiMovie)
-		return false;
-
-	// Level: LevelUpMenu.as exposes it as root.Menu_mc.playerLevel
-	// (already used for the menu-open announcement, see PLAYER_LEVEL_PATH).
-	int   level = 0;
-	Value levelValue;
-	if (menu->uiMovie->GetVariable(&levelValue, PLAYER_LEVEL_PATH)) {
-		if (levelValue.IsUInt()) {
-			level = static_cast<int>(levelValue.GetUInt());
-		} else if (levelValue.IsInt()) {
-			level = levelValue.GetInt();
-		} else if (levelValue.IsNumber()) {
-			level = static_cast<int>(levelValue.GetNumber());
-		}
-	}
-
+	// LevelUpMenu's AS3 doesn't expose player level at any stable Scaleform
+	// path — it sets XPMeterHolder_mc.textField.text to "$$LEVEL N" via
+	// BGSCodeObj.GetXPInfo() and nothing else. Read from the C++ API so we
+	// get a correct value whether the user opened the Perk Chart from the
+	// Stats page, the Map page, or any other Pip-Boy tab.
+	auto* player = RE::PlayerCharacter::GetSingleton();
+	int   level = player ? static_cast<int>(player->GetLevel()) : 0;
 	if (level <= 0)
 		return false;
 
