@@ -127,6 +127,9 @@ target("fallout4access")
     -- install Data directory contents (scripts, etc.)
     add_installfiles("Data/(**)", {prefixdir = ""})
 
+    -- install CHANGELOG at the mod root so users see it in MO2
+    add_installfiles("CHANGELOG.md", {prefixdir = ""})
+
     -- show installation path after install
     after_install(function(target)
         local install_path = target:installdir()
