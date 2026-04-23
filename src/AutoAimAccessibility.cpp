@@ -4,12 +4,16 @@
 #include <RE/B/BSScript_IStackCallbackFunctor.h>
 #include <RE/B/BSScript_IVirtualMachine.h>
 #include <RE/B/BSScript_Variable.h>
+#include <RE/B/bhkPickData.h>
 #include <RE/G/GameScript.h>
+#include <RE/N/NiAVObject.h>
 #include <RE/P/PlayerCharacter.h>
 #include <RE/P/ProcessLists.h>
 #include <RE/T/TESDataHandler.h>
+#include <RE/T/TESObjectCELL.h>
 #include <RE/U/UIUtils.h>
 #include <RE/V/VATS.h>
+#include <array>
 #include <cmath>
 
 // IStackCallbackFunctor dtor is declared non-inline in CommonLibF4 but has no
@@ -51,7 +55,7 @@ void AutoAimAccessibility::Update()
 	// Check both menu open and playback mode (executing attacks)
 	auto* vats = RE::VATS::GetSingleton();
 	bool  inVATS = (ui && ui->GetMenuOpen("VATSMenu")) ||
-	              (vats && vats->mode == RE::VATS::VATS_MODE_ENUM::kPlayback);
+	               (vats && vats->mode == RE::VATS::VATS_MODE_ENUM::kPlayback);
 	if (inVATS) {
 		if (m_isTracking) {
 			StopTracking();
@@ -96,13 +100,13 @@ void AutoAimAccessibility::OnEnterIronsights()
 	if (nearestHostile) {
 		REX::INFO("AutoAimAccessibility: Found hostile target");
 		LockTarget(nearestHostile);
-		RotateToTarget(nearestHostile);
+		// RotateToTarget returns true when a visible body part was found and
+		// aimed at — that doubles as our fine-grained LOS signal.
+		m_targetHasLOS = RotateToTarget(nearestHostile);
 		AnnounceTarget(nearestHostile);
 		m_isTracking = true;
 		m_trackingFrameCount = 0;
 
-		// Start LOS sound if we have line of sight
-		m_targetHasLOS = HasLineOfSight(nearestHostile);
 		if (m_targetHasLOS) {
 			REX::INFO("AutoAimAccessibility: Has LOS, playing sound");
 			StartLOSSound();
@@ -181,22 +185,34 @@ float AutoAimAccessibility::CalculateDistanceToActor(RE::Actor* a_actor)
 	return player->GetPosition().GetDistance(a_actor->GetPosition());
 }
 
-void AutoAimAccessibility::RotateToTarget(RE::Actor* a_target)
+bool AutoAimAccessibility::RotateToTarget(RE::Actor* a_target)
 {
 	auto* player = RE::PlayerCharacter::GetSingleton();
 	if (!player || !a_target)
-		return;
+		return false;
 
 	// Get player eye position (aiming origin)
 	RE::NiPoint3 eyePos, eyeDir;
 	player->GetEyeVector(eyePos, eyeDir, true);
 
-	// Get target center (not feet position)
-	RE::NiPoint3 targetCenter;
-	a_target->GetObjectCenter(targetCenter);
+	// Try to find the best visible body part; fall back to object center if no
+	// bones resolve or none are visible. For non-humanoids (turrets, robots) the
+	// humanoid bone vocabulary rarely matches, so the center-visibility check is
+	// the real signal.
+	RE::NiPoint3 aimPoint;
+	const char*  chosenBone = nullptr;
+	int          resolvedBones = 0;
+	bool         foundVisible = FindBestAimPoint(a_target, aimPoint, chosenBone, resolvedBones);
+	if (!foundVisible) {
+		a_target->GetObjectCenter(aimPoint);
+		if (IsPointVisibleFromEye(eyePos, aimPoint, a_target)) {
+			foundVisible = true;
+			chosenBone = "center";
+		}
+	}
 
-	// Calculate direction from eye to target center
-	RE::NiPoint3 direction = targetCenter - eyePos;
+	// Calculate direction from eye to aim point
+	RE::NiPoint3 direction = aimPoint - eyePos;
 
 	// Calculate yaw (horizontal rotation) - atan2(x, y) gives angle from north
 	float yaw = std::atan2(direction.x, direction.y);
@@ -208,8 +224,115 @@ void AutoAimAccessibility::RotateToTarget(RE::Actor* a_target)
 	// Apply rotation: SetAngleOnReference takes (pitch, roll, yaw)
 	player->SetAngleOnReference(RE::NiPoint3(pitch, 0.0f, yaw));
 
-	REX::INFO("AutoAimAccessibility: Rotated to target '{}' (yaw={:.2f}, pitch={:.2f})",
-		a_target->GetDisplayFullName(), yaw, pitch);
+	const char* name = a_target->GetDisplayFullName();
+	if (!name || !*name)
+		name = "<unnamed>";
+	const char* aimLabel = foundVisible ? chosenBone : (resolvedBones == 0 ? "center(no-bones)" : "center(all-blocked)");
+	REX::INFO("AutoAim: '{}' aim=[{}] bonesResolved={} pos=({:.0f},{:.0f},{:.0f}) yaw={:.2f} pitch={:.2f}",
+		name, aimLabel, resolvedBones, aimPoint.x, aimPoint.y, aimPoint.z, yaw, pitch);
+
+	return foundVisible;
+}
+
+// Priority-ordered list of skeleton bone names to try as aim points. First
+// match wins. Vocabulary comes from extracted FO4 skeleton NIFs (see
+// tools/nif_bones.py) — covers humans, creatures (deathclaw, supermutant,
+// ghoul), synths, turrets (standing + mounted), and robots (Mr Handy etc.).
+static constexpr std::array<const char*, 15> kAimBoneCandidates = {
+	"Chest",    // human upper torso — primary humanoid aim
+	"BODY",     // turret main body (above mount, usually visible)
+	"Spine02",  // creature upper spine (deathclaw / supermutant / ghoul)
+	"COM",      // universal center of mass — catches robots and anything else
+	"SPINE2",   // humanoid upper spine alt caps
+	"HEAD",     // head shots / peek
+	"Spine01",
+	"SPINE1",
+	"Brain",          // turret / robot core (visible when base is obscured)
+	"Pelvis",         // lower torso / turret base
+	"Gun",            // turret weapon (visible above low cover)
+	"RArm_UpperArm",  // shoulder peeks
+	"LArm_UpperArm",
+	"RLeg_Thigh",  // legs below low cover
+	"LLeg_Thigh",
+};
+
+bool AutoAimAccessibility::FindBestAimPoint(
+	RE::Actor*    a_target,
+	RE::NiPoint3& a_outPoint,
+	const char*&  a_outBoneName,
+	int&          a_outBonesResolved)
+{
+	a_outBoneName = nullptr;
+	a_outBonesResolved = 0;
+
+	if (!a_target)
+		return false;
+
+	auto* target3D = a_target->Get3D();
+	if (!target3D)
+		return false;
+
+	auto* player = RE::PlayerCharacter::GetSingleton();
+	if (!player)
+		return false;
+
+	RE::NiPoint3 eyePos, eyeDir;
+	player->GetEyeVector(eyePos, eyeDir, true);
+
+	for (const char* boneName : kAimBoneCandidates) {
+		auto* node = target3D->GetObjectByName(RE::BSFixedString(boneName));
+		if (!node)
+			continue;
+		a_outBonesResolved++;
+
+		const RE::NiPoint3& bonePos = node->world.translate;
+		if (IsPointVisibleFromEye(eyePos, bonePos, a_target)) {
+			a_outPoint = bonePos;
+			a_outBoneName = boneName;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool AutoAimAccessibility::IsPointVisibleFromEye(
+	const RE::NiPoint3& a_eyePos,
+	const RE::NiPoint3& a_point,
+	RE::Actor*          a_target)
+{
+	if (!a_target)
+		return false;
+
+	auto* player = RE::PlayerCharacter::GetSingleton();
+	auto* cell = (player ? player->GetParentCell() : nullptr);
+	if (!cell)
+		cell = a_target->GetParentCell();
+	if (!cell)
+		return false;
+
+	RE::bhkPickData pickData;
+	pickData.SetStartEnd(a_eyePos, a_point);
+	(void)cell->Pick(pickData);
+
+	if (!pickData.HasHit())
+		return true;  // Nothing in the way at all.
+
+	// bhkPickData returns the hit position in Havok world units, not game units.
+	// Convert with the standard Bethesda scale (1 havok unit ≈ 69.99 game units)
+	// before comparing against the eye/bone positions, which are in game units.
+	constexpr float kHavokToGame = 69.99125f;
+	const float*    q = reinterpret_cast<const float*>(&pickData.result.position.quad);
+	RE::NiPoint3    hitPos(q[0] * kHavokToGame, q[1] * kHavokToGame, q[2] * kHavokToGame);
+
+	// A ray to a bone always pierces the target's own collision capsule before
+	// reaching the bone, so "hit near the bone" means no cover between us and
+	// the target. "Hit well short of the bone" means real cover is in the way.
+	// Threshold is generous enough to cover thin limb capsules (~20-30u radius)
+	// plus a small margin.
+	constexpr float kBodyHitRadius = 60.0f;
+	const float     distFromBone = (hitPos - a_point).Length();
+	return distFromBone < kBodyHitRadius;
 }
 
 void AutoAimAccessibility::AnnounceTarget(RE::Actor* a_target)
@@ -273,20 +396,21 @@ void AutoAimAccessibility::UpdateTracking()
 		return;
 	}
 
-	// Re-aim at target (no announcement - silent tracking)
+	// Re-aim at target (no announcement - silent tracking).
+	// RotateToTarget re-evaluates which body part is currently uncovered and
+	// returns true when it rotated to a visible bone — we reuse that as the
+	// fine-grained LOS signal so the sound tracks cover state, not just
+	// whole-actor visibility.
 	auto       ptr = m_lockedTargetHandle.get();
 	RE::Actor* target = ptr.get();
+	bool       hasLOS = RotateToTarget(target);
 
-	// Check LOS and update sound
-	bool hasLOS = HasLineOfSight(target);
 	if (hasLOS && !m_losSoundPlaying) {
 		StartLOSSound();
 	} else if (!hasLOS && m_losSoundPlaying) {
 		StopLOSSound();
 	}
 	m_targetHasLOS = hasLOS;
-
-	RotateToTarget(target);
 }
 
 bool AutoAimAccessibility::HasLineOfSight(RE::Actor* a_target)

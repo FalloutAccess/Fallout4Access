@@ -22,7 +22,7 @@ private:
 
 	void       OnEnterIronsights();
 	RE::Actor* FindNearestHostileActor();
-	void       RotateToTarget(RE::Actor* a_target);
+	bool       RotateToTarget(RE::Actor* a_target);  // Returns true if a visible body part was found
 	void       AnnounceTarget(RE::Actor* a_target);
 
 	bool  IsValidTarget(RE::Actor* a_actor);
@@ -34,8 +34,10 @@ private:
 	bool IsLockedTargetValid();
 	void UpdateTracking();  // Called from Update() while in ironsights
 
-	// LOS checking
-	bool  HasLineOfSight(RE::Actor* a_target);
+	// LOS / aim-point resolution
+	bool  HasLineOfSight(RE::Actor* a_target);  // Engine-level whole-actor check (cheap)
+	bool  FindBestAimPoint(RE::Actor* a_target, RE::NiPoint3& a_outPoint, const char*& a_outBoneName, int& a_outBonesResolved);
+	bool  IsPointVisibleFromEye(const RE::NiPoint3& a_eyePos, const RE::NiPoint3& a_point, RE::Actor* a_target);
 	float CalculateTargetScore(RE::Actor* a_actor);  // Distance with LOS penalty
 
 	// Audio

@@ -16,6 +16,7 @@
 - **Junk Component Lists** - Component breakdown (e.g., "Components: Gears 2, Screws 3 tagged, Steel") now read aloud in Container, Barter, Pip-Boy, and Examine menus
 - **MCM Section Headings** - Right-pane section headings announced when entering a new section
 - **Committing a marker pans the map and updates the in-game selection** — Pressing *Announce Object* (Home) on the Pip-Boy map now centers the map on the current scanner marker and moves the virtual cursor over it, so the in-game visual selection (and fast travel) follows your keyboard choice. *Next Marker* / *Previous Marker* stay as a fast keyboard-only browse without moving the map.
+- **Auto-aim targets uncovered body parts** — When an enemy is partly behind cover, auto-aim no longer wastes shots on the wall. It now checks head, chest, spine, pelvis, shoulders, and thighs individually and aims at whichever body part is actually visible, re-checking every tracking tick so aim follows the target as they peek in and out of cover. The LOS cue also tracks this finer visibility, so the tone plays as soon as *any* part of the enemy is exposed.
 
 ### Improvements
 - **Autowalk no longer aborts on its own.** The previous stuck-detection and combat-entry auto-stop would cut walks short when briefly bumping into a pillar or when a distant enemy engaged — annoying on long traversals across the Commonwealth. Autowalk now only stops on arrival or when you press a cancel key, so you stay in control.
