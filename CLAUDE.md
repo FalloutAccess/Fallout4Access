@@ -93,9 +93,11 @@ The log is truncated on each game launch (fresh log per session).
 
 **Workflow:**
 1. Before finalizing a commit, decide whether the change is user-visible (see criteria below).
-2. If yes, add an entry under an `## Unreleased` section at the top of `CHANGELOG.md` (create the section if it doesn't exist). Categorize under `### New Features`, `### Bug Fixes`, or `### Improvements`.
-3. Stage `CHANGELOG.md` alongside the code changes in the same commit.
-4. At release time, rename `## Unreleased` to `## vX.Y.Z (date range)`.
+2. If yes, check whether the topmost version header in `CHANGELOG.md` is already tagged in git (`git tag --list vX.Y.Z`):
+   - **Not tagged yet** → the version is still in-progress. Append new entries under its existing `### New Features` / `### Bug Fixes` / `### Improvements` subsections and update the end date in the version header (e.g., `## v0.0.3 (Mar 2 - Apr 21, 2026)` → bump to today's date).
+   - **Already tagged** → the version is frozen. **Ask the user** what the next version number should be before writing anything, then create a new `## vX.Y.Z (today)` section above it.
+3. Never use an `## Unreleased` header — always use the concrete `## vX.Y.Z (date range)` form.
+4. Stage `CHANGELOG.md` alongside the code changes in the same commit.
 
 **User-visible (goes in changelog):**
 - New menus or features the user interacts with
