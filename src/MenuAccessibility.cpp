@@ -47,7 +47,7 @@ RE::BSEventNotifyControl MenuAccessibility::ProcessEvent(
 bool MenuAccessibility::ShouldHandleEvent(const RE::InputEvent*)
 {
 	// Only handle events when a tracked menu is open
-	return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen || m_examineMenuOpen || m_powerArmorModMenuOpen || m_cookingMenuOpen || m_robotModMenuOpen || m_levelUpMenuOpen || m_workshopMenuOpen || m_bookMenuOpen || m_sleepWaitMenuOpen || m_sitWaitMenuOpen;
+	return m_mainMenuOpen || m_pauseMenuOpen || m_dialogueMenuOpen || m_specialMenuOpen || m_terminalMenuOpen || m_vatsMenuOpen || m_pipBoyMenuOpen || m_examineMenuOpen || m_powerArmorModMenuOpen || m_cookingMenuOpen || m_robotModMenuOpen || m_containerMenuOpen || m_barterMenuOpen || m_levelUpMenuOpen || m_workshopMenuOpen || m_bookMenuOpen || m_sleepWaitMenuOpen || m_sitWaitMenuOpen;
 }
 
 bool MenuAccessibility::IsKeybindDispatchContext() const
