@@ -322,8 +322,8 @@ bool AutoAimAccessibility::IsPointVisibleFromEye(
 	// Convert with the standard Bethesda scale (1 havok unit ≈ 69.99 game units)
 	// before comparing against the eye/bone positions, which are in game units.
 	constexpr float kHavokToGame = 69.99125f;
-	const float*    q = reinterpret_cast<const float*>(&pickData.result.position.quad);
-	RE::NiPoint3    hitPos(q[0] * kHavokToGame, q[1] * kHavokToGame, q[2] * kHavokToGame);
+	const auto&     hitVec = pickData.result.position;
+	RE::NiPoint3    hitPos(hitVec.x * kHavokToGame, hitVec.y * kHavokToGame, hitVec.z * kHavokToGame);
 
 	// A ray to a bone always pierces the target's own collision capsule before
 	// reaching the bone, so "hit near the bone" means no cover between us and

@@ -1,6 +1,10 @@
 #include "MCMKeybindDispatcher.h"
 #include "KeybindActions.h"
+// Mask Windows winioctl.h's DETECTION_TYPE typedef so it does not collide
+// with RE::DETECTION_TYPE pulled in via `using namespace RE;` in pch.h.
+#define DETECTION_TYPE WIN32_DETECTION_TYPE
 #include <Windows.h>
+#undef DETECTION_TYPE
 #include <charconv>
 #include <xinput.h>
 #undef ERROR

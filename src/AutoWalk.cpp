@@ -1,6 +1,12 @@
 #include "AutoWalk.h"
 #include "SpeechManager.h"
+
+// Windows winioctl.h declares a `DETECTION_TYPE` typedef that collides with
+// RE::DETECTION_TYPE pulled in via `using namespace RE;` in pch.h. Mask the
+// Windows name during preprocessing so the typedef lands under a unique name.
+#define DETECTION_TYPE WIN32_DETECTION_TYPE
 #include <Windows.h>
+#undef DETECTION_TYPE
 #undef ERROR
 
 // Control-map events whose keyboard mappings cancel an in-progress autowalk.

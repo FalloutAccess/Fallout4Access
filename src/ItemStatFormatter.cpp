@@ -5,7 +5,11 @@
 #include <RE/B/BSScaleformManager.h>
 #include <RE/B/BSScaleformTranslator.h>
 #include <RE/S/Setting.h>
+// Mask Windows winioctl.h's DETECTION_TYPE typedef so it does not collide
+// with RE::DETECTION_TYPE pulled in via `using namespace RE;` in pch.h.
+#define DETECTION_TYPE WIN32_DETECTION_TYPE
 #include <Shlobj.h>  // For SHGetFolderPathA
+#undef DETECTION_TYPE
 #include <algorithm>
 #include <cmath>
 #include <fstream>
