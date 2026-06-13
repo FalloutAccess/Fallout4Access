@@ -19,14 +19,31 @@ MenuAccessibility* MenuAccessibility::GetSingleton()
 	return &singleton;
 }
 
-void MenuAccessibility::Register()
+bool MenuAccessibility::Register()
 {
-	if (auto ui = RE::UI::GetSingleton()) {
-		ui->RegisterSink<RE::MenuOpenCloseEvent>(this);
-		REX::INFO("MenuAccessibility registered for menu events");
-	} else {
-		REX::ERROR("Failed to get UI singleton for MenuAccessibility registration");
+	if (m_registered) {
+		return true;
 	}
+	auto ui = RE::UI::GetSingleton();
+	if (!ui) {
+		// UI singleton not constructed yet (early OG preloader load). The caller
+		// retries on a later F4SE message, so don't log — it would be a false alarm.
+		return false;
+	}
+	ui->RegisterSink<RE::MenuOpenCloseEvent>(this);
+	m_registered = true;
+	REX::INFO("MenuAccessibility registered for menu events");
+
+	// If a menu was already open when we registered, its open event was missed.
+	// This happens on OG: the xSE PluginPreloader delays our setup until after the
+	// main menu is already showing, so the MainMenu open event fired before our
+	// sink existed. Replay it now so the menu installs its hook and announces.
+	if (ui->GetMenuOpen("MainMenu")) {
+		REX::INFO("MenuAccessibility: MainMenu already open at registration; syncing state");
+		OnMenuOpened("MainMenu");
+	}
+
+	return true;
 }
 
 RE::BSEventNotifyControl MenuAccessibility::ProcessEvent(

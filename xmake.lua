@@ -7,7 +7,7 @@ includes("lib/commonlibf4")
 
 -- set project
 set_project("fallout4access")
-set_version("0.0.3")
+set_version("0.1.0")
 set_license("MIT")
 
 -- set defaults
@@ -108,6 +108,12 @@ target("fallout4access")
     add_deps("commonlibf4")
     add_packages("sral", "zydis")
     add_defines("SRAL_STATIC")
+    -- enable the legacy pre-next-gen (1.10.163) F4SE entry points (F4SEPlugin_Query
+    -- + 48-byte LoadInterface shim) so one build also loads on OG. See src/main.cpp.
+    add_defines("SUPPORT_OG")
+    -- REL::VariantID runtime slots (OG/NG/AE). Only our TUs instantiate VariantID,
+    -- so defining it on this target (not in commonlib-shared) is sufficient + ODR-safe.
+    add_defines("COMMONLIB_RUNTIMECOUNT=3")
     add_includedirs("lib/SRAL/Include")
 
 
@@ -116,6 +122,9 @@ target("fallout4access")
         name = "fallout4access",
         author = "alex19EP",
         description = "F4SE plugin providing access to Fallout 4 for blind users",
+        -- De-pinned manifest (no CompatibleVersions lock) so one build loads on
+        -- every AE 1.11.137+ patch; OG 1.10.163 handled by F4SEPlugin_Query.
+        plugin_template = path.join(os.scriptdir(), "res", "commonlibf4-plugin.cpp.in"),
     })
 
     -- add src files

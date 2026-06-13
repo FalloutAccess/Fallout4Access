@@ -322,8 +322,11 @@ bool AutoAimAccessibility::IsPointVisibleFromEye(
 	// Convert with the standard Bethesda scale (1 havok unit ≈ 69.99 game units)
 	// before comparing against the eye/bone positions, which are in game units.
 	constexpr float kHavokToGame = 69.99125f;
-	const auto&     hitVec = pickData.result.position;
-	RE::NiPoint3    hitPos(hitVec.x * kHavokToGame, hitVec.y * kHavokToGame, hitVec.z * kHavokToGame);
+	// Dear-Modding's hkVector4f exposes only the raw __m128 quad (no x/y/z), so
+	// extract the lanes portably (MSVC + clang-cl) before scaling to game units.
+	alignas(16) float hk[4];
+	_mm_store_ps(hk, pickData.result.position.quad);
+	RE::NiPoint3 hitPos(hk[0] * kHavokToGame, hk[1] * kHavokToGame, hk[2] * kHavokToGame);
 
 	// A ray to a bone always pierces the target's own collision capsule before
 	// reaching the bone, so "hit near the bone" means no cover between us and

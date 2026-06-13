@@ -1,6 +1,6 @@
-[submodule "lib/commonlibf4"]
-	path = lib/commonlibf4
-	url = https://github.com/libxse/commonlibf4.git
 [submodule "lib/SRAL"]
 	path = lib/SRAL
 	url = https://github.com/m1maker/SRAL.git
+[submodule "commonlibf4-dm"]
+	path = lib/commonlibf4
+	url = https://github.com/Dear-Modding-FO4/commonlibf4.git

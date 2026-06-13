@@ -1324,8 +1324,11 @@ void ObjectScanner::ScanCompassMarkers()
 		if (!markerData)
 			continue;
 
-		// Check if location is discovered (flag 0x02 = Can Travel To)
-		bool isDiscovered = (markerData->flags & 0x02) != 0;
+		// Check if location is discovered (flag 0x02 = Can Travel To).
+		// Dear-Modding's MapMarkerData::flags is private, so read it at its
+		// documented offset (0x10) rather than patching the submodule.
+		const auto markerFlags = *(reinterpret_cast<const std::uint8_t*>(std::to_address(markerData)) + 0x10);
+		bool       isDiscovered = (markerFlags & 0x02) != 0;
 
 		// Get the marker name - use "Unknown Location" if not discovered
 		std::string name;

@@ -1400,10 +1400,11 @@ void* HUDMenuHook::FindQuickContainerDataModel([[maybe_unused]] RE::HUDMenu* a_m
 		m_hudQuickContainerDataModelPtr = nullptr;
 	}
 
-	// Access via HUDDataModel singleton using Address Library ID 4801904
-	// (discovered via Offset2ID from RVA 0x32694E8)
+	// Access via HUDDataModel singleton (REL::VariantID: OG 1.10.163 / AE 1.11.x).
+	// AE id 4801904 (RVA 0x32694E8); OG id 910584 (RVA 0x5A60A30, reverse-engineered).
 	// HUDQuickContainerDataModel is embedded at offset 0x38 from HUDDataModel
-	static REL::Relocation<void**> hudDataModelSingleton{ REL::ID(4801904) };
+	// (the +0x38 layout was verified to hold on OG as well).
+	static REL::Relocation<void**> hudDataModelSingleton{ REL::VariantID{ 910584, 4801904 } };
 
 	void* hudDataModel = *hudDataModelSingleton;
 	if (!hudDataModel) {
@@ -1455,10 +1456,10 @@ void HUDMenuHook::CallNativeQuickContainerUp(void* a_dataModel)
 	if (!a_dataModel)
 		return;
 
-	// QuickContainerUp - Address Library ID 2221655 (discovered from RVA 0xa0aa70)
+	// QuickContainerUp - REL::VariantID: OG 1.10.163 id 334609 / AE 1.11.x id 2221655
 	// Function signature: void __fastcall QuickContainerUp(HUDQuickContainerDataModel* this)
 	using QuickContainerUpFunc = void(__fastcall*)(void*);
-	static REL::Relocation<QuickContainerUpFunc> quickContainerUp{ REL::ID(2221655) };
+	static REL::Relocation<QuickContainerUpFunc> quickContainerUp{ REL::VariantID{ 334609, 2221655 } };
 
 	quickContainerUp(a_dataModel);
 }
@@ -1468,10 +1469,10 @@ void HUDMenuHook::CallNativeQuickContainerDown(void* a_dataModel)
 	if (!a_dataModel)
 		return;
 
-	// QuickContainerDown - Address Library ID 2221656 (discovered from RVA 0xa0aab0)
+	// QuickContainerDown - REL::VariantID: OG 1.10.163 id 241368 / AE 1.11.x id 2221656
 	// Function signature: void __fastcall QuickContainerDown(HUDQuickContainerDataModel* this)
 	using QuickContainerDownFunc = void(__fastcall*)(void*);
-	static REL::Relocation<QuickContainerDownFunc> quickContainerDown{ REL::ID(2221656) };
+	static REL::Relocation<QuickContainerDownFunc> quickContainerDown{ REL::VariantID{ 241368, 2221656 } };
 
 	quickContainerDown(a_dataModel);
 }

@@ -19,7 +19,11 @@ class MenuAccessibility :
 public:
 	static MenuAccessibility* GetSingleton();
 
-	void Register();
+	// Registers the menu-event sink. Idempotent and safe to retry: returns false
+	// (without logging) if the UI singleton isn't available yet — e.g. when the
+	// xSE PluginPreloader loads us very early on OG — so callers can retry on a
+	// later F4SE message. Returns true once registered.
+	bool Register();
 
 	// Menu events
 	RE::BSEventNotifyControl ProcessEvent(
@@ -72,4 +76,5 @@ private:
 	bool m_sleepWaitMenuOpen = false;
 	bool m_sitWaitMenuOpen = false;
 	bool m_inputHandlerRegistered = false;
+	bool m_registered = false;
 };

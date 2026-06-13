@@ -58,7 +58,10 @@ private:
 	// Installation guard
 	bool m_installed{ false };
 
-	// Function IDs from CommonLibF4
-	static constexpr REL::ID kShowHUDMessageID{ 2222440 };
-	static constexpr REL::ID kShowHUDNotificationID{ 2222474 };
+	// Address Library IDs (REL::VariantID picks per runtime: OG 1.10.163 / AE 1.11.x).
+	// OG IDs reverse-engineered against Fallout4.exe 1.10.163; AE IDs are the
+	// catalogued next-gen IDs. ShowHUDMessage's OG ID matches CommonLibF4's
+	// catalogued VariantID{ 1163005, 2222440 }.
+	static constexpr REL::VariantID kShowHUDMessageID{ 1163005, 2222440 };
+	static constexpr REL::VariantID kShowHUDNotificationID{ 1011474, 2222474 };
 };

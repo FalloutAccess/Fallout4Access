@@ -1,0 +1,22 @@
+#include <F4SE/F4SE.h>
+
+// Custom plugin manifest for fallout4access (passed to the commonlibf4.plugin
+// rule via plugin_template). Must be named commonlibf4-plugin.cpp.in so its
+// generated output matches the commonlibf4-plugin.cpp the rule adds to files.
+//
+// Identical to CommonLibF4's default template EXCEPT it does NOT pin
+// CompatibleVersions to a single runtime. With UsesAddressLibrary +
+// IsLayoutDependent and no pin, the modern manifest loads on every AE 1.11.137+
+// patch (not just RUNTIME_LATEST). OG 1.10.163 is handled separately by the
+// legacy F4SEPlugin_Query export in src/main.cpp (enabled by SUPPORT_OG).
+F4SE_PLUGIN_VERSION = []() noexcept {
+    F4SE::PluginVersionData v{};
+    v.PluginVersion({ ${COMMONLIB_PLUGIN_VERSION_MAJOR}, ${COMMONLIB_PLUGIN_VERSION_MINOR}, ${COMMONLIB_PLUGIN_VERSION_PATCH}, 0 });
+    v.PluginName("${COMMONLIB_PLUGIN_NAME}");
+    v.AuthorName("${COMMONLIB_PLUGIN_AUTHOR}");
+    v.UsesAddressLibrary(true);
+    v.UsesSigScanning(false);
+    v.IsLayoutDependent(true);
+    v.HasNoStructUse(false);
+    return v;
+}();
