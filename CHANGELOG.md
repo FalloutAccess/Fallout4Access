@@ -1,12 +1,15 @@
 # Changelog
 
-## v0.1.0 (Jun 13, 2026)
+## v0.1.0 (Jun 13 - Jun 14, 2026)
 
 ### New Features
 - **Original (pre-next-gen) Fallout 4 support** — The mod now loads and runs on the original 1.10.163 version of the game, not only the next-gen update. This is the version used by downgraded installs and by mods like Fallout: London. A single download works on both; the right version is detected automatically, so there is nothing to configure.
 
 ### Improvements
 - **Loads on every next-gen patch** — The mod is no longer tied to one exact game version. It now loads on any next-gen patch (1.11.137 or later) instead of a single specific build.
+
+### Bug Fixes
+- **Combat and lock-on sounds no longer crash the game on the original runtime** — On the original 1.10.163 version of Fallout 4 (the version used by Fallout: London), the hit-marker sounds and the auto-aim lock-on tone could crash the game the moment they first played — usually the instant you landed a hit in combat. They now play correctly.
 
 ## v0.0.3 (Apr 24, 2026)
 

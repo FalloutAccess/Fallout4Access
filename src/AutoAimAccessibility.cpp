@@ -1,4 +1,5 @@
 #include "AutoAimAccessibility.h"
+#include "PapyrusDispatch.h"
 #include "SpeechManager.h"
 #include <RE/B/BSScriptUtil.h>
 #include <RE/B/BSScript_IStackCallbackFunctor.h>
@@ -486,11 +487,12 @@ void AutoAimAccessibility::StartLOSSound()
 	auto callback = RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor>(
 		new LOSSoundCallback(this));
 
-	bool dispatched = vm->DispatchStaticCall(
+	std::int32_t losFormID = static_cast<std::int32_t>(m_losSoundForm->GetFormID());
+	bool         dispatched = PapyrusDispatch::DispatchStatic(vm.get(),
 		RE::BSFixedString("F4A:SoundHelper"),
 		RE::BSFixedString("PlaySound"),
 		callback,
-		static_cast<std::int32_t>(m_losSoundForm->GetFormID()));
+		&losFormID);
 
 	if (dispatched) {
 		m_losSoundPlaying = true;
@@ -537,9 +539,10 @@ void AutoAimAccessibility::StopSoundInstance(std::uint32_t a_instanceID)
 	if (!vm)
 		return;
 
-	vm->DispatchStaticCall(
+	std::int32_t instanceID = static_cast<std::int32_t>(a_instanceID);
+	PapyrusDispatch::DispatchStatic(vm.get(),
 		RE::BSFixedString("F4A:SoundHelper"),
 		RE::BSFixedString("StopSound"),
 		nullptr,
-		static_cast<std::int32_t>(a_instanceID));
+		&instanceID);
 }

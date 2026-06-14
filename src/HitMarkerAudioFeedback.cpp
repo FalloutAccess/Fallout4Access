@@ -1,4 +1,5 @@
 #include "HitMarkerAudioFeedback.h"
+#include "PapyrusDispatch.h"
 #include <RE/B/BSScriptUtil.h>
 #include <RE/B/BSScript_IVirtualMachine.h>
 #include <RE/G/GameScript.h>
@@ -155,12 +156,14 @@ void HitMarkerAudioFeedback::PlayHitSound(HitType a_type)
 	if (!vm)
 		return;
 
-	// Fire-and-forget: script gets player reference internally
-	vm->DispatchStaticCall(
+	// Fire-and-forget: script gets player reference internally. Routed through
+	// PapyrusDispatch so it doesn't CTD on the OG runtime (functor-ABI shim).
+	std::int32_t soundFormID = static_cast<std::int32_t>(soundForm->GetFormID());
+	PapyrusDispatch::DispatchStatic(vm.get(),
 		RE::BSFixedString("F4A:SoundHelper"),
 		RE::BSFixedString("PlaySound"),
 		nullptr,
-		static_cast<std::int32_t>(soundForm->GetFormID()));
+		&soundFormID);
 }
 
 void HitMarkerAudioFeedback::CacheSoundForms()
