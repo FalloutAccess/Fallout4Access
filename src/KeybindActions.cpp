@@ -3,6 +3,8 @@
 #include "BarterMenuAccessibility.h"
 #include "ContainerMenuAccessibility.h"
 #include "ContextualInfoAnnouncer.h"
+#include "ExamineMenuHook.h"
+#include "FolonTimerAccessibility.h"
 #include "LevelUpMenuAccessibility.h"
 #include "ObjectScanner.h"
 #include "PipBoyMapPage.h"
@@ -62,8 +64,29 @@ namespace KeybindActions
 			}
 		}
 
+		// True when a menu owns input (Pip-Boy, Container, etc.). The gameplay
+		// object scanner and auto-walk are open-world features and must never
+		// run while a menu is up: these actions are also dispatched from
+		// MenuAccessibility::OnButtonEvent, so a scanner key pressed inside the
+		// Pip-Boy on a non-map page would otherwise fall through to the gameplay
+		// scanner. For Shift+Home (WalkToObject) that starts the player
+		// auto-walking while the Pip-Boy stays open — and AutoWalk's cancel
+		// driver only runs in gameplay, so the user gets trapped in a menu they
+		// can't act in. The Pip-Boy Map page is handled separately above each
+		// fallback via GetActiveMapPage(), so reaching a gameplay fallback while
+		// in menu mode is always wrong. (Mirrors ObjectScanner's own menuMode
+		// gate in ShouldHandleEvent.)
+		bool InMenuMode()
+		{
+			auto* ui = RE::UI::GetSingleton();
+			return ui && ui->menuMode != 0;
+		}
+
 		void ScanObjects()
 		{
+			if (InMenuMode()) {
+				return;
+			}
 			ObjectScanner::GetSingleton()->ScanAndAnnounce();
 		}
 
@@ -71,6 +94,9 @@ namespace KeybindActions
 		{
 			if (auto* mapPage = GetActiveMapPage()) {
 				RunOnTask([mapPage]() { mapPage->OnNextMarker(); });
+				return;
+			}
+			if (InMenuMode()) {
 				return;
 			}
 			ObjectScanner::GetSingleton()->SelectNext();
@@ -82,16 +108,25 @@ namespace KeybindActions
 				RunOnTask([mapPage]() { mapPage->OnPreviousMarker(); });
 				return;
 			}
+			if (InMenuMode()) {
+				return;
+			}
 			ObjectScanner::GetSingleton()->SelectPrevious();
 		}
 
 		void NextCategory()
 		{
+			if (InMenuMode()) {
+				return;
+			}
 			ObjectScanner::GetSingleton()->NextCategory();
 		}
 
 		void PrevCategory()
 		{
+			if (InMenuMode()) {
+				return;
+			}
 			ObjectScanner::GetSingleton()->PreviousCategory();
 		}
 
@@ -99,6 +134,9 @@ namespace KeybindActions
 		{
 			if (auto* mapPage = GetActiveMapPage()) {
 				RunOnTask([mapPage]() { mapPage->OnCycleFilter(); });
+				return;
+			}
+			if (InMenuMode()) {
 				return;
 			}
 			ObjectScanner::GetSingleton()->CycleSubcategory();
@@ -110,6 +148,9 @@ namespace KeybindActions
 				RunOnTask([mapPage]() { mapPage->OnAnnounceDetails(); });
 				return;
 			}
+			if (InMenuMode()) {
+				return;
+			}
 			ObjectScanner::GetSingleton()->LookAtCurrentObject();
 			ObjectScanner::GetSingleton()->AnnounceCurrentObject();
 		}
@@ -118,6 +159,9 @@ namespace KeybindActions
 		{
 			if (auto* mapPage = GetActiveMapPage()) {
 				RunOnTask([mapPage]() { mapPage->OnSetReferencePoint(); });
+				return;
+			}
+			if (InMenuMode()) {
 				return;
 			}
 			if (AutoWalk::GetSingleton()->IsWalking()) {
@@ -156,6 +200,20 @@ namespace KeybindActions
 					WorkshopMenuAccessibility::GetSingleton()->AnnounceSettlementStats();
 					return;
 				}
+				// Workbench mod menus: re-announce the selected improvement's full
+				// characteristics on demand (stat changes + description), which the
+				// automatic selection announcement can't always deliver in time.
+				if (ui->GetMenu("ExamineMenu"sv) || ui->GetMenu("PowerArmorModMenu"sv) ||
+					ui->GetMenu("CookingMenu"sv) || ui->GetMenu("RobotModMenu"sv)) {
+					ExamineMenuHook::GetSingleton()->AnnounceCurrentDetails();
+					return;
+				}
+			}
+			// No blocking menu: in Fallout London, surface the active quest
+			// countdown (FOLON_UITimer) here so the existing stats key reports
+			// remaining time on demand. Falls through to combat stats otherwise.
+			if (FolonTimerAccessibility::GetSingleton()->AnnounceCurrentTime()) {
+				return;
 			}
 			ContextualInfoAnnouncer::GetSingleton()->AnnounceCombatStats();
 		}
@@ -172,13 +230,16 @@ namespace KeybindActions
 			// GetActiveMapPage() returns the map page and we'd fast travel on
 			// the user's Enter/Accept inside the overlay.
 			if (ui->GetMenu("LevelUpMenu"sv)) {
+				REX::INFO("ActivateMarker: blocked (LevelUpMenu open)");
 				return;
 			}
 
 			auto* mapPage = GetActiveMapPage();
 			if (!mapPage) {
+				REX::INFO("ActivateMarker: no active map page");
 				return;
 			}
+			REX::INFO("ActivateMarker: dispatching to map page");
 			RunOnTask([mapPage]() { mapPage->OnActivateMarker(); });
 		}
 
