@@ -4,6 +4,7 @@
 
 ### New Features
 - **Original (pre-next-gen) Fallout 4 support** — The mod now loads and runs on the original 1.10.163 version of the game, not only the next-gen update. This is the version used by downgraded installs and by mods like Fallout: London. A single download works on both; the right version is detected automatically, so there is nothing to configure.
+- **Auto-walk works in Fallout London** — On the original game runtime (used by Fallout: London), pressing *Walk to Object* now walks your character to the selected scanned object, the same as on the regular game. Previously the dispatch into the game's scripts couldn't move the player on this runtime; it now routes through the auto-walk quest's travel package so navigation around obstacles works as expected.
 
 ### Improvements
 - **Loads on every next-gen patch** — The mod is no longer tied to one exact game version. It now loads on any next-gen patch (1.11.137 or later) instead of a single specific build.

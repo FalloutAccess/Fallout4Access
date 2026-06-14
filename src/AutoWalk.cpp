@@ -1,5 +1,9 @@
 #include "AutoWalk.h"
+#include "PapyrusDispatch.h"
 #include "SpeechManager.h"
+
+#include <RE/B/BSScript_IVirtualMachine.h>
+#include <RE/B/BSScript_Variable.h>
 
 // Windows winioctl.h declares a `DETECTION_TYPE` typedef that collides with
 // RE::DETECTION_TYPE pulled in via `using namespace RE;` in pch.h. Mask the
@@ -35,7 +39,35 @@ namespace
 	{
 		return a_vk != RE::ControlMap::kInvalid && (GetAsyncKeyState(static_cast<int>(a_vk)) & 0x8000) != 0;
 	}
+
+	// Do-nothing Papyrus stack callback. A non-null callback is REQUIRED when
+	// dispatching a latent function (F4A:AutoWalkHelper.WalkPlayerTo calls the
+	// latent Actor.PathToReference): the VM's latent-return path dereferences
+	// the stack's IStackCallbackFunctor without a null check. Non-latent calls
+	// (e.g. F4A:SoundHelper.PlaySound) take the inline-completion path, which
+	// null-guards the callback, so they can pass nullptr. The object is
+	// ref-counted; a fresh instance is handed to BSTSmartPointer, the VM keeps
+	// a reference until the stack completes, then it is freed.
+	class NoOpStackCallback : public RE::BSScript::IStackCallbackFunctor
+	{
+	public:
+		void CallQueued() override {}
+		void CallCanceled() override {}
+		void StartMultiDispatch() override {}
+		void EndMultiDispatch() override {}
+		void operator()(RE::BSScript::Variable) override {}
+		bool CanSave() override { return false; }
+	};
+
+	RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> MakeNoOpCallback()
+	{
+		return RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor>{ new NoOpStackCallback() };
+	}
 }
+
+// Note: the out-of-line definition of the CommonLibF4-declared
+// IStackCallbackFunctor destructor (needed so the subclass above links) is
+// provided by AutoAimAccessibility.cpp; do not duplicate it here.
 
 static AutoWalk* s_singleton = nullptr;
 
@@ -52,23 +84,19 @@ void AutoWalk::Initialize()
 	if (m_initialized)
 		return;
 
-	// Find the quest by EditorID
-	m_quest = RE::TESForm::GetFormByEditorID<RE::TESQuest>("F4A_AutoWalkQuest");
-	if (!m_quest) {
-		REX::WARN("AutoWalk: F4A_AutoWalkQuest not found");
-		REX::WARN("AutoWalk: Auto-walk feature disabled. Install fallout4access.esp to enable.");
-		return;
-	}
-
+	// No ESP/quest lookup: auto-walk drives the player through the loose global
+	// script F4A:AutoWalkHelper, which the VM lazy-loads by name on first
+	// dispatch (same mechanism as F4A:SoundHelper). The feature is therefore
+	// available in any load order, including ones where our quest never binds.
 	m_initialized = true;
-	REX::INFO("AutoWalk: Initialized successfully");
+	REX::INFO("AutoWalk: Initialized (helper-script mode)");
 }
 
 void AutoWalk::WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance,
 	std::function<void()> a_onArrival)
 {
 	if (!m_initialized) {
-		REX::WARN("AutoWalk: Not initialized (ESP not loaded?)");
+		REX::WARN("AutoWalk: Not initialized");
 		return;
 	}
 
@@ -117,7 +145,10 @@ void AutoWalk::WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance,
 		}
 	}
 
-	// Dispatch to Papyrus with FormID as int32 (no float precision loss)
+	// Drive the player through the loose global script. WalkPlayerTo is LATENT
+	// (Actor.PathToReference), so a non-null callback is mandatory — see
+	// NoOpStackCallback. The FormID is passed as int32 (no float precision loss
+	// and no ref-packing crash); the script resolves it with Game.GetForm.
 	auto* gameVM = RE::GameVM::GetSingleton();
 	if (!gameVM)
 		return;
@@ -125,28 +156,16 @@ void AutoWalk::WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance,
 	if (!vm)
 		return;
 
-	auto& handlePolicy = vm->GetObjectHandlePolicy();
-	auto  handle = handlePolicy.GetHandleForObject(
-		RE::BSScript::GetVMTypeID<RE::TESQuest>(),
-		m_quest);
-
-	if (handle == handlePolicy.EmptyHandle()) {
-		REX::ERROR("AutoWalk: Failed to get quest VM handle");
-		m_targetRef = nullptr;
-		m_onArrival = nullptr;
-		return;
-	}
-
-	bool dispatched = vm->DispatchMethodCall(
-		handle,
-		RE::BSFixedString("F4A:AutoWalk"),
-		RE::BSFixedString("OnWalkToTarget"),
-		nullptr,
-		static_cast<std::int32_t>(a_target->GetFormID()),
-		a_stopDistance);
+	std::int32_t formID = static_cast<std::int32_t>(a_target->GetFormID());
+	bool         dispatched = PapyrusDispatch::DispatchStatic(vm.get(),
+		RE::BSFixedString("F4A:AutoWalkHelper"),
+		RE::BSFixedString("WalkPlayerTo"),
+		MakeNoOpCallback(),
+		&formID);
 
 	if (!dispatched) {
-		REX::ERROR("AutoWalk: DispatchMethodCall OnWalkToTarget failed");
+		REX::ERROR("AutoWalk: DispatchStaticCall WalkPlayerTo failed");
+		SpeechManager::GetSingleton()->Speak("Auto-walk unavailable");
 		m_targetRef = nullptr;
 		m_onArrival = nullptr;
 		return;
@@ -160,31 +179,29 @@ void AutoWalk::WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance,
 		playerPos.x, playerPos.y, playerPos.z, tpos.x, tpos.y, tpos.z);
 }
 
+void AutoWalk::DispatchStopWalk()
+{
+	auto* gameVM = RE::GameVM::GetSingleton();
+	if (!gameVM)
+		return;
+	auto vm = gameVM->GetVM();
+	if (!vm)
+		return;
+
+	// Pass the no-op callback for uniformity; nullptr arg = no Papyrus args.
+	PapyrusDispatch::DispatchStatic(vm.get(),
+		RE::BSFixedString("F4A:AutoWalkHelper"),
+		RE::BSFixedString("StopWalk"),
+		MakeNoOpCallback(),
+		nullptr);
+}
+
 void AutoWalk::Stop()
 {
 	if (!m_targetRef)
 		return;
 
-	if (m_initialized && m_quest) {
-		auto* gameVM = RE::GameVM::GetSingleton();
-		if (gameVM) {
-			auto vm = gameVM->GetVM();
-			if (vm) {
-				auto& handlePolicy = vm->GetObjectHandlePolicy();
-				auto  handle = handlePolicy.GetHandleForObject(
-					RE::BSScript::GetVMTypeID<RE::TESQuest>(),
-					m_quest);
-
-				if (handle != handlePolicy.EmptyHandle()) {
-					vm->DispatchMethodCall(
-						handle,
-						RE::BSFixedString("F4A:AutoWalk"),
-						RE::BSFixedString("OnStopWalking"),
-						nullptr);
-				}
-			}
-		}
-	}
+	DispatchStopWalk();
 
 	m_targetRef = nullptr;
 	m_onArrival = nullptr;
@@ -254,9 +271,13 @@ void AutoWalk::CheckArrival()
 	if (distance <= m_stopDistance + ARRIVAL_TOLERANCE) {
 		REX::INFO("AutoWalk: Arrived (distance: {})", distance);
 
+		// The helper's PathToReference is latent and would keep walking the
+		// player into the object; halt it here so we stop at the configured
+		// distance and hand control back to the player.
+		DispatchStopWalk();
+
 		auto callback = m_onArrival;  // Copy before clearing state
 
-		// Clear our state (Papyrus handles its own cleanup)
 		m_targetRef = nullptr;
 		m_onArrival = nullptr;
 

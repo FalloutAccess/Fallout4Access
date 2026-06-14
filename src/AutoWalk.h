@@ -6,21 +6,27 @@
 /**
  * AutoWalk - Controls automatic walking to scanner-selected objects.
  *
- * Communicates with Papyrus script F4A:AutoWalk via DispatchMethodCall,
- * passing FormIDs as proper int32 arguments (no float precision loss).
+ * Drives the player via the loose global Papyrus script F4A:AutoWalkHelper
+ * (DispatchStaticCall), passing the target FormID as an int32. The helper uses
+ * the latent native Actor.PathToReference, so the dispatch MUST supply a
+ * non-null IStackCallbackFunctor: the VM's latent-return path dereferences the
+ * stack callback without a null check, unlike the inline path used by
+ * non-latent calls (e.g. F4A:SoundHelper.PlaySound, which can pass nullptr).
  *
- * Requires: fallout4access.esp with F4A_AutoWalkQuest and associated records.
+ * No ESP required: F4A:AutoWalkHelper is a global-function-only script the VM
+ * lazy-loads by name (same as F4A:SoundHelper). This lets auto-walk work in
+ * load orders where our quest never binds, e.g. Fallout London.
  */
 class AutoWalk
 {
 public:
 	static AutoWalk* GetSingleton();
 
-	// Initialize - find quest form (call after data is loaded)
+	// Initialize - mark the feature ready (call after data is loaded)
 	void Initialize();
 
-	// Start walking to a target reference
-	// Calls Papyrus OnWalkToTarget with FormID as int32
+	// Start walking to a target reference.
+	// Dispatches F4A:AutoWalkHelper.WalkPlayerTo(formID).
 	void WalkTo(RE::TESObjectREFR* a_target, float a_stopDistance = 100.0f,
 		std::function<void()> a_onArrival = nullptr);
 
@@ -45,8 +51,9 @@ private:
 
 	void CheckArrival();
 
-	// Quest for Papyrus VM communication
-	RE::TESQuest* m_quest = nullptr;
+	// Tell the helper script to halt the in-progress (latent) walk and hand
+	// control back to the player. Shared by Stop() and arrival detection.
+	void DispatchStopWalk();
 
 	// State tracking (for arrival callback)
 	RE::TESObjectREFR*    m_targetRef = nullptr;
