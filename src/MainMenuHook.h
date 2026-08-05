@@ -52,7 +52,9 @@ private:
 		Settings,
 		SaveLoad,
 		Confirm,
-		MCM  // Mod Configuration Menu injected into MainMenu.swf by f4mcm
+		MCM,               // Mod Configuration Menu injected into MainMenu.swf by f4mcm
+		BethesdaNetLogin,  // Bethesda.net sign-in (MainMenu currentState "LoginState")
+		ModManager         // Bethesda.net mod browser (MainMenu currentState "BETHESDANET_STATE")
 	};
 
 	// State checking
@@ -76,6 +78,11 @@ private:
 	std::string  GetSelectedItemText(RE::MainMenu* a_menu, std::int32_t a_index);
 	std::string  GetConfirmText(RE::MainMenu* a_menu);
 	std::string  GetSplashText(RE::MainMenu* a_menu);
+
+	// Read MainMenu's AS3 string state machine (root.currentState). Used to
+	// detect the Bethesda.net mod browser ("BETHESDANET_STATE") and sign-in
+	// ("LoginState") sub-states. Returns "" on failure.
+	std::string GetCurrentState(RE::MainMenu* a_menu);
 
 	// Utility
 	void SpeakText(const std::string& a_text);

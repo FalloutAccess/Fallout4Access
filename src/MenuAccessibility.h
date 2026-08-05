@@ -4,6 +4,7 @@
 #include "BookMenuAccessibility.h"
 #include "ContainerMenuAccessibility.h"
 #include "ExamineMenuAccessibility.h"
+#include "FolonTimerAccessibility.h"
 #include "HUDNotificationAccessibility.h"
 #include "LoadingMenuHook.h"
 #include "PipBoyMenuAccessibility.h"

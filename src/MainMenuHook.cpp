@@ -1,6 +1,8 @@
 #include "MainMenuHook.h"
+#include "BethesdaNetLoginAccessibility.h"
 #include "LocalizationHelper.h"
 #include "MCMAccessibility.h"
+#include "ModManagerAccessibility.h"
 #include "SaveLoadMenuAccessibility.h"
 #include "SettingsMenuAccessibility.h"
 #include "SpeechManager.h"
@@ -79,6 +81,8 @@ void MainMenuHook::SetMainMenuOpen(bool a_open)
 		SettingsMenuAccessibility::GetSingleton()->Reset();
 		SaveLoadMenuAccessibility::GetSingleton()->Reset();
 		MCMAccessibility::GetSingleton()->Reset();
+		BethesdaNetLoginAccessibility::GetSingleton()->Reset();
+		ModManagerAccessibility::GetSingleton()->Reset();
 	}
 }
 
@@ -90,6 +94,8 @@ void MainMenuHook::SetPauseMenuOpen(bool a_open)
 		SettingsMenuAccessibility::GetSingleton()->Reset();
 		SaveLoadMenuAccessibility::GetSingleton()->Reset();
 		MCMAccessibility::GetSingleton()->Reset();
+		BethesdaNetLoginAccessibility::GetSingleton()->Reset();
+		ModManagerAccessibility::GetSingleton()->Reset();
 	}
 }
 
@@ -146,6 +152,17 @@ void MainMenuHook::CheckStateChanges(RE::MainMenu* a_menu)
 		return;
 	}
 
+	// Bethesda.net sign-in / mod browser own all per-frame state while active;
+	// suppress the underlying main-list poll so it isn't read on top of them.
+	if (currentPanel == ActivePanel::BethesdaNetLogin) {
+		BethesdaNetLoginAccessibility::GetSingleton()->CheckState(a_menu);
+		return;
+	}
+	if (currentPanel == ActivePanel::ModManager) {
+		ModManagerAccessibility::GetSingleton()->CheckState(a_menu);
+		return;
+	}
+
 	// Always check main list selection regardless of detected panel
 	// The main list selection only changes when user navigates it, not when in subpanels
 	// This avoids issues with unreliable panel visibility detection
@@ -164,6 +181,20 @@ MainMenuHook::ActivePanel MainMenuHook::DetectActivePanel(RE::MainMenu* a_menu)
 	// so placing MCM above Confirm here is safe (see plan note on priority).
 	if (MCMAccessibility::IsMCMVisible(a_menu)) {
 		return ActivePanel::MCM;
+	}
+
+	// Bethesda.net sign-in and the mod browser are full-screen sub-states of
+	// the main menu's AS3 state machine, hosted as loader content inside
+	// MainMenu.swf. They are only reachable from the main menu (not pause), so
+	// gate on m_mainMenuOpen. Checked above Settings/SaveLoad/MainList.
+	if (m_mainMenuOpen) {
+		std::string state = GetCurrentState(a_menu);
+		if (state == "LoginState") {
+			return ActivePanel::BethesdaNetLogin;
+		}
+		if (state == "BETHESDANET_STATE") {
+			return ActivePanel::ModManager;
+		}
 	}
 
 	bool confirmVis = IsPanelVisible(a_menu, CONFIRM_PANEL_PATH);
@@ -252,6 +283,14 @@ void MainMenuHook::OnPanelChanged(RE::MainMenu* a_menu, ActivePanel a_newPanel)
 
 		case ActivePanel::MCM:
 			MCMAccessibility::GetSingleton()->OnOpened();
+			break;
+
+		case ActivePanel::BethesdaNetLogin:
+			BethesdaNetLoginAccessibility::GetSingleton()->OnOpened();
+			break;
+
+		case ActivePanel::ModManager:
+			ModManagerAccessibility::GetSingleton()->OnOpened();
 			break;
 
 		default:
@@ -613,6 +652,21 @@ std::string MainMenuHook::GetSplashText(RE::MainMenu* a_menu)
 	Scaleform::GFx::Value splashText;
 	if (a_menu->uiMovie->GetVariable(&splashText, SPLASH_TEXT_PATH) && splashText.IsString()) {
 		return splashText.GetString();
+	}
+
+	return "";
+}
+
+std::string MainMenuHook::GetCurrentState(RE::MainMenu* a_menu)
+{
+	if (!a_menu || !a_menu->uiMovie) {
+		return "";
+	}
+
+	// root.currentState is MainMenu's AS3 getter (MainMenu.as get currentState).
+	Scaleform::GFx::Value state;
+	if (a_menu->uiMovie->GetVariable(&state, "root.currentState") && state.IsString()) {
+		return state.GetString();
 	}
 
 	return "";

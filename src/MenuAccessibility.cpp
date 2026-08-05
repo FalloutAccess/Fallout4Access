@@ -4,6 +4,7 @@
 #include "LevelUpMenuAccessibility.h"
 #include "MCMKeybindDispatcher.h"
 #include "MainMenuHook.h"
+#include "MarketplaceMenuAccessibility.h"
 #include "MessageBoxMenuHook.h"
 #include "SPECIALMenuAccessibility.h"
 #include "SaveLoadMenuAccessibility.h"
@@ -330,6 +331,14 @@ void MenuAccessibility::OnMenuOpened(const RE::BSFixedString& a_menuName)
 		m_sitWaitMenuOpen = true;
 		REX::INFO("SitWaitMenu opened");
 		SleepWaitMenuAccessibility::GetSingleton()->OnSitWaitMenuOpened();
+	} else if (a_menuName == "MarketplaceMenu"sv) {
+		// Next-gen Creations store. Read the focused Creation from C++ via the
+		// UI_detailsPage hook (resolution/aspect/language independent).
+		REX::INFO("MarketplaceMenu opened");
+		MarketplaceMenuAccessibility::GetSingleton()->OnMenuOpen();
+	} else if (a_menuName == FolonTimerAccessibility::kMenuName) {
+		// Fallout London on-screen countdown widget (timed quests).
+		FolonTimerAccessibility::GetSingleton()->OnTimerMenuOpened();
 	}
 }
 
@@ -421,6 +430,9 @@ void MenuAccessibility::OnMenuClosed(const RE::BSFixedString& a_menuName)
 		m_sitWaitMenuOpen = false;
 		REX::INFO("SitWaitMenu closed");
 		SleepWaitMenuAccessibility::GetSingleton()->OnSitWaitMenuClosed();
+	} else if (a_menuName == "MarketplaceMenu"sv) {
+		REX::INFO("MarketplaceMenu closed");
+		MarketplaceMenuAccessibility::GetSingleton()->OnMenuClose();
 	}
 }
 
