@@ -56,9 +56,24 @@ private:
 	};
 
 	// Core functionality
-	void        BuildMarkerList();
-	void        SelectMarkerAtIndex(std::int32_t a_index);
-	void        CenterOnCurrentMarker();  // Centers map and sets visual selection (Home key)
+	void BuildMarkerList();
+	void SelectMarkerAtIndex(std::int32_t a_index);
+	void CenterOnCurrentMarker();  // Centers map and sets visual selection (Home key)
+
+	// Fast-travel completion. Keyboard scanner nav never moves the OS cursor, so
+	// the game's cursor-driven selectedMarkerInfo doesn't point at our marker.
+	// After CenterOnCurrentMarker() repositions the cursor, this re-derives the
+	// game's selection (RefreshSelectedMarker) on a later frame, verifies it
+	// matches our target, then fires onMarkerActivated so the vanilla
+	// confirm/undiscovered/hardcore dialog appears. Falls back to a cursor-free
+	// host FastTravel call if the cursor approach can't lock on.
+	void ActivateSelectedMarkerDeferred(std::uint32_t a_arrayIndex, int a_attemptsRemaining);
+	void FastTravelDirect(std::uint32_t a_arrayIndex);
+
+	// Number of extra frames ActivateSelectedMarkerDeferred retries the cursor →
+	// selection lock-on before falling back to a direct host FastTravel call.
+	static constexpr int MARKER_ACTIVATE_MAX_ATTEMPTS = 3;
+
 	void        AnnounceCurrentMarker(bool a_fullDetails = false, bool a_interrupt = false);
 	std::string GetMarkerTypeName(std::uint32_t a_type);
 	std::string GetDirectionString(float a_dx, float a_dy);

@@ -594,6 +594,142 @@ void PipBoyMapPage::OnActivateMarker()
 		return;
 	}
 
+	// Decide everything from OUR authoritative selection, not the game's
+	// cursor-driven selectedMarkerInfo. Keyboard scanner nav never moves the OS
+	// cursor, so selectedMarkerInfo is usually null/stale here — reading it was
+	// the source of the spurious "no marker" report.
+	if (m_currentIndex < 0 || m_currentIndex >= static_cast<std::int32_t>(m_filteredIndices.size())) {
+		REX::INFO("OnActivateMarker: no selection (currentIndex={}, filtered={})", m_currentIndex, m_filteredIndices.size());
+		SpeakText("No marker selected");
+		return;
+	}
+
+	const auto& marker = m_markers[m_filteredIndices[m_currentIndex]];
+	REX::INFO("OnActivateMarker: target '{}' type={} arrayIndex={} undiscovered={}",
+		marker.name, marker.type, marker.arrayIndex, marker.undiscovered);
+
+	// Mirror the types MapHolder.CanActivateMarker filters out of click targets
+	// (these never reach onMarkerActivated, so a fast-travel dialog is wrong).
+	switch (marker.type) {
+		case 77:  // Door
+		case 78:  // Quest
+		case 79:  // Quest Door
+		case 80:  // Quest (alt)
+		case 81:  // Custom / PlayerSet
+		case 82:  // Player Location
+		case 83:  // Power Armor
+			SpeakText("Cannot fast travel to " + GetMarkerTypeName(marker.type));
+			return;
+		default:
+			break;
+	}
+
+	// Pan to + position the cursor over the target marker now, then complete the
+	// activation on a later frame (Scaleform's input pass needs a frame to absorb
+	// the cursor move before FindClosestMarkerIndex reads it).
+	CenterOnCurrentMarker();
+	ActivateSelectedMarkerDeferred(marker.arrayIndex, MARKER_ACTIVATE_MAX_ATTEMPTS);
+}
+
+void PipBoyMapPage::ActivateSelectedMarkerDeferred(std::uint32_t a_arrayIndex, int a_attemptsRemaining)
+{
+	auto* taskInterface = F4SE::GetTaskInterface();
+	if (!taskInterface)
+		return;
+
+	taskInterface->AddTask([this, a_arrayIndex, a_attemptsRemaining]() {
+		auto ui = RE::UI::GetSingleton();
+		if (!ui)
+			return;
+		auto menu = ui->GetMenu("PipboyMenu"sv);
+		if (!menu)
+			return;
+
+		auto*       pipboyMenu = static_cast<RE::PipboyMenu*>(menu.get());
+		const auto& mapPageObj = pipboyMenu->mapMenuObj.mapPageObj;
+		if (!mapPageObj.IsObject())
+			return;
+
+		Scaleform::GFx::Value holder;
+		if (!const_cast<Scaleform::GFx::Value&>(mapPageObj).GetMember("WorldMapHolder_mc", &holder) || !holder.IsObject()) {
+			REX::WARN("ActivateMarker[deferred]: WorldMapHolder_mc not found");
+			return;
+		}
+
+		// Force the game to re-derive its selected marker from the (now
+		// repositioned) cursor. RefreshSelectedMarker runs FindClosestMarkerIndex
+		// against the live cursor and updates selectedMarkerInfo. It is not called
+		// every frame on its own, so without this our cursor move never registers.
+		Scaleform::GFx::Value refreshResult;
+		bool                  refreshOk = holder.Invoke("RefreshSelectedMarker", &refreshResult, nullptr, 0);
+
+		// Verify the game now agrees our target is selected before activating, so
+		// we never fast travel to a different nearby marker.
+		bool                  matched = false;
+		std::int64_t          gotIdx = -1;
+		Scaleform::GFx::Value markerInfo;
+		bool                  haveInfo = holder.GetMember("selectedMarkerInfo", &markerInfo) && markerInfo.IsObject();
+		if (haveInfo) {
+			Scaleform::GFx::Value idxVal;
+			if (markerInfo.GetMember("arrayIndex", &idxVal)) {
+				std::uint32_t idx = UINT32_MAX;
+				if (idxVal.IsUInt())
+					idx = idxVal.GetUInt();
+				else if (idxVal.IsNumber())
+					idx = static_cast<std::uint32_t>(idxVal.GetNumber());
+				else if (idxVal.IsInt() && idxVal.GetInt() >= 0)
+					idx = static_cast<std::uint32_t>(idxVal.GetInt());
+				gotIdx = static_cast<std::int64_t>(idx);
+				matched = (idx == a_arrayIndex);
+			}
+		}
+
+		REX::INFO("ActivateMarker[deferred]: attemptsLeft={} refreshOk={} haveInfo={} gotIdx={} want={} matched={}",
+			a_attemptsRemaining, refreshOk, haveInfo, gotIdx, a_arrayIndex, matched);
+
+		if (matched) {
+			// selectedMarkerInfo now points at our marker — fire the same handler
+			// a left-click triggers. It opens the appropriate confirm/undiscovered/
+			// hardcore dialog, which our CheckMessageBox announces. AS3's `private`
+			// modifier doesn't block Scaleform's C++ Invoke path.
+			Scaleform::GFx::Value result;
+			bool                  invokeOk = const_cast<Scaleform::GFx::Value&>(mapPageObj).Invoke("onMarkerActivated", &result, nullptr, 0);
+			REX::INFO("ActivateMarker[deferred]: onMarkerActivated invoked, ok={}", invokeOk);
+			return;
+		}
+
+		if (a_attemptsRemaining > 0) {
+			// Cursor write may not have been absorbed yet, or it landed just
+			// outside the 50px select radius — retry next frame.
+			ActivateSelectedMarkerDeferred(a_arrayIndex, a_attemptsRemaining - 1);
+			return;
+		}
+
+		// Cursor approach exhausted (dense cluster, cursor outside select radius).
+		// Fall back to the cursor-free host call so a deliberate activate never
+		// silently fails.
+		FastTravelDirect(a_arrayIndex);
+	});
+}
+
+void PipBoyMapPage::FastTravelDirect(std::uint32_t a_arrayIndex)
+{
+	// Find our marker so we can replicate onMarkerActivated's undiscovered gate
+	// (the direct host call skips it).
+	const MapMarker* marker = nullptr;
+	for (const auto& m : m_markers) {
+		if (m.arrayIndex == a_arrayIndex) {
+			marker = &m;
+			break;
+		}
+	}
+	if (marker && marker->undiscovered) {
+		SpeakText("Location undiscovered, cannot fast travel");
+		return;
+	}
+
+	REX::INFO("FastTravelDirect: fallback for arrayIndex={}", a_arrayIndex);
+
 	auto ui = RE::UI::GetSingleton();
 	if (!ui)
 		return;
@@ -606,61 +742,36 @@ void PipBoyMapPage::OnActivateMarker()
 	if (!mapPageObj.IsObject())
 		return;
 
-	// Peek at the live selection just enough to reject cases the AS3 handler
-	// doesn't cleanly reject (nothing selected, or a non-travelable type that
-	// would otherwise open a misleading fast-travel dialog).
 	Scaleform::GFx::Value holder;
 	if (!const_cast<Scaleform::GFx::Value&>(mapPageObj).GetMember("WorldMapHolder_mc", &holder) || !holder.IsObject())
 		return;
 
-	Scaleform::GFx::Value markerInfo;
-	if (!holder.GetMember("selectedMarkerInfo", &markerInfo) ||
-		markerInfo.GetType() == Scaleform::GFx::Value::ValueType::kNull ||
-		markerInfo.GetType() == Scaleform::GFx::Value::ValueType::kUndefined ||
-		!markerInfo.IsObject()) {
-		SpeakText("No marker selected");
+	// codeObj is the C++ map handler; AS3 reaches its host functions via
+	// BGSExternalInterface.call(codeObj, name, args), which is just
+	// codeObj[name](args) — so a direct member Invoke works from C++ too.
+	Scaleform::GFx::Value codeObj;
+	if (!holder.GetMember("codeObj", &codeObj) || !codeObj.IsObject()) {
+		REX::WARN("FastTravelDirect: codeObj not found on WorldMapHolder_mc");
+		SpeakText("Could not fast travel");
 		return;
 	}
 
-	std::uint32_t         markerType = 0;
-	Scaleform::GFx::Value val;
-	if (markerInfo.GetMember("type", &val)) {
-		if (val.IsUInt())
-			markerType = val.GetUInt();
-		else if (val.IsNumber())
-			markerType = static_cast<std::uint32_t>(val.GetNumber());
-		else if (val.IsInt())
-			markerType = static_cast<std::uint32_t>(val.GetInt());
+	Scaleform::GFx::Value arg;
+	arg = a_arrayIndex;
+
+	// Honor survival/hardcore fast-travel gating, same as the vanilla dialog path.
+	Scaleform::GFx::Value canTravel;
+	bool                  hardcoreOk = codeObj.Invoke("CheckHardcoreModeFastTravel", &canTravel, &arg, 1);
+	REX::INFO("FastTravelDirect: CheckHardcoreModeFastTravel invokeOk={} isBool={} val={}",
+		hardcoreOk, canTravel.IsBoolean(), canTravel.IsBoolean() && canTravel.GetBoolean());
+	if (hardcoreOk && canTravel.IsBoolean() && !canTravel.GetBoolean()) {
+		SpeakText(LocalizationHelper::Translate("$HardcorePreventedFastTravel"));
+		return;
 	}
 
-	// Mirror the types MapHolder.FindClosestMarkerIndex filters out of click
-	// targets (PlayerLoc is explicitly skipped there). If our cursor ever
-	// lands on one of these we don't want to fire a dialog.
-	switch (markerType) {
-		case 77:  // Door
-		case 78:  // Quest
-		case 79:  // Quest Door
-		case 80:  // Quest (alt)
-		case 81:  // Custom / PlayerSet
-		case 82:  // Player Location
-		case 83:  // Power Armor
-			SpeakText("Cannot fast travel to " + GetMarkerTypeName(markerType));
-			return;
-		default:
-			break;
-	}
-
-	// Invoke the same AS3 handler a left-click triggers. onMarkerActivated
-	// opens $ConfirmFastTravel for a discovered non-gated marker,
-	// $FastTravelUndiscovered for an undiscovered one, or
-	// $HardcorePreventedFastTravel when survival gates the destination —
-	// all three dialogs are read aloud by our embedded MessageBox
-	// announcer. AS3's `private` modifier doesn't block Scaleform's
-	// C++ Invoke path.
 	Scaleform::GFx::Value result;
-	if (!const_cast<Scaleform::GFx::Value&>(mapPageObj).Invoke("onMarkerActivated", &result, nullptr, 0)) {
-		REX::WARN("OnActivateMarker: onMarkerActivated invoke failed");
-	}
+	bool                  ftOk = codeObj.Invoke("FastTravel", &result, &arg, 1);
+	REX::INFO("FastTravelDirect: FastTravel invokeOk={}", ftOk);
 }
 
 void PipBoyMapPage::OnCycleFilter()
