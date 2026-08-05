@@ -36,10 +36,10 @@ An F4SE plugin that makes Fallout 4 accessible to blind and visually impaired pl
 
 ## Requirements
 
-- Fallout 4 (Steam version)
-- [F4SE](https://f4se.silverlock.org/) (Fallout 4 Script Extender)
+- Fallout 4 — works on both the next-gen update (Anniversary Edition) and the original 1.10.163 runtime (the version used by downgraded installs and Fallout: London). A single download supports both; the right version is detected automatically, with nothing to configure.
+- [F4SE](https://f4se.silverlock.org/) (Fallout 4 Script Extender) — use the build matching your game version
 - A screen reader: [NVDA](https://www.nvaccess.org/) (recommended), JAWS, or Windows SAPI
-- [Address Library for F4SE](https://www.nexusmods.com/fallout4/mods/47327)
+- [Address Library for F4SE](https://www.nexusmods.com/fallout4/mods/47327) — the database for your game version (next-gen or the original-runtime "all-in-one")
 
 ## Installation
 

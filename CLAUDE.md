@@ -8,6 +8,8 @@ Fallout 4 accessibility F4SE plugin that provides screen reader support for blin
 
 **Current Status:** Main menu, pause menu, settings menu, save/load menus, confirmation dialogs, in-game terminals, and Pip-Boy (Inventory and Data pages) are accessible. Splash screen text is announced. NPC dialogue subtitles are read aloud with speaker names. More menus need to be implemented.
 
+**Supported runtimes:** A single build runs on both the next-gen update / Anniversary Edition (1.11.137+) and the original pre-next-gen runtime (1.10.163, used by downgraded installs and Fallout: London). The runtime is detected automatically. See [multi-runtime support memory](memory note: project_multi-runtime-support.md) for the offset-vendoring approach. The in-between Next-Gen (NG) builds are intentionally not targeted.
+
 ## Build Commands
 
 ```bash

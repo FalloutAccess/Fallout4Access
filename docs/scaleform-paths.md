@@ -336,6 +336,19 @@ Mod description:          root.ModDescriptionBase_mc.ModDescription_tf.text (str
 Item card:                root.ItemCardList_mc.InfoObj (array)
   - Same format as Pip-Boy/Container item cards
 
+IMPORTANT — per-mode clip swap: ExamineMenu reuses the two physical list clips
+and rebinds their data models per mode (ListInfoObject.SetActive). In MOD_MODE
+(choosing which mod to install):
+  - Mod CHOICE list (names + selection + .description) is driven by the LEFT clip
+    root.InventoryBase_mc.InventoryList_mc  (NOT ModSlotBase_mc.ModSlotList_mc)
+  - root.ModSlotBase_mc.ModSlotList_mc then holds the resource REQUIREMENTS
+    entries (these have NO .description field).
+The C++ ExamineMenu::modChoiceList member tracks the active mod-choice clip, so
+reading selection/entries through it is mode-safe.
+Timing: a mod entry's .description and the item card's stat deltas are populated
+by native SwitchMod/UpdateItemCard a few frames AFTER the selection index
+changes — reading them on the change frame yields stale/empty. Defer the read.
+
 Legendary description:    root.LegendaryItemDescription_tf.text (string)
 
 Entry properties for mods (entryList[i]):
@@ -416,6 +429,87 @@ Message text:             root.Menu_mc.Panel_mc.messageText_tf.text (string)
 Button bar:               root.Menu_mc.Panel_mc.buttonBar_mc
   - selectedIndex         (int) current button selection
   - numButtons            (int) number of visible buttons
+```
+
+## Main_ModManager.swf (in-game "Mods" browser)
+
+Loaded by `MainMenu.swf` as the content of the private `ModManager_Loader`, added
+under `root.ModManager_mc`, while `root.currentState == "BETHESDANET_STATE"`. It is
+NOT a separate IMenu. Because the loader is private, resolve the `Main_ModManager`
+instance through the `ModManager_mc` display list (getChildAt → `.content`), then walk
+members from there. (Distinct from the standalone `MarketplaceMenu` — that is the
+Creation Club store, a C++-rendered texture canvas with no widget tree.)
+
+```
+Mod root:                 <ModManager_mc child>.content (Main_ModManager instance)
+
+Views (mutually exclusive; detect by .visible, no current-view string):
+  - ListsHolder_mc        Browse view (default)
+  - DetailsPage_mc        mod details
+  - LibraryPage_mc        My Library / Load Order
+  - SearchPage_mc         search
+  - AccountSettingsPage_mc  delete-all / disable-all
+  - LoginHolder_mc        in-manager re-login
+
+Browse (custom ModCategoryList, NOT BSScrollingList):
+  ListsHolder_mc.List1_mc / List2_mc
+    - selectedIndex       (uint) uint.MAX_VALUE = none
+    - currScrollPage      (uint) scroll offset
+    - CategoryName_tf.text (string) category title
+    - dataObj.entries     (array) mod entries; selected = entries[currScrollPage + selectedIndex]
+
+Details (BSScrollingList for actions):
+  DetailsPage_mc.Title_tf.text / AuthorName_tf.text / DownloadsCount_tf.text /
+    FavoritesCount_tf.text / Filesize_tf.text / Description_tf.text / Error_tf.text
+  DetailsPage_mc.OptionsList_mc  (BSScrollingList: Follow/Download/Update/Enable/Disable/Delete/Rate)
+    - selectedIndex, entryList[i].text  (download progress shown inline as entry .text "Downloading... N%")
+
+Library (BSScrollingList):
+  LibraryPage_mc.List_mc
+    - selectedIndex, entryList[i].text (mod name), entryList[i].checked (enabled flag)
+  LibraryPage_mc.TotalModSpace_tf.text / FreeSpace_tf.text / EmptyWarning_tf.text / Description_tf.text
+
+Search:
+  SearchPage_mc.Input_tf.text   (DOMInputText, the search box)
+  SearchPage_mc.SearchGrayText_tf.text  (placeholder)
+  SearchPage_mc.SpinnerHolder_mc.EmptyWarning_tf.text  ("no results")
+
+Account Settings (BSScrollingList):
+  AccountSettingsPage_mc.List_mc
+    - selectedIndex, entryList[i].text  ($DeleteAllMods / $DisableAllMods)
+
+Mod entry data fields (Browse/Library entry objects):
+  - text (title), author, version, description, downloads, favorites, fileSizeDisplay
+  - installed, downloaded, needsUpdate, downloadProgress (uint %), installQueued, uninstallQueued
+```
+
+## Main_LoginHelper.swf (Bethesda.net sign-in)
+
+Loaded by `MainMenu.swf` as the content of the public `LoginLoader_mc`, added under
+`root.LoginHolder_mc`, while `root.currentState == "LoginState"`. Resolve the
+`Main_LoginHelper` instance via `root.LoginLoader_mc.content` (primary) or
+`root.LoginHolder_mc` → getChildAt(0) → getChildAt(0) (fallback).
+
+```
+Login root:               root.LoginLoader_mc.content (Main_LoginHelper instance)
+
+Pages (mutually exclusive; detect by .visible. NewAccountPage is default):
+  - Spinner_mc            "please wait" overlay (blocks input)
+      - textField.text    (string) status message
+  - EULAPage_mc
+      - Title_tf.text     (string) current EULA page title
+      - EULA_tf.text      (string) EULA body (scrollable)
+  - LoginPage_mc
+      - LoginHeader_tf.text   (string) header
+      - UsernameInput_tf.text (string) username/email (DOMInputText)
+      - UsernameGrayText_tf.text (string) placeholder
+      - PasswordInput_tf      (DOMInputText, lineType="password" — NEVER read .text back)
+      - Error_tf.text     (string) "$LoginError_<code>"
+  - NewAccountPage_mc
+      - LoginHeader_tf.text   (string) header
+      - NewEmailInput_tf.text (string) email (DOMInputText)
+      - EmailGrayText_tf.text (string) placeholder
+      - Error_tf.text     (string) "$CreateAcct_<code>"
 ```
 
 ## Input Key Codes
