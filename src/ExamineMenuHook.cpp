@@ -90,6 +90,8 @@ void ExamineMenuHook::ResetState()
 	m_frameDelay = FRAME_DELAY_AFTER_MODE_CHANGE;  // Wait for Scaleform to populate on menu open
 	m_lastSpokenText.clear();                      // Clear deduplication cache
 	m_lastCurrentModsSignature.clear();
+	m_pendingModChoiceIndex = -1;
+	m_modChoiceAnnounceDelay = 0;
 }
 
 void ExamineMenuHook::HookedExamineAdvanceMovie(RE::ExamineMenu* a_this, float a_timeDelta, std::uint64_t a_time)
@@ -157,6 +159,19 @@ void ExamineMenuHook::CheckStateChanges(RE::ExamineMenu* a_menu)
 	// Announce mods already on the selected item (weapon/armor/power-armor/robot).
 	// Cooking menu keeps this panel hidden, so the check naturally no-ops there.
 	CheckCurrentModsAnnouncement(a_menu);
+
+	// Fire the deferred mod-choice announcement once its delay elapses. By now the
+	// prose description and item-card stat deltas the game populates a few frames
+	// after the selection change are ready, so "what the mod does" is included.
+	if (m_modChoiceAnnounceDelay > 0) {
+		if (--m_modChoiceAnnounceDelay == 0 && m_pendingModChoiceIndex >= 0) {
+			std::string announcement = BuildModChoiceAnnouncement(a_menu, m_pendingModChoiceIndex);
+			m_pendingModChoiceIndex = -1;
+			if (!announcement.empty()) {
+				SpeakText(announcement);
+			}
+		}
+	}
 }
 
 void ExamineMenuHook::OnModeChanged(RE::ExamineMenu* a_menu, RE::ExamineMenu::INSPECT_MODE_STATE a_newMode)
@@ -281,38 +296,68 @@ void ExamineMenuHook::OnModChoiceMode(RE::ExamineMenu* a_menu)
 	if (currentSelection >= 0 && currentSelection != m_lastModChoiceSelection) {
 		m_lastModChoiceSelection = currentSelection;
 
-		// Get mod name
-		std::string modName = GetModName(a_menu, currentSelection);
-		if (modName.empty())
-			return;
-
-		std::string announcement = modName;
-
-		// Stat deltas vs. currently installed mod — reads the same InfoObj the UI
-		// populates, so the "Standard" / already-installed choice yields no deltas
-		// and we fall back to name + description.
-		Scaleform::GFx::Value infoObj;
-		if (GetItemCardInfoObj(a_menu, &infoObj)) {
-			std::string deltas = ItemStatFormatter::BuildStatDeltaAnnouncement(infoObj);
-			if (!deltas.empty()) {
-				announcement += ". " + deltas;
-			}
+		// Diagnostic: capture stat deltas at the IMMEDIATE selection-change frame
+		// so we can compare against the deferred read and learn when the item card
+		// actually carries comparison data.
+		Scaleform::GFx::Value infoObjNow;
+		if (GetItemCardInfoObj(a_menu, &infoObjNow)) {
+			REX::INFO("OnModChoiceMode[immediate]: idx={} infoObj size={} deltas='{}'",
+				currentSelection, infoObjNow.GetArraySize(), ItemStatFormatter::BuildStatDeltaAnnouncement(infoObjNow));
+		} else {
+			REX::INFO("OnModChoiceMode[immediate]: idx={} GetItemCardInfoObj failed", currentSelection);
 		}
 
-		// Get mod description
-		std::string description = GetModDescription(a_menu);
-		if (!description.empty()) {
-			announcement += ". " + description;
-		}
-
-		// Get requirements
-		std::string requirements = GetModRequirements(a_menu, currentSelection);
-		if (!requirements.empty()) {
-			announcement += ". " + requirements;
-		}
-
-		SpeakText(announcement);
+		// Defer the announcement: the description and item-card stat deltas the
+		// game derives for this mod aren't populated on the selection-change frame.
+		// CheckStateChanges fires it once the delay elapses (and restarts the delay
+		// if the user keeps scrolling, so fast navigation only speaks on pause).
+		m_pendingModChoiceIndex = currentSelection;
+		m_modChoiceAnnounceDelay = MOD_CHOICE_ANNOUNCE_DELAY;
 	}
+}
+
+std::string ExamineMenuHook::BuildModChoiceAnnouncement(RE::ExamineMenu* a_menu, std::int32_t a_index)
+{
+	if (!a_menu || a_index < 0)
+		return "";
+
+	// Get mod name
+	std::string modName = GetModName(a_menu, a_index);
+	if (modName.empty())
+		return "";
+
+	std::string announcement = modName;
+
+	// Stat deltas vs. currently installed mod — reads the same InfoObj the UI
+	// populates, so the "Standard" / already-installed choice yields no deltas
+	// and we fall back to name + description.
+	Scaleform::GFx::Value infoObj;
+	if (GetItemCardInfoObj(a_menu, &infoObj)) {
+		std::string deltas = ItemStatFormatter::BuildStatDeltaAnnouncement(infoObj);
+		if (!deltas.empty()) {
+			announcement += ". " + deltas;
+		}
+	}
+
+	// Prose description. Prefer the on-screen description text field; fall back to
+	// the per-entry .description if the field hasn't been written yet.
+	std::string description = GetModDescription(a_menu);
+	if (description.empty()) {
+		description = GetModChoiceDescription(a_menu, a_index);
+	}
+	if (!description.empty()) {
+		announcement += ". " + description;
+	}
+
+	// Get requirements
+	std::string requirements = GetModRequirements(a_menu, a_index);
+	if (!requirements.empty()) {
+		announcement += ". " + requirements;
+	}
+
+	REX::INFO("BuildModChoiceAnnouncement[deferred]: idx={} name='{}' deltas='{}' desc='{}' req='{}'", a_index, modName, [&] { Scaleform::GFx::Value io; return GetItemCardInfoObj(a_menu, &io) ? ItemStatFormatter::BuildStatDeltaAnnouncement(io) : std::string("<no infoObj>"); }(), description, requirements);
+
+	return announcement;
 }
 
 void ExamineMenuHook::OnRequirementsMode(RE::ExamineMenu* a_menu)
@@ -599,10 +644,45 @@ std::string ExamineMenuHook::GetModDescription(RE::ExamineMenu* a_menu)
 	Scaleform::GFx::Value descValue;
 	if (a_menu->uiMovie->GetVariable(&descValue, MOD_DESCRIPTION_PATH)) {
 		if (descValue.IsString()) {
-			std::string desc = descValue.GetString();
-			if (!desc.empty()) {
-				return CleanLocalizationString(desc);
+			std::string desc = CleanLocalizationString(descValue.GetString());
+			// GlobalFunc.SetText writes a single space for an empty description;
+			// treat that as "no description" so we don't speak a dead pause.
+			if (!desc.empty() && desc != " ") {
+				return desc;
 			}
+		}
+	}
+
+	return "";
+}
+
+std::string ExamineMenuHook::GetModChoiceDescription(RE::ExamineMenu* a_menu, std::int32_t a_index)
+{
+	if (!a_menu || !a_menu->uiMovie || a_index < 0)
+		return "";
+
+	// Read .description straight off the selected mod-choice entry — the same
+	// source UpdateDescription() copies into the on-screen text field. Mirror
+	// GetModName's entryList resolution so we read the matching list/entry.
+	Scaleform::GFx::Value entryList;
+	if (!a_menu->uiMovie->GetVariable(&entryList, "root.ModSlotBase_mc.ModSlotList_mc.entryList")) {
+		if (a_menu->modChoiceList.IsUndefined() || !a_menu->modChoiceList.GetMember("entryList", &entryList)) {
+			return "";
+		}
+	}
+
+	if (!entryList.IsArray() || static_cast<std::uint32_t>(a_index) >= entryList.GetArraySize())
+		return "";
+
+	Scaleform::GFx::Value entry;
+	if (!entryList.GetElement(static_cast<std::uint32_t>(a_index), &entry) || !entry.IsObject())
+		return "";
+
+	Scaleform::GFx::Value descVal;
+	if (entry.GetMember("description", &descVal) && descVal.IsString()) {
+		std::string desc = CleanLocalizationString(descVal.GetString());
+		if (!desc.empty() && desc != " ") {
+			return desc;
 		}
 	}
 
@@ -817,4 +897,81 @@ void ExamineMenuHook::SpeakText(const std::string& a_text)
 	m_lastSpokenText = a_text;
 
 	SpeechManager::GetSingleton()->Speak(a_text);
+}
+
+RE::ExamineMenu* ExamineMenuHook::GetOpenMenu()
+{
+	auto ui = RE::UI::GetSingleton();
+	if (!ui)
+		return nullptr;
+
+	auto menu = ui->GetMenu("ExamineMenu"sv);
+	if (!menu)
+		menu = ui->GetMenu("PowerArmorModMenu"sv);
+	if (!menu)
+		menu = ui->GetMenu("CookingMenu"sv);
+	if (!menu)
+		menu = ui->GetMenu("RobotModMenu"sv);
+	if (!menu)
+		return nullptr;
+
+	return static_cast<RE::ExamineMenu*>(menu.get());
+}
+
+void ExamineMenuHook::AnnounceCurrentDetails()
+{
+	if (!m_menuOpen)
+		return;
+
+	auto* menu = GetOpenMenu();
+	if (!menu)
+		return;
+
+	// Let the same announcement repeat on consecutive presses of the key.
+	m_lastSpokenText.clear();
+
+	switch (menu->inspectModeState.get()) {
+		case RE::ExamineMenu::INSPECT_MODE_STATE::kSelectNewMod: {
+			// "What this improvement does" — the headline use case: full mod
+			// characteristics (name, stat deltas, description, requirements).
+			std::int32_t index = GetSelectedIndex(menu->modChoiceList);
+			if (index < 0)
+				index = m_lastModChoiceSelection;
+			std::string announcement = BuildModChoiceAnnouncement(menu, index);
+			if (!announcement.empty())
+				SpeakText(announcement);
+			break;
+		}
+		case RE::ExamineMenu::INSPECT_MODE_STATE::kModSlotSelect: {
+			std::int32_t index = GetSelectedIndex(menu->modSlotList);
+			if (index < 0)
+				index = m_lastModSlotSelection;
+			std::string slot = GetModSlotName(menu, index);
+			if (!slot.empty())
+				SpeakText(slot);
+			break;
+		}
+		default: {
+			// Item-select (or any other) mode: re-announce the current item card.
+			std::int32_t          index = -1;
+			Scaleform::GFx::Value indexValue;
+			if (menu->uiMovie &&
+				menu->uiMovie->GetVariable(&indexValue, "root.InventoryBase_mc.InventoryList_mc.selectedIndex")) {
+				if (indexValue.IsInt())
+					index = indexValue.GetInt();
+				else if (indexValue.IsNumber())
+					index = static_cast<std::int32_t>(indexValue.GetNumber());
+				else if (indexValue.IsUInt())
+					index = static_cast<std::int32_t>(indexValue.GetUInt());
+			}
+			if (index < 0)
+				index = GetSelectedIndex(menu->itemList);
+			if (index < 0)
+				index = m_lastItemSelection;
+			std::string announcement = BuildItemAnnouncement(menu, index);
+			if (!announcement.empty())
+				SpeakText(announcement);
+			break;
+		}
+	}
 }

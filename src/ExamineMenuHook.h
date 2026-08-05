@@ -23,6 +23,12 @@ public:
 	// Called by ExamineMenuAccessibility when menu opens/closes
 	void SetMenuOpen(bool a_open) { m_menuOpen = a_open; }
 
+	// On-demand: re-announce the full details of the current selection (mod
+	// characteristics, item stats, or slot) read fresh. Bound to a key so the
+	// user can hear "what this mod does" at will, independent of the automatic
+	// selection-change announcement. No-op when no workbench menu is open.
+	void AnnounceCurrentDetails();
+
 private:
 	ExamineMenuHook() = default;
 	~ExamineMenuHook() = default;
@@ -70,8 +76,18 @@ private:
 	std::string  GetModSlotName(RE::ExamineMenu* a_menu, std::int32_t a_index);
 	std::string  GetModName(RE::ExamineMenu* a_menu, std::int32_t a_index);
 	std::string  GetModDescription(RE::ExamineMenu* a_menu);
+	std::string  GetModChoiceDescription(RE::ExamineMenu* a_menu, std::int32_t a_index);
 	std::string  GetModRequirements(RE::ExamineMenu* a_menu, std::int32_t a_index);
 	std::string  BuildItemAnnouncement(RE::ExamineMenu* a_menu, std::int32_t a_index);
+
+	// Builds the full mod-choice description: name, stat deltas (what it does),
+	// prose description, and component/perk requirements. Shared by the deferred
+	// automatic announcement and the on-demand AnnounceCurrentDetails() key.
+	std::string BuildModChoiceAnnouncement(RE::ExamineMenu* a_menu, std::int32_t a_index);
+
+	// Resolves whichever workbench mod menu is currently open (ExamineMenu,
+	// PowerArmorModMenu, CookingMenu, or RobotModMenu). Returns nullptr if none.
+	static RE::ExamineMenu* GetOpenMenu();
 
 	// Utility
 	void        SpeakText(const std::string& a_text);
@@ -88,6 +104,14 @@ private:
 	std::int32_t                        m_lastModChoiceSelection = -1;
 	std::string                         m_lastSpokenText;  // For deduplication
 
+	// The mod's prose description and item-card stat deltas ("what it does")
+	// populate a few frames after the mod-choice selection index changes
+	// (onModChange → SwitchMod → UpdateDescription/UpdateItemCard run across
+	// frames). Announcing on the change frame caught only the name + requirements.
+	// We instead record the pending index and announce once it settles.
+	std::int32_t m_pendingModChoiceIndex = -1;
+	int          m_modChoiceAnnounceDelay = 0;
+
 	// Signature of the last current-mods list we announced, so we only re-speak
 	// when the list content actually changes (user commits a different item, or
 	// installs a mod). Cleared while the panel is hidden.
@@ -95,6 +119,7 @@ private:
 
 	// Frame delay constants
 	static constexpr int FRAME_DELAY_AFTER_MODE_CHANGE = 3;  // Wait 3 frames for Scaleform to populate
+	static constexpr int MOD_CHOICE_ANNOUNCE_DELAY = 4;      // Let description/deltas settle before announcing
 
 	// Scaleform paths
 	static constexpr const char* ITEM_NAME_PATH = "root.ItemName_tf.text";
