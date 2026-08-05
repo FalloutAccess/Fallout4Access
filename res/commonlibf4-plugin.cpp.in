@@ -4,19 +4,37 @@
 // rule via plugin_template). Must be named commonlibf4-plugin.cpp.in so its
 // generated output matches the commonlibf4-plugin.cpp the rule adds to files.
 //
-// Identical to CommonLibF4's default template EXCEPT it does NOT pin
-// CompatibleVersions to a single runtime. With UsesAddressLibrary +
-// IsLayoutDependent and no pin, the modern manifest loads on every AE 1.11.137+
-// patch (not just RUNTIME_LATEST). OG 1.10.163 is handled separately by the
-// legacy F4SEPlugin_Query export in src/main.cpp (enabled by SUPPORT_OG).
+// The ONLY delta from CommonLibF4's default template is that we omit the two
+// NG (1.10.984) independence bits. Everything else is kept in sync with it --
+// upstream now drops the CompatibleVersions pin itself, so that is no longer
+// our reason for overriding.
+//
+// Why NG is deliberately excluded: those bits are load gates, not metadata.
+// UsesAddressLibraryNG/IsLayoutDependentNG tell F4SE it may load us on NG, but
+// REL::VariantID's ctor pads trailing slots with its LAST argument, so our
+// { OG, AE } callsites become [OG, AE, AE] and REX::FModule::GetRuntimeIndex
+// maps NG to slot 1 -- i.e. NG would resolve AE ids against the NG address
+// library. HUDDataModel id 4801904 is absent from version-1-10-984-0.bin
+// entirely, so HUDMenuHook's quick-container path would fault there. Leaving
+// the bits unset makes F4SE refuse the load cleanly instead.
+//
+// To support NG: find real NG ids for the 5 REL::VariantID callsites
+// (HUDMenuHook.cpp, HUDMessageHook.h), widen them to 3 args, then delete this
+// file and let the rule fall back to the upstream template.
+//
+// AE 1.11.137+ is covered by UsesAddressLibrary + IsLayoutDependent with no
+// version pin. OG 1.10.163 is handled separately by the legacy
+// F4SEPlugin_Query export in src/main.cpp (enabled by SUPPORT_OG).
 F4SE_PLUGIN_VERSION = []() noexcept {
     F4SE::PluginVersionData v{};
     v.PluginVersion({ ${COMMONLIB_PLUGIN_VERSION_MAJOR}, ${COMMONLIB_PLUGIN_VERSION_MINOR}, ${COMMONLIB_PLUGIN_VERSION_PATCH}, 0 });
     v.PluginName("${COMMONLIB_PLUGIN_NAME}");
     v.AuthorName("${COMMONLIB_PLUGIN_AUTHOR}");
     v.UsesAddressLibrary(true);
+    // v.UsesAddressLibraryNG(true);  // deliberately unset -- see above
     v.UsesSigScanning(false);
     v.IsLayoutDependent(true);
+    // v.IsLayoutDependentNG(true);   // deliberately unset -- see above
     v.HasNoStructUse(false);
     return v;
 }();
