@@ -20,6 +20,9 @@ void LevelUpMenuAccessibility::OnLevelUpMenuOpened()
 	m_menuAnnounced = false;
 	m_lastRow = 0xFFFFFFFF;
 	m_lastCol = 0xFFFFFFFF;
+	m_prkfView = 0;
+	m_prkfKey.clear();
+	m_prkfPrimed = false;
 
 	REX::INFO("LevelUpMenuAccessibility: Menu opened");
 
@@ -73,6 +76,9 @@ void LevelUpMenuAccessibility::Reset()
 	m_menuAnnounced = false;
 	m_lastRow = 0xFFFFFFFF;
 	m_lastCol = 0xFFFFFFFF;
+	m_prkfView = 0;
+	m_prkfKey.clear();
+	m_prkfPrimed = false;
 }
 
 void LevelUpMenuAccessibility::AnnounceSelection(std::uint32_t a_row, std::uint32_t a_col)
@@ -159,6 +165,32 @@ std::string LevelUpMenuAccessibility::BuildMenuOpenAnnouncement(RE::IMenu* a_men
 {
 	if (!a_menu || !a_menu->uiMovie)
 		return "";
+
+	// Fallout London (PRKF) variant: list-based screen with a different layout.
+	// Announce the points-available header + count, then the first focused item.
+	{
+		Value perkList;
+		if (a_menu->uiMovie->GetVariable(&perkList, PRKF_PERKLIST) && (perkList.IsObject() || perkList.IsDisplayObject())) {
+			std::string announcement = LocalizationHelper::Translate("$F4A_levelup");
+
+			std::string header = CleanForSpeech(ReadStringVar(a_menu, PRKF_HEADER));
+			std::string count = CleanForSpeech(ReadStringVar(a_menu, PRKF_PERKCOUNT));
+			if (!count.empty() && !header.empty()) {
+				announcement += ", " + count + " " + header;
+			} else if (!header.empty()) {
+				announcement += ", " + header;
+			}
+
+			std::string  listPath;
+			std::int32_t index = -1;
+			PRKFView     view = DeterminePRKFView(a_menu, listPath, index);
+			std::string  item = BuildPRKFItem(a_menu, view, listPath, index);
+			if (!item.empty()) {
+				announcement += ". " + item;
+			}
+			return announcement;
+		}
+	}
 
 	std::string announcement = LocalizationHelper::Translate("$F4A_levelup");
 
@@ -461,4 +493,281 @@ LevelUpMenuAccessibility::RankInfo LevelUpMenuAccessibility::GetRankInfoFromStar
 void LevelUpMenuAccessibility::SpeakText(const std::string& a_text)
 {
 	SpeechManager::GetSingleton()->Speak(a_text);
+}
+
+// --- Fallout London (PRKF) list-based perk/skill/trait menu ---
+
+std::int32_t LevelUpMenuAccessibility::ReadIntVar(RE::IMenu* a_menu, const char* a_path)
+{
+	if (!a_menu || !a_menu->uiMovie)
+		return -1;
+	Value v;
+	if (a_menu->uiMovie->GetVariable(&v, a_path)) {
+		if (v.IsInt())
+			return v.GetInt();
+		if (v.IsUInt())
+			return static_cast<std::int32_t>(v.GetUInt());
+		if (v.IsNumber())
+			return static_cast<std::int32_t>(v.GetNumber());
+	}
+	return -1;
+}
+
+std::string LevelUpMenuAccessibility::ReadStringVar(RE::IMenu* a_menu, const char* a_path)
+{
+	if (!a_menu || !a_menu->uiMovie)
+		return "";
+	Value v;
+	if (a_menu->uiMovie->GetVariable(&v, a_path) && v.IsString()) {
+		const char* s = v.GetString();
+		if (s)
+			return s;
+	}
+	return "";
+}
+
+bool LevelUpMenuAccessibility::ReadBoolVar(RE::IMenu* a_menu, const char* a_path)
+{
+	if (!a_menu || !a_menu->uiMovie)
+		return false;
+	Value v;
+	if (a_menu->uiMovie->GetVariable(&v, a_path) && v.IsBoolean())
+		return v.GetBoolean();
+	return false;
+}
+
+std::string LevelUpMenuAccessibility::CleanForSpeech(const std::string& a_text)
+{
+	std::string out;
+	out.reserve(a_text.size());
+	for (char c : a_text) {
+		if (c == '\n' || c == '\r') {
+			// Turn line breaks into sentence breaks for speech.
+			if (!out.empty() && out.back() != ' ' && out.back() != '.') {
+				out += ". ";
+			}
+		} else {
+			out += c;
+		}
+	}
+	// Trim leading/trailing whitespace.
+	std::size_t start = out.find_first_not_of(' ');
+	if (start == std::string::npos)
+		return "";
+	std::size_t end = out.find_last_not_of(" \t");
+	return out.substr(start, end - start + 1);
+}
+
+LevelUpMenuAccessibility::PRKFView LevelUpMenuAccessibility::DeterminePRKFView(
+	RE::IMenu* a_menu, std::string& a_listPath, std::int32_t& a_index)
+{
+	a_listPath.clear();
+	a_index = -1;
+
+	// Overlay dialogs take focus priority over the main lists.
+	if (ReadBoolVar(a_menu, (std::string(PRKF_INFO) + ".opened").c_str())) {
+		a_listPath = std::string(PRKF_INFO) + ".confirmlist_mc";
+		a_index = ReadIntVar(a_menu, (a_listPath + ".selectedIndex").c_str());
+		return PRKFView::Info;
+	}
+	if (ReadBoolVar(a_menu, (std::string(PRKF_CONFIRM) + ".opened").c_str())) {
+		a_listPath = std::string(PRKF_CONFIRM) + ".confirmlist_mc";
+		a_index = ReadIntVar(a_menu, (a_listPath + ".selectedIndex").c_str());
+		return PRKFView::Confirm;
+	}
+	if (ReadBoolVar(a_menu, (std::string(PRKF_INTENSE) + ".opened").c_str())) {
+		a_listPath = std::string(PRKF_INTENSE) + ".stats_list";
+		a_index = ReadIntVar(a_menu, (a_listPath + ".selectedIndex").c_str());
+		return PRKFView::Intense;
+	}
+
+	// Main lists: the focused list has selectedIndex >= 0; the other is set to
+	// -1 by the AS3 when switching tabs.
+	std::int32_t perkIdx = ReadIntVar(a_menu, (std::string(PRKF_PERKLIST) + ".selectedIndex").c_str());
+	if (perkIdx >= 0) {
+		a_listPath = PRKF_PERKLIST;
+		a_index = perkIdx;
+		return ReadBoolVar(a_menu, PRKF_TRAITSMODE) ? PRKFView::Traits : PRKFView::Perks;
+	}
+	std::int32_t skillIdx = ReadIntVar(a_menu, (std::string(PRKF_SKILLLIST) + ".selectedIndex").c_str());
+	if (skillIdx >= 0) {
+		a_listPath = PRKF_SKILLLIST;
+		a_index = skillIdx;
+		return ReadBoolVar(a_menu, PRKF_TAGSKILLSMODE) ? PRKFView::TagSkills : PRKFView::Skills;
+	}
+
+	return PRKFView::None;
+}
+
+std::string LevelUpMenuAccessibility::BuildPRKFContext(RE::IMenu* a_menu, PRKFView a_view)
+{
+	switch (a_view) {
+		case PRKFView::Perks:
+			return "Perks";
+		case PRKFView::Traits:
+			return "Traits";
+		case PRKFView::Skills:
+			return "Skills";
+		case PRKFView::TagSkills:
+			return "Tag skills";
+		case PRKFView::Intense:
+			return "Intense training";
+		case PRKFView::Confirm: {
+			std::string prompt = CleanForSpeech(ReadStringVar(a_menu, (std::string(PRKF_CONFIRM) + ".confirmtext_tf.text").c_str()));
+			std::string item = CleanForSpeech(ReadStringVar(a_menu, (std::string(PRKF_CONFIRM) + ".itemtext_tf.text").c_str()));
+			if (!item.empty()) {
+				return prompt.empty() ? item : prompt + " " + item;
+			}
+			return prompt;
+		}
+		case PRKFView::Info:
+		case PRKFView::None:
+		default:
+			return "";
+	}
+}
+
+std::string LevelUpMenuAccessibility::BuildPRKFItem(
+	RE::IMenu* a_menu, PRKFView a_view, const std::string& a_listPath, std::int32_t a_index)
+{
+	if (!a_menu || !a_menu->uiMovie)
+		return "";
+
+	// Info window: the whole content is the text field.
+	if (a_view == PRKFView::Info) {
+		return CleanForSpeech(ReadStringVar(a_menu, (std::string(PRKF_INFO) + ".text_tf.text").c_str()));
+	}
+
+	// Fetch the selected entry object from the list's entryList.
+	Value entry;
+	bool  haveEntry = false;
+	if (!a_listPath.empty() && a_index >= 0) {
+		Value entryList;
+		if (a_menu->uiMovie->GetVariable(&entryList, (a_listPath + ".entryList").c_str()) && entryList.IsArray()) {
+			if (static_cast<std::uint32_t>(a_index) < entryList.GetArraySize()) {
+				if (entryList.GetElement(static_cast<std::uint32_t>(a_index), &entry) && entry.IsObject()) {
+					haveEntry = true;
+				}
+			}
+		}
+	}
+
+	auto entryString = [&](const char* a_member) -> std::string {
+		if (!haveEntry)
+			return "";
+		Value v;
+		if (entry.GetMember(a_member, &v) && v.IsString()) {
+			const char* s = v.GetString();
+			if (s)
+				return s;
+		}
+		return "";
+	};
+
+	// Yes/No confirmation entry.
+	if (a_view == PRKFView::Confirm) {
+		return CleanForSpeech(entryString("text"));
+	}
+
+	std::string name = entryString("text");
+
+	// Skills / tag-skills: name + numeric value (+ tagged flag).
+	if (a_view == PRKFView::Skills || a_view == PRKFView::TagSkills) {
+		std::string ann = name;
+		if (haveEntry) {
+			Value v;
+			if (entry.GetMember("value", &v)) {
+				std::int32_t value = 0;
+				bool         have = true;
+				if (v.IsInt())
+					value = v.GetInt();
+				else if (v.IsUInt())
+					value = static_cast<std::int32_t>(v.GetUInt());
+				else if (v.IsNumber())
+					value = static_cast<std::int32_t>(v.GetNumber());
+				else
+					have = false;
+				if (have)
+					ann += ", " + std::to_string(value);
+			}
+		}
+		if (a_view == PRKFView::TagSkills && haveEntry) {
+			Value tagged;
+			if (entry.GetMember("tagged", &tagged) && tagged.IsBoolean() && tagged.GetBoolean()) {
+				ann += ", tagged";
+			}
+		}
+		std::string desc = CleanForSpeech(ReadStringVar(a_menu, PRKF_DESC));
+		if (!desc.empty())
+			ann += ". " + desc;
+		return ann;
+	}
+
+	// Perks / traits / intense training: name + eligibility + requirements +
+	// description. Requirements and description come from the shared text fields
+	// the AS3 formats for the focused selection (rank prefix, level reqs, etc.).
+	std::string ann = name;
+	if (haveEntry) {
+		Value elig;
+		if (entry.GetMember("iselig", &elig) && elig.IsBoolean() && !elig.GetBoolean()) {
+			ann += ", ineligible";
+		}
+	}
+	std::string reqs = CleanForSpeech(ReadStringVar(a_menu, PRKF_REQS));
+	if (!reqs.empty())
+		ann += ". " + reqs;
+	std::string desc = CleanForSpeech(ReadStringVar(a_menu, PRKF_DESC));
+	if (!desc.empty())
+		ann += ". " + desc;
+	return ann;
+}
+
+void LevelUpMenuAccessibility::CheckPRKFSelection(RE::IMenu* a_menu)
+{
+	if (!m_isOpen || !a_menu || !a_menu->uiMovie)
+		return;
+
+	std::string  listPath;
+	std::int32_t index = -1;
+	PRKFView     view = DeterminePRKFView(a_menu, listPath, index);
+	if (view == PRKFView::None)
+		return;
+
+	std::string item = BuildPRKFItem(a_menu, view, listPath, index);
+
+	// Snapshot of the current state; re-announce only when it changes.
+	std::string key = std::to_string(static_cast<int>(view)) + ":" + listPath + ":" +
+	                  std::to_string(index) + ":" + item;
+
+	// Let the deferred menu-open announcement speak first (it already includes
+	// the first focused item), then prime our state to it without re-announcing.
+	if (!m_menuAnnounced)
+		return;
+	if (!m_prkfPrimed) {
+		m_prkfView = static_cast<int>(view);
+		m_prkfKey = key;
+		m_prkfPrimed = true;
+		return;
+	}
+
+	if (static_cast<int>(view) == m_prkfView && key == m_prkfKey)
+		return;
+
+	bool viewChanged = static_cast<int>(view) != m_prkfView;
+	m_prkfView = static_cast<int>(view);
+	m_prkfKey = key;
+
+	if (item.empty() && !viewChanged)
+		return;
+
+	std::string announcement;
+	if (viewChanged) {
+		std::string context = BuildPRKFContext(a_menu, view);
+		if (!context.empty())
+			announcement = context + ", ";
+	}
+	announcement += item;
+
+	if (!announcement.empty())
+		SpeakText(announcement);
 }

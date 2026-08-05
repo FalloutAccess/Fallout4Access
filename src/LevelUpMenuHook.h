@@ -43,9 +43,21 @@ private:
 	// Track selection changes
 	void CheckSelectionChange(RE::IMenu* a_menu);
 
+	// LevelUpMenu variant. Fallout London's PRKF mod replaces the SWF (keeping
+	// the same menu name / C++ class) with a list-based perks/skills/traits
+	// screen that has no perk GridView, so the vanilla hotpatch + row/col
+	// tracking don't apply. Detected once per open; selects the code path.
+	enum class Variant
+	{
+		Unknown,
+		Vanilla,
+		PRKF
+	};
+
 	// State
 	bool          m_installed = false;
 	bool          m_menuOpen = false;
+	Variant       m_variant = Variant::Unknown;
 	bool          m_hotpatchApplied = false;
 	bool          m_gridViewErrorLogged = false;  // Prevent log spam
 	int           m_frameDelay = 0;

@@ -34,6 +34,7 @@ void LevelUpMenuHook::Install()
 
 void LevelUpMenuHook::ResetState()
 {
+	m_variant = Variant::Unknown;
 	m_hotpatchApplied = false;
 	m_gridViewErrorLogged = false;
 	m_lastRow = 0xFFFFFFFF;
@@ -67,12 +68,32 @@ void LevelUpMenuHook::CheckStateChanges(RE::IMenu* a_menu)
 		return;
 	}
 
-	// Apply platform hotpatch once to enable keyboard navigation
+	// Detect which LevelUpMenu variant is loaded (vanilla perk grid vs Fallout
+	// London's PRKF list screen). Retry each frame until the SWF is populated
+	// enough to tell them apart.
+	if (m_variant == Variant::Unknown) {
+		Value probe;
+		if (a_menu->uiMovie->GetVariable(&probe, "root.Menu_mc.PerkList_mc") && (probe.IsObject() || probe.IsDisplayObject())) {
+			m_variant = Variant::PRKF;
+			REX::INFO("LevelUpMenuHook: detected PRKF (Fallout London) perk menu");
+		} else if (a_menu->uiMovie->GetVariable(&probe, GRID_VIEW_PATH) && probe.IsObject()) {
+			m_variant = Variant::Vanilla;
+		} else {
+			return;  // Not populated yet
+		}
+	}
+
+	// Fallout London PRKF screen: list-based, no grid hotpatch needed.
+	if (m_variant == Variant::PRKF) {
+		LevelUpMenuAccessibility::GetSingleton()->CheckPRKFSelection(a_menu);
+		return;
+	}
+
+	// Vanilla perk grid: apply the platform hotpatch once to enable keyboard
+	// navigation, then track row/column selection.
 	if (!m_hotpatchApplied) {
 		ApplyPlatformHotpatch(a_menu);
 	}
-
-	// Only check selection if hotpatch was applied (GridView was found)
 	if (m_hotpatchApplied) {
 		CheckSelectionChange(a_menu);
 	}
