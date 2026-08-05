@@ -36,7 +36,10 @@ void VATSMenuHook::Install()
 
 void VATSMenuHook::ResetState()
 {
-	m_lastTargetName.clear();
+	// NOTE: deliberately do NOT clear m_lastTargetName here. Carrying the last
+	// announced name across VATS sessions suppresses the stale enemy name the
+	// HUD meter still shows on re-entry (after a kill / leaving VATS); we only
+	// announce once the meter actually updates to the genuinely new target.
 	m_lastBodyPart = 0xFFFFFFFF;
 	m_frameDelay = FRAME_DELAY_AFTER_OPEN;
 }
@@ -75,44 +78,48 @@ void VATSMenuHook::CheckStateChanges(RE::IMenu* a_menu)
 
 void VATSMenuHook::CheckTargetChange(RE::IMenu* a_menu)
 {
-	std::string currentTarget = GetCurrentTargetName();
+	// The HUD enemy meter lags behind / persists across VATS sessions, so on
+	// re-entry it can still show the previous enemy. Because m_lastTargetName is
+	// carried across sessions (see ResetState), a stale name equal to the last
+	// one we announced is suppressed here; we only speak once the meter updates
+	// to a genuinely different target.
+	std::string currentName = GetCurrentTargetName();
+	if (currentName.empty() || currentName == m_lastTargetName) {
+		return;
+	}
 
-	if (!currentTarget.empty() && currentTarget != m_lastTargetName) {
-		m_lastTargetName = currentTarget;
-		m_lastBodyPart = 0xFFFFFFFF;  // Reset body part on target change
+	m_lastTargetName = currentName;
+	AnnounceTarget(a_menu, currentName);
+}
 
-		// Get target stats from HUD
-		float healthPercent = GetTargetHealthPercent();
-		bool  isLegendary = IsTargetLegendary();
-		bool  isDangerous = IsTargetDangerous();
+void VATSMenuHook::AnnounceTarget(RE::IMenu* a_menu, const std::string& a_name)
+{
+	m_lastBodyPart = 0xFFFFFFFF;  // Reset body part on target change
 
-		// Build announcement
-		std::string announcement = currentTarget;
+	std::string announcement = a_name;
 
-		// Add legendary status
-		if (isLegendary) {
-			announcement += ", Legendary";
-		}
+	// Decorations come from the HUD enemy health meter.
+	if (IsTargetLegendary()) {
+		announcement += ", Legendary";
+	}
 
-		// Add dangerous status (skull icon - much higher level)
-		if (isDangerous) {
-			announcement += ", Dangerous";
-		}
+	// Dangerous status (skull icon - much higher level)
+	if (IsTargetDangerous()) {
+		announcement += ", Dangerous";
+	}
 
-		// Add health percentage
-		if (healthPercent > 0.0f) {
-			announcement += ", " + std::to_string(static_cast<int>(healthPercent)) + " percent health";
-		}
+	float healthPercent = GetTargetHealthPercent();
+	if (healthPercent > 0.0f) {
+		announcement += ", " + std::to_string(static_cast<int>(healthPercent)) + " percent health";
+	}
 
-		// Speak target announcement
-		SpeechManager::GetSingleton()->Speak(announcement);
+	SpeechManager::GetSingleton()->Speak(announcement);
 
-		// Also announce current body part
-		std::uint32_t currentPart = GetCurrentBodyPart(a_menu);
-		if (currentPart != 0xFFFFFFFF) {
-			m_lastBodyPart = currentPart;
-			VATSMenuAccessibility::GetSingleton()->AnnounceBodyPartChange(currentPart);
-		}
+	// Also announce the current body part for the new target.
+	std::uint32_t currentPart = GetCurrentBodyPart(a_menu);
+	if (currentPart != 0xFFFFFFFF) {
+		m_lastBodyPart = currentPart;
+		VATSMenuAccessibility::GetSingleton()->AnnounceBodyPartChange(currentPart);
 	}
 }
 
@@ -128,8 +135,8 @@ void VATSMenuHook::CheckBodyPartChange(RE::IMenu* a_menu)
 
 std::string VATSMenuHook::GetCurrentTargetName()
 {
-	// Get enemy name from HUD's EnemyHealthMeter_mc.DisplayText_tf
-	// This is the text field that displays the enemy name at the top of the screen during VATS
+	// Enemy name from HUD's EnemyHealthMeter_mc.DisplayText_tf - the name shown
+	// at the top of the screen during VATS.
 	auto* ui = RE::UI::GetSingleton();
 	if (ui) {
 		auto hudMenu = ui->GetMenu<RE::HUDMenu>();

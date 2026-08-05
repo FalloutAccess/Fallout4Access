@@ -21,7 +21,6 @@
 #include "ObjectScanner.h"
 #include "SleepWaitMenuAccessibility.h"
 #include "SpeechManager.h"
-#include "VATSCallbackHook.h"
 #include "VATSMenuHook.h"
 #include "WorkshopCaravanMenuAccessibility.h"
 #include "WorkshopMenuAccessibility.h"
@@ -237,9 +236,9 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 	// Install ExamineConfirmMenu hook for workbench confirmation accessibility
 	ExamineConfirmMenuHook::GetSingleton()->Install();
 
-	// Install VATSMenu hooks for VATS accessibility
+	// Install VATSMenu hook for VATS accessibility (per-frame AdvanceMovie poll
+	// handles both initial target and A/D target cycling)
 	VATSMenuHook::GetSingleton()->Install();
-	VATSCallbackHook::GetSingleton()->Install();
 
 	// Install ContainerMenu hook for looting accessibility
 	ContainerMenuAccessibility::GetSingleton()->Install();

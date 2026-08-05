@@ -2,8 +2,8 @@
 
 #include "pch.h"
 
-// Hooks VATSMenu::AdvanceMovie to check for state changes every frame
-// Tracks target changes, body part selection, health, and distance
+// Hooks VATSMenu::AdvanceMovie to check for state changes every frame.
+// Tracks the aimed target (by name) and the selected body part.
 class VATSMenuHook
 {
 public:
@@ -21,13 +21,6 @@ public:
 	// Called by VATSMenuAccessibility when menu opens/closes
 	void SetMenuOpen(bool a_open) { m_menuOpen = a_open; }
 
-	// Data extraction - public for use by VATSCallbackHook
-	std::string   GetCurrentTargetName();
-	std::uint32_t GetCurrentBodyPart(RE::IMenu* a_menu);
-	float         GetTargetHealthPercent();
-	bool          IsTargetLegendary();
-	bool          IsTargetDangerous();
-
 private:
 	VATSMenuHook() = default;
 	~VATSMenuHook() = default;
@@ -44,17 +37,32 @@ private:
 	void CheckTargetChange(RE::IMenu* a_menu);
 	void CheckBodyPartChange(RE::IMenu* a_menu);
 
+	// Current target name from the HUD enemy health meter (the name shown at the
+	// top of the screen during VATS).
+	std::string GetCurrentTargetName();
+
+	// Build and speak a target announcement (name + HUD decorations) and
+	// announce the new target's body part.
+	void AnnounceTarget(RE::IMenu* a_menu, const std::string& a_name);
+
+	std::uint32_t GetCurrentBodyPart(RE::IMenu* a_menu);
+
+	// Target decorations, read from the HUD enemy health meter
+	float GetTargetHealthPercent();
+	bool  IsTargetLegendary();
+	bool  IsTargetDangerous();
+
 	// State
 	bool          m_installed = false;
 	bool          m_menuOpen = false;
 	int           m_frameDelay = 0;
-	std::string   m_lastTargetName;
+	std::string   m_lastTargetName;  // carried across sessions to suppress stale HUD names
 	std::uint32_t m_lastBodyPart = 0xFFFFFFFF;
 
-	// Frame delay after menu open for Scaleform to populate
+	// Frame delay after menu open for Scaleform/HUD to populate
 	static constexpr int FRAME_DELAY_AFTER_OPEN = 3;
 
-	// Scaleform paths for VATSMenu
+	// Scaleform path for the selected body part
 	static constexpr const char* SELECTED_PART_PATH = "root.MenuInstance.SelectedPart";
 
 	// The vtable hook

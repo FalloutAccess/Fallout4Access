@@ -1,6 +1,5 @@
 #include "VATSMenuAccessibility.h"
 #include "SpeechManager.h"
-#include "VATSCallbackHook.h"
 #include "VATSMenuHook.h"
 #include <RE/A/Actor.h>
 #include <RE/A/ActorValue.h>
@@ -28,12 +27,11 @@ void VATSMenuAccessibility::OnVATSMenuOpened()
 
 	REX::INFO("VATSMenu opened - initializing accessibility");
 
-	// Tell the hooks the menu is open and reset their state
-	// VATSMenuHook handles initial target/body part announcement via AdvanceMovie
-	// VATSCallbackHook handles target cycling when A/D keys pressed
+	// Tell the hook the menu is open and reset its state.
+	// VATSMenuHook handles target and body-part announcements (including A/D
+	// target cycling) via its per-frame AdvanceMovie hook.
 	VATSMenuHook::GetSingleton()->SetMenuOpen(true);
 	VATSMenuHook::GetSingleton()->ResetState();
-	VATSCallbackHook::GetSingleton()->ResetState();
 
 	// Announce "VATS" immediately
 	SpeakText("VATS");
