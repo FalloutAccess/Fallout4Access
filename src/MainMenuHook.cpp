@@ -7,7 +7,6 @@
 #include "SettingsMenuAccessibility.h"
 #include "SpeechManager.h"
 #include <RE/P/PauseMenu.h>
-#include <SRAL.h>
 
 MainMenuHook* MainMenuHook::GetSingleton()
 {

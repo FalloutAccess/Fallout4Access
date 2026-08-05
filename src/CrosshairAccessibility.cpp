@@ -1,7 +1,6 @@
 #include "CrosshairAccessibility.h"
 #include "FreedomTrailAccessibility.h"
 #include "SpeechManager.h"
-#include <SRAL.h>
 #include <chrono>
 
 static std::uint64_t GetCurrentTimeMs()

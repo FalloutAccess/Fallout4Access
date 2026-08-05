@@ -3,7 +3,6 @@
 #include <F4SE/F4SE.h>
 #include <RE/P/PipboyMenu.h>
 #include <RE/U/UI.h>
-#include <SRAL.h>
 
 void DeferredItemAnnouncer::ScheduleAnnouncement(const ItemIdentity& a_identity)
 {

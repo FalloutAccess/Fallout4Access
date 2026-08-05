@@ -2,26 +2,42 @@
 
 #include "pch.h"
 #include <atomic>
+#include <chrono>
 #include <fstream>
 #include <mutex>
+
+// Forward-declared so this header doesn't drag <prism.h> (and windows.h) into
+// every translation unit that only wants to speak.
+struct PrismContext;
+struct PrismBackend;
 
 // Centralized speech output manager for fallout4access plugin
 // Provides a single point of control for all screen reader output with dedicated logging
 //
-// Usage: Replace direct SRAL_Speak() calls with SpeechManager::GetSingleton()->Speak()
+// Usage: SpeechManager::GetSingleton()->Speak()
 //
 // Features:
 // - Dedicated speech log: fallout4access_speech.log with timestamped entries
 // - Thread-safe logging with mutex protection
 // - Optional muting support for future features
+// - Owns the Prism screen reader context and the backend selection policy
 class SpeechManager
 {
 public:
 	static SpeechManager* GetSingleton();
 
 	// Initialize the speech log file
-	// Called once from main.cpp after SRAL_Initialize()
+	// Called once from main.cpp before InitializeEngine()
 	void Initialize();
+
+	// Bring up Prism and attach to the best available speech backend.
+	//
+	// MUST NOT be called while the Windows loader lock is held: Prism calls
+	// CoInitializeEx and starts its logging thread. On OG the xSE
+	// PluginPreloader loads us during early process init, so main.cpp defers
+	// this to the F4SE task interface. Idempotent; returns whether a backend
+	// is attached.
+	bool InitializeEngine();
 
 	// Main speech output function
 	// All speech should go through this method
@@ -57,6 +73,20 @@ private:
 	SpeechManager& operator=(const SpeechManager&) = delete;
 	SpeechManager& operator=(SpeechManager&&) = delete;
 
+	// Backend selection. All of these require m_engineMutex to be held —
+	// Prism backend instances are explicitly not thread-safe.
+
+	// Attach the highest-priority backend that initializes successfully and
+	// outranks a_minPriority. Pass -1 to consider every backend. Replaces any
+	// currently attached backend only on success.
+	bool SelectBackendLocked(int a_minPriority);
+
+	// Re-run selection if we have no backend, or if we settled for a plain
+	// TTS engine and a screen reader may have started since. Rate-limited.
+	void RefreshBackendLocked();
+
+	void ReleaseBackendLocked();
+
 	// Write to speech log file with timestamp
 	void LogSpeech(const std::string& a_text);
 
@@ -67,4 +97,12 @@ private:
 	std::mutex        m_logMutex;
 	std::atomic<bool> m_muted{ false };
 	bool              m_initialized = false;
+
+	std::mutex    m_engineMutex;
+	PrismContext* m_ctx = nullptr;
+	PrismBackend* m_backend = nullptr;
+	int           m_backendPriority = -1;
+	std::string   m_backendName;
+
+	std::chrono::steady_clock::time_point m_lastSelectAttempt{};
 };

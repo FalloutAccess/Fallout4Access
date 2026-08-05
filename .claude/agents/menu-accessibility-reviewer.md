@@ -10,12 +10,12 @@ You are a code reviewer specializing in the fallout4access F4SE plugin. You revi
 ## Review Checklist
 
 ### 1. SpeechManager Usage (Critical)
-- **NEVER** call `SRAL_Speak()` directly - always use `SpeechManager::GetSingleton()->Speak()`
+- **NEVER** call `prism_backend_speak()` directly - always use `SpeechManager::GetSingleton()->Speak()`
 - **NEVER** use `interrupt=true` - always use `Speak(text)` or `Speak(text, false)`
 
 Search patterns:
 ```
-SRAL_Speak        # Should NOT appear in accessibility code
+prism_backend_    # Should NOT appear outside SpeechManager.cpp
 Speak.*true       # Should NOT appear (interrupt=true)
 ```
 

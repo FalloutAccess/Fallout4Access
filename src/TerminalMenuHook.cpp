@@ -1,6 +1,5 @@
 #include "TerminalMenuHook.h"
 #include "SpeechManager.h"
-#include <SRAL.h>
 
 TerminalMenuHook* TerminalMenuHook::GetSingleton()
 {

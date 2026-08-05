@@ -8,7 +8,6 @@
 #include <RE/P/PlayerCharacter.h>
 #include <RE/V/VATS.h>
 #include <RE/V/VATSCommand.h>
-#include <SRAL.h>
 
 VATSMenuAccessibility* VATSMenuAccessibility::GetSingleton()
 {

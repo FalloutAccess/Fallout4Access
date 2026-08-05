@@ -12,7 +12,6 @@
 #include "SpeechManager.h"
 #include "TerminalMenuAccessibility.h"
 #include "VATSMenuAccessibility.h"
-#include <SRAL.h>
 
 MenuAccessibility* MenuAccessibility::GetSingleton()
 {

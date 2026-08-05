@@ -11,7 +11,6 @@
 #include <RE/T/TESFurniture.h>
 #include <RE/W/Workshop.h>
 #include <REX/W32/USER32.h>
-#include <SRAL.h>
 #include <algorithm>
 #include <cmath>
 #include <set>

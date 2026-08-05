@@ -1,7 +1,6 @@
 #include "TerminalMenuAccessibility.h"
 #include "SpeechManager.h"
 #include "TerminalMenuHook.h"
-#include <SRAL.h>
 
 TerminalMenuAccessibility* TerminalMenuAccessibility::GetSingleton()
 {

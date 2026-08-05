@@ -1,6 +1,5 @@
 #include "PipBoyPageBase.h"
 #include "SpeechManager.h"
-#include <SRAL.h>
 
 const Scaleform::GFx::Value* PipBoyPageBase::GetDataObj(RE::IMenu* a_menu)
 {

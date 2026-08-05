@@ -33,4 +33,4 @@ If the build fails, analyze the compiler errors and suggest fixes. Common issues
 - Missing includes
 - Syntax errors
 - CommonLibF4 API changes
-- SRAL linkage issues
+- Prism linkage issues (missing /WHOLEARCHIVE, /LTCG or the vendored prism_dep_*.lib)

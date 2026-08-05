@@ -1,6 +1,6 @@
 # Fallout 4 Access
 
-An F4SE plugin that makes Fallout 4 accessible to blind and visually impaired players. Uses [SRAL](https://github.com/m1maker/SRAL) (Screen Reader Abstraction Library) to provide screen reader support through NVDA, JAWS, or SAPI.
+An F4SE plugin that makes Fallout 4 accessible to blind and visually impaired players. Uses [Prism](https://github.com/ethindp/prism) (Platform-agnostic Reader Interface for Speech and Messages) to provide screen reader support through NVDA, JAWS and others, falling back to Windows OneCore or SAPI voices when no screen reader is running.
 
 ## Features
 
@@ -38,8 +38,11 @@ An F4SE plugin that makes Fallout 4 accessible to blind and visually impaired pl
 
 - Fallout 4 — works on both the next-gen update (Anniversary Edition) and the original 1.10.163 runtime (the version used by downgraded installs and Fallout: London). A single download supports both; the right version is detected automatically, with nothing to configure.
 - [F4SE](https://f4se.silverlock.org/) (Fallout 4 Script Extender) — use the build matching your game version
-- A screen reader: [NVDA](https://www.nvaccess.org/) (recommended), JAWS, or Windows SAPI
+- Windows 10 or later
+- A screen reader: [NVDA](https://www.nvaccess.org/) (recommended) or JAWS. ZoomText, SenseReader, ZDSR, PC-Talker and BoyPCReader are also supported. Without a screen reader the mod speaks through Windows OneCore or SAPI voices instead.
 - [Address Library for F4SE](https://www.nexusmods.com/fallout4/mods/47327) — the database for your game version (next-gen or the original-runtime "all-in-one")
+
+Nothing else needs to be installed for screen reader support. In particular there is **no** `nvdaControllerClient.dll` to copy anywhere — the plugin talks to NVDA directly. If a previous version of this mod had you place that file in your game folder, you can delete it.
 
 ## Installation
 
@@ -103,5 +106,5 @@ This project is licensed under the [GNU General Public License v3.0](LICENSE).
 ## Credits
 
 - [CommonLibF4](https://github.com/alandtse/CommonLibF4) - Reverse-engineered F4SE API
-- [SRAL](https://github.com/m1maker/SRAL) - Screen Reader Abstraction Library
+- [Prism](https://github.com/ethindp/prism) - Platform-agnostic Reader Interface for Speech and Messages (MPL-2.0), statically linked
 - [F4SE](https://f4se.silverlock.org/) - Fallout 4 Script Extender

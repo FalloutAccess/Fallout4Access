@@ -20,7 +20,6 @@
 #include <RE/H/HUDMenu.h>
 #include <RE/M/MenuControls.h>
 #include <RE/RTTI.h>
-#include <SRAL.h>
 #include <typeinfo>
 
 HUDMenuHook* HUDMenuHook::GetSingleton()

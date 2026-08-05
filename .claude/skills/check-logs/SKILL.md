@@ -19,7 +19,7 @@ The logs are in the standard F4SE log directory (`<Documents>\My Games\Fallout4\
 
 1. **Read the debug log** (last 100 lines):
    - Look for ERROR or WARN level messages
-   - Check initialization status (SRAL, hooks)
+   - Check initialization status (Prism backend, hooks)
    - Note any exceptions or failures
 
 2. **Read the speech log** (last 50 lines):

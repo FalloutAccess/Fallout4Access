@@ -1,8 +1,11 @@
 # Changelog
 
-## v0.1.0 (Jun 13 - Jun 14, 2026)
+## v0.1.0 (Jun 13 - Aug 5, 2026)
 
 ### New Features
+- **No more NVDA controller DLL** — Screen reader support no longer needs `nvdaControllerClient.dll` copied into your game folder. The mod now talks to NVDA directly. If you placed that file there for an earlier version, you can delete it; nothing needs to be installed alongside the mod for speech to work.
+- **Speech without a screen reader** — If no screen reader is running, the mod now speaks through your Windows voices (OneCore, or SAPI) instead of staying silent. A screen reader is still recommended and is always preferred when one is running.
+- **More screen readers supported** — In addition to NVDA and JAWS, the mod now works with ZoomText, SenseReader, ZDSR, PC-Talker and BoyPCReader.
 - **Original (pre-next-gen) Fallout 4 support** — The mod now loads and runs on the original 1.10.163 version of the game, not only the next-gen update. This is the version used by downgraded installs and by mods like Fallout: London. A single download works on both; the right version is detected automatically, so there is nothing to configure.
 - **Tested on both Fallout 4 runtimes** — This release is verified working on both the next-gen update (Anniversary Edition) and the original 1.10.163 runtime (used by Fallout: London) from a single install — no separate downloads and nothing to switch.
 - **Auto-walk works in Fallout London** — On the original game runtime (used by Fallout: London), pressing *Walk to Object* now walks your character to the selected scanned object, the same as on the regular game. Previously the dispatch into the game's scripts couldn't move the player on this runtime; it now routes through the auto-walk quest's travel package so navigation around obstacles works as expected.
@@ -10,6 +13,7 @@
 
 ### Improvements
 - **Loads on every next-gen patch** — The mod is no longer tied to one exact game version. It now loads on any next-gen patch (1.11.137 or later) instead of a single specific build.
+- **Starting or restarting your screen reader mid-game now just works** — If you launch Fallout 4 before your screen reader, or your screen reader crashes and restarts during play, the mod now picks it up on its own within a few seconds instead of staying silent (or stuck on a Windows voice) until you restart the game.
 
 ### Bug Fixes
 - **Auto-aim now works with a controller** — When playing with a gamepad, aiming down the sights no longer failed to lock on. Auto-aim previously only updated while controller input was actively changing, so holding aim with the sticks at rest meant it never noticed you'd raised your sights — no target announcement, no rotation onto the enemy, and no lock-on tone. It now updates every frame regardless of input device, so it behaves the same on controller as it always did on keyboard and mouse.

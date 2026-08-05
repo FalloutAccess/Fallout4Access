@@ -1,7 +1,6 @@
 #include "ExamineMenuAccessibility.h"
 #include "ExamineMenuHook.h"
 #include "SpeechManager.h"
-#include <SRAL.h>
 
 ExamineMenuAccessibility* ExamineMenuAccessibility::GetSingleton()
 {

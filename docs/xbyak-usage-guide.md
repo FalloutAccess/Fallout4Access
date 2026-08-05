@@ -412,7 +412,7 @@ Hook when game updates text fields to capture the new text for speech:
 ```cpp
 void OnTextUpdate(RE::GFxValue* textField, const char* newText) {
     if (newText && *newText) {
-        SRAL_Speak(newText, false);
+        SpeechManager::GetSingleton()->Speak(newText);
     }
 }
 
@@ -487,7 +487,7 @@ Capture when player activates an object to announce it:
 void OnActivate(RE::TESObjectREFR* activator, RE::TESObjectREFR* target) {
     if (activator->IsPlayer() && target) {
         auto name = target->GetDisplayFullName();
-        SRAL_Speak(name, false);
+        SpeechManager::GetSingleton()->Speak(name);
     }
 }
 ```

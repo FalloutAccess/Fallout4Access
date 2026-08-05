@@ -21,28 +21,51 @@ set_policy("package.requires_lock", true)
 add_rules("mode.debug", "mode.releasedbg")
 add_rules("plugin.vsxmake.autoupdate")
 
-package("sral")
+-- Prism (Platform-agnostic Reader Interface for Speech and Messages).
+-- Screen reader abstraction; replaces SRAL. Unlike SRAL it talks to NVDA over
+-- its ncalrpc RPC interface directly (MIDL client stub generated at build time
+-- from lib/prism/idl/nvdaController.idl), so no nvdaControllerClient.dll needs
+-- to ship with the mod. JAWS goes through COM, likewise DLL-free.
+package("prism")
     add_deps("cmake")
-    set_sourcedir(path.join(os.scriptdir(), "lib", "SRAL"))
+    set_sourcedir(path.join(os.scriptdir(), "lib", "prism"))
     on_load(function (package)
         if not package:config("shared") then
-            package:add("defines", "SRAL_STATIC")
+            package:add("defines", "PRISM_STATIC")
         end
     end)
     on_install(function (package)
         local configs = {}
-        table.insert(configs, "-DCMAKE_BUILD_TYPE=" .. (package:debug() and "Debug" or "Release" or "RelWithDebInfo"))
+        table.insert(configs, "-DCMAKE_BUILD_TYPE=" .. (package:debug() and "Debug" or "Release"))
         table.insert(configs, "-DBUILD_SHARED_LIBS=" .. (package:config("shared") and "ON" or "OFF"))
-        table.insert(configs, "-DBUILD_TESTING=OFF")
-        table.insert(configs, "-DBUILD_EXAMPLES=OFF")
-        table.insert(configs, "-DSRAL_DISABLE_UIA=ON")
-        table.insert(configs, "-DBUILD_SRAL_TEST=OFF")
+        table.insert(configs, "-DPRISM_ENABLE_TESTS=OFF")
+        table.insert(configs, "-DPRISM_ENABLE_DEMOS=OFF")
+        table.insert(configs, "-DPRISM_ENABLE_SHIMS=OFF")
+        table.insert(configs, "-DPRISM_ENABLE_GDEXTENSION=OFF")
+        table.insert(configs, "-DPRISM_ENABLE_LINTING=OFF")
+        -- Vendored third_party/ sources; never look for system fmt/simdutf/etc.
+        table.insert(configs, "-DPRISM_DEPENDENCY_PROVIDER=BUNDLED")
+        -- UIA was disabled under SRAL too: it drives the game's own UI tree
+        -- rather than speaking our strings, and pulls in extra COM startup cost.
+        table.insert(configs, "-DPRISM_ENABLE_UIA_BACKEND=OFF")
+        -- Match the game/F4SE CRT.
         table.insert(configs, "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL")
         import("package.tools.cmake").install(package, configs, {generator = "NMake Makefiles"})
+        -- PrismInstall.cmake exports prism.lib but not the static libraries it
+        -- compiles out of third_party/ (fmt, simdutf, dr_wav), so a static
+        -- consumer fails to link on fmt::/drwav_ symbols. Copy them next to
+        -- prism.lib; xmake links every .lib it finds in the package lib dir.
+        local deps = os.files(path.join(package:cachedir(), "**", "prism_dep_*.lib"))
+        if #deps == 0 then
+            raise("prism: no prism_dep_*.lib found to vendor; did upstream stop bundling third_party?")
+        end
+        for _, dep in ipairs(deps) do
+            os.vcp(dep, package:installdir("lib"))
+        end
     end)
 package_end()
 
-add_requires("sral", {configs = {shared = false}})
+add_requires("prism", {configs = {shared = false}})
 add_requires("zydis")
 
 -- Project-specific configuration
@@ -106,15 +129,43 @@ target("fallout4access")
 
     -- add dependencies to target
     add_deps("commonlibf4")
-    add_packages("sral", "zydis")
-    add_defines("SRAL_STATIC")
+    add_packages("prism", "zydis")
+    add_defines("PRISM_STATIC")
+    -- prism.h includes <windows.h>, which otherwise collides with the game API:
+    -- wingdi's ERROR macro eats REX::ERROR, and winioctl's DETECTION_TYPE is
+    -- ambiguous against RE::DETECTION_TYPE under pch.h's `using namespace RE`.
+    -- These have to be command-line defines, not #defines in the .cpp: MSVC
+    -- discards everything before the `#include "pch.h"` line.
+    add_defines("WIN32_LEAN_AND_MEAN", "NOGDI", "NOMINMAX")
+    -- Prism's backends self-register from static initializers in their own
+    -- object files, which nothing else references. Without /WHOLEARCHIVE the
+    -- linker drops every one of them and the registry comes up empty. This
+    -- also pulls in the delay-load failure hook that turns "PCTKUSR.dll is not
+    -- installed" into a graceful backend-unavailable instead of a crash.
+    add_shflags("/WHOLEARCHIVE:prism.lib", {force = true})
+    -- Prism's CMake turns IPO on unconditionally (PrismFacts.cmake derives
+    -- PRISM_USE_IPO from check_ipo_supported, with no cache option to override),
+    -- so prism.lib ships /GL objects and the link needs /LTCG to consume them.
+    add_shflags("/LTCG", {force = true})
+    -- Prism declares these PRIVATE on its CMake target; xmake only picks up a
+    -- package's own libs, so a static consumer has to restate them.
+    add_syslinks("delayimp", "onecore", "uiautomationcore", "rpcrt4", "PowrProf")
+    -- Screen-reader DLLs for readers almost nobody has installed. Delay-loading
+    -- keeps them off our import table so the plugin still loads without them.
+    add_shflags(
+        "/delayload:ZDSRAPI_x64.dll",
+        "/delayload:byctrl-x64.dll",
+        "/delayload:PCTKUSR.dll",
+        "/delayload:prism_orca_bridge.dll",
+        "/delayload:prism_speech_dispatcher_bridge.dll",
+        "/DELAY:unload",
+        {force = true})
     -- enable the legacy pre-next-gen (1.10.163) F4SE entry points (F4SEPlugin_Query
     -- + 48-byte LoadInterface shim) so one build also loads on OG. See src/main.cpp.
     add_defines("SUPPORT_OG")
     -- REL::VariantID runtime slots (OG/NG/AE). Only our TUs instantiate VariantID,
     -- so defining it on this target (not in commonlib-shared) is sufficient + ODR-safe.
     add_defines("COMMONLIB_RUNTIMECOUNT=3")
-    add_includedirs("lib/SRAL/Include")
 
 
     -- add commonlibsse plugin

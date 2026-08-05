@@ -25,17 +25,17 @@
 #include "WorkshopCaravanMenuAccessibility.h"
 #include "WorkshopMenuAccessibility.h"
 #include "pch.h"
-#include <SRAL.h>
 
 namespace
 {
-	// Initialize the screen reader (SRAL), excluding SAPI so NVDA/JAWS are
-	// preferred, then announce that the plugin loaded. Runs at most once.
+	// Bring up the screen reader (Prism) and announce that the plugin loaded.
+	// Runs at most once.
 	//
-	// IMPORTANT: SRAL_Initialize spawns a worker thread and creates COM/WASAPI
-	// objects. It must NOT run while the Windows loader lock is held, or it
-	// deadlocks. On OG the xSE PluginPreloader loads us during early process
-	// init (under the loader lock), so this is deferred to a later F4SE message.
+	// IMPORTANT: Prism initialization creates COM objects and starts its
+	// logging thread. It must NOT run while the Windows loader lock is held,
+	// or it deadlocks. On OG the xSE PluginPreloader loads us during early
+	// process init (under the loader lock), so this is deferred to a later
+	// F4SE message.
 	void InitializeScreenReader()
 	{
 		static bool s_done = false;
@@ -44,16 +44,10 @@ namespace
 		}
 		s_done = true;
 
-		REX::INFO("Initializing SRAL...");
-		if (SRAL_Initialize(SRAL_ENGINE_SAPI)) {
-			REX::INFO("SRAL initialized successfully");
-		} else {
-			REX::ERROR("SRAL initialization failed");
-		}
-
-		// Speak test message via centralized manager
-		if (SRAL_GetCurrentEngine() != 0) {
-			SpeechManager::GetSingleton()->Speak("Fallout 4 accessibility plugin loaded successfully");
+		REX::INFO("Initializing Prism...");
+		auto* speech = SpeechManager::GetSingleton();
+		if (speech->InitializeEngine()) {
+			speech->Speak("Fallout 4 accessibility plugin loaded successfully");
 		} else {
 			REX::WARN("No speech engine available");
 		}
@@ -62,7 +56,7 @@ namespace
 #ifdef SUPPORT_OG
 	// OG-only setup deferred out of F4SEPlugin_Load. The xSE PluginPreloader loads
 	// us under the loader lock and before the UI singleton exists, so anything
-	// needing either (SRAL's thread/COM init; the menu-event sink) is run here
+	// needing either (Prism's thread/COM init; the menu-event sink) is run here
 	// instead. Every step is idempotent, so it is safe to invoke more than once.
 	void RunOGDeferredSetup()
 	{
@@ -197,7 +191,7 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 	SpeechManager::GetSingleton()->Initialize();
 
 	// Initialize the screen reader. On OG this must be deferred: the xSE
-	// PluginPreloader loads us under the loader lock (where SRAL's thread + COM
+	// PluginPreloader loads us under the loader lock (where Prism's thread + COM
 	// init would deadlock) and before the UI singleton exists. We schedule it on
 	// the F4SE task interface, which runs once the game loop starts — early
 	// enough to beat the main menu. On AE we load at the normal (post-lock) time,

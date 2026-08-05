@@ -7,7 +7,6 @@
 #include <RE/B/BSScaleformManager.h>
 #include <RE/B/BSScaleformTranslator.h>
 #include <RE/B/BSTranslator.h>
-#include <SRAL.h>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>

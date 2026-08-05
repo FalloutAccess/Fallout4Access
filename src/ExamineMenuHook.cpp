@@ -3,7 +3,6 @@
 #include "LocalizationHelper.h"
 #include "SpeechManager.h"
 #include <RE/T/TESFullName.h>
-#include <SRAL.h>
 
 ExamineMenuHook* ExamineMenuHook::GetSingleton()
 {

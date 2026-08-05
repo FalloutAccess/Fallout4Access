@@ -1,7 +1,6 @@
 #include "HUDMessageHook.h"
 #include "InstructionLength.h"
 #include "SpeechManager.h"
-#include <SRAL.h>
 
 HUDMessageHook* HUDMessageHook::GetSingleton()
 {

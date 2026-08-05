@@ -1,6 +1,5 @@
 #include "SPECIALMenuAccessibility.h"
 #include "SpeechManager.h"
-#include <SRAL.h>
 
 SPECIALMenuAccessibility* SPECIALMenuAccessibility::GetSingleton()
 {

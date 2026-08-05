@@ -1,6 +1,5 @@
 #include "SaveLoadMenuAccessibility.h"
 #include "SpeechManager.h"
-#include <SRAL.h>
 
 SaveLoadMenuAccessibility* SaveLoadMenuAccessibility::GetSingleton()
 {

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Fallout 4 accessibility F4SE plugin that provides screen reader support for blind users. Uses SRAL (Screen Reader Abstraction Library) to speak via NVDA, JAWS, or SAPI.
+Fallout 4 accessibility F4SE plugin that provides screen reader support for blind users. Uses Prism (Platform-agnostic Reader Interface for Speech and Messages) to speak via NVDA, JAWS and other screen readers, falling back to Windows OneCore/SAPI voices when none is running.
 
 **Current Status:** Main menu, pause menu, settings menu, save/load menus, confirmation dialogs, in-game terminals, and Pip-Boy (Inventory and Data pages) are accessible. Splash screen text is announced. NPC dialogue subtitles are read aloud with speaker names. More menus need to be implemented.
 
@@ -33,12 +33,12 @@ xmake build && xmake install-mo2
 ### Dependencies
 
 - **CommonLibF4** (lib/commonlibf4) - F4SE reverse-engineered API as git submodule
-- **SRAL** (lib/SRAL) - Screen reader abstraction library, built as static library with UIA disabled
+- **Prism** (lib/prism) - Screen reader abstraction library, git submodule pinned to a release tag, built as a static library with the UIA backend disabled. Reaches NVDA over its ncalrpc RPC interface and JAWS over COM, so no `nvdaControllerClient.dll` ships with the mod.
 
 ### Key APIs
 
 - **SpeechManager** - `SpeechManager::GetSingleton()->Speak()` - Centralized speech output with automatic logging
-- **SRAL** - `SRAL_Initialize()`, `SRAL_GetCurrentEngine()` (internal use only - use SpeechManager for speech)
+- **Prism** - `prism_init()`, `prism_registry_create()`, `prism_backend_speak()` (confined to `SpeechManager.cpp` - use SpeechManager for speech)
 - **RE::UIUtils** - `RE::UIUtils::PlayMenuSound("UIMenuOK")` - Play UI sounds. See [docs/audio-playback-api.md](docs/audio-playback-api.md)
 - **RE::UI** - UI system access and menu event registration
 - **RE::IMenu** - Menu interface with Scaleform movie access
@@ -57,7 +57,7 @@ The plugin creates two log files in the standard F4SE log directory (`<Documents
 ### fallout4access.log (Main Debug Log)
 
 Contains debug/info logging for development:
-- Plugin initialization and SRAL status
+- Plugin initialization and speech backend status
 - Menu open/close events
 - Hook installation details
 - Scaleform data access
@@ -144,7 +144,7 @@ SpeechManager::GetSingleton()->StopSpeech();
 ```
 
 **Rules:**
-- **Never call `SRAL_Speak()` / `SRAL_StopSpeech()` directly** — always go through `SpeechManager`.
+- **Never call `prism_backend_speak()` / `prism_backend_stop()` directly** — always go through `SpeechManager`. `SpeechManager.cpp` is the only TU that includes `<prism.h>`.
 - **Don't pass `interrupt=true` to `Speak()` from per-feature code.** Interruption is now centralized — see the policy below. The parameter still exists for the rare callsite that needs to interrupt independently of any input event.
 - Speech is automatically logged to `fallout4access_speech.log` with timestamps.
 
@@ -159,10 +159,10 @@ Users can rebind our actions to arbitrary keys via MCM. Screen readers (NVDA/JAW
 
 ## Common Mistakes
 
-### 1. Direct SRAL Calls
+### 1. Direct Prism Calls
 ```cpp
-// BAD - bypasses logging and centralized control
-SRAL_Speak(text.c_str(), false);
+// BAD - bypasses logging, backend reselection and centralized control
+prism_backend_speak(backend, text.c_str(), false);
 
 // GOOD
 SpeechManager::GetSingleton()->Speak(text);
