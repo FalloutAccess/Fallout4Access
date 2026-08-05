@@ -1,8 +1,6 @@
 #include "ObjectScanner.h"
-#include "AutoAimAccessibility.h"
 #include "AutoWalk.h"
 #include "CorpseLootTracker.h"
-#include "GameplayStateAnnouncer.h"
 #include "MCMKeybindDispatcher.h"
 #include "SpeechManager.h"
 #include <RE/E/ExtraTeleport.h>
@@ -77,14 +75,13 @@ void ObjectScanner::SetWorkshopMode(bool a_active)
 
 bool ObjectScanner::ShouldHandleEvent(const RE::InputEvent* a_event)
 {
-	// Check AutoWalk arrival on every input event (frequent update)
-	AutoWalk::GetSingleton()->Update();
-
-	// Check for auto-aim on ironsights
-	AutoAimAccessibility::GetSingleton()->Update();
-
-	// Check for gameplay state changes (camera, sneak, detection)
-	GameplayStateAnnouncer::GetSingleton()->Update();
+	// NOTE: Per-frame gameplay-state polling (AutoWalk arrival, auto-aim
+	// ironsights detection, camera/sneak/detection state) used to run here.
+	// This handler only fires when input events flow through PlayerControls,
+	// which is unreliable on a gamepad: holding aim with the sticks at rest in
+	// their deadzone emits no events, so auto-aim never saw the ironsights
+	// transition. Those polls now run from HUDMenuHook::HookedAdvanceMovie, a
+	// true per-frame, device-agnostic tick.
 
 	if (!a_event)
 		return false;

@@ -1,4 +1,7 @@
 #include "HUDMenuHook.h"
+#include "AutoAimAccessibility.h"
+#include "AutoWalk.h"
+#include "GameplayStateAnnouncer.h"
 #include "LocalizationHelper.h"
 #include "SpeechManager.h"
 
@@ -105,6 +108,20 @@ void HUDMenuHook::HookedAdvanceMovie(RE::HUDMenu* a_this, float a_timeDelta, std
 	if (s_advanceMovieHook) {
 		(*s_advanceMovieHook)(a_this, a_timeDelta, a_time);
 	}
+
+	// Per-frame gameplay-state polling. These used to be driven from
+	// ObjectScanner::ShouldHandleEvent (a PlayerInputHandler), which only runs
+	// when input events flow through PlayerControls. With keyboard+mouse the
+	// mouse emits events almost every frame, so the polls effectively ran per
+	// frame; but a gamepad held steady in its stick deadzone emits no events,
+	// so the polls stalled and auto-aim never detected the ironsights
+	// transition. AdvanceMovie is a true per-frame, device-agnostic tick, so
+	// drive them here instead. Each Update() self-gates on menu/VATS state and
+	// rate-limits internally. Run unconditionally (not under m_hudOpen) to match
+	// the prior every-frame cadence.
+	AutoWalk::GetSingleton()->Update();
+	AutoAimAccessibility::GetSingleton()->Update();
+	GameplayStateAnnouncer::GetSingleton()->Update();
 
 	// Then check for notification changes
 	auto* hook = GetSingleton();
