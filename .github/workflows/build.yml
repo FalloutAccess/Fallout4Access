@@ -1,0 +1,215 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to stamp on the archive (no leading v). Ignored for tag builds.'
+        required: false
+        default: ''
+
+# A newer push to the same branch makes an in-flight run pointless. Tag runs are
+# never cancelled -- they produce releases.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Pinned rather than windows-latest so the toolchain only moves when this
+    # line does. windows-2025 carries Visual Studio 2026, which is what the plugin
+    # is developed against (xmake.conf: vs = "2026"). Unlike FalloutNVAccess there
+    # is no MSBuild/CMake split to keep in step: xmake builds Prism and the plugin
+    # with the one toolchain it detects, so Prism's LTCG objects always match.
+    runs-on: windows-2025
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Non-recursive on purpose: Prism's only submodule is godot-cpp, for a
+          # binding this project does not build. CommonLibF4's own submodules are
+          # needed, and are initialised by the next step instead.
+          submodules: true
+          # Full history: check-papyrus.ps1 compares commit times, and the
+          # release job generates notes from the tag range.
+          fetch-depth: 0
+
+      - name: Initialise CommonLibF4's submodules
+        run: git -C lib/commonlibf4 submodule update --init
+
+      - name: Check the committed Papyrus scripts match their sources
+        # First, and before the slow part: CI cannot compile Papyrus (the
+        # compiler is Creation Kit-only), so a stale .pex would otherwise ship
+        # silently. xmake's pre-build Papyrus step skips itself on a runner.
+        shell: pwsh
+        run: ./tools/check-papyrus.ps1
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $v = $env:GITHUB_REF -replace '^refs/tags/v', ''
+          } elseif ($env:INPUT_VERSION) {
+            $v = $env:INPUT_VERSION -replace '^v', ''
+          } else {
+            # Not a release build. Mark it clearly so a dev artifact can never be
+            # mistaken for a published version.
+            $v = "0.0.0-dev.$($env:GITHUB_SHA.Substring(0,7))"
+          }
+          "version=$v" | Add-Content $env:GITHUB_OUTPUT
+          "Version: $v"
+
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            # The DLL's version comes from xmake.lua, on both runtimes. If it
+            # disagrees with the tag, F4SE's log reports one version while the
+            # archive claims another -- and that log is what a bug report quotes.
+            $xmake = Get-Content xmake.lua -Raw
+            if ($xmake -notmatch 'local\s+F4A_VERSION\s*=\s*"([^"]+)"') {
+              throw 'F4A_VERSION not found in xmake.lua.'
+            }
+            if ($Matches[1] -ne $v) {
+              throw "Tag is v$v but xmake.lua declares F4A_VERSION `"$($Matches[1])`". Update it, retag, and push again."
+            }
+
+            # The release notes and the Nexus changelog are both cut from this
+            # section, so a tag without one would publish an empty changelog.
+            $escaped = [regex]::Escape("v$v")
+            if (-not (Select-String -Path CHANGELOG.md -Pattern "^## $escaped(\s|$)" -Quiet)) {
+              throw "CHANGELOG.md has no '## v$v' section. Add one, retag, and push again."
+            }
+            "xmake.lua and CHANGELOG.md agree with the tag ($v)"
+          }
+
+      - name: Install CMake
+        shell: pwsh
+        run: |
+          # Prism is built through CMake, and the hosted image ships CMake 3.31,
+          # which cannot enable the C23 dialect for MSVC that Prism asks for. xmake
+          # takes the cmake on PATH, so this one is prepended. Pinned to the
+          # version the plugin is developed against, so a CI failure is never one
+          # the developer cannot reproduce.
+          $ver = '4.4.4'
+          $url = "https://github.com/Kitware/CMake/releases/download/v$ver/cmake-$ver-windows-x86_64.zip"
+          $zip = Join-Path $env:RUNNER_TEMP 'cmake.zip'
+          $dst = Join-Path $env:RUNNER_TEMP 'cmake'
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dst -Force
+          $bin = Join-Path (Get-ChildItem $dst -Directory | Select-Object -First 1).FullName 'bin'
+          $bin | Add-Content $env:GITHUB_PATH
+
+      - name: Install xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          # The developer's version; xmake-requires.lock was written by it.
+          xmake-version: '3.1.1'
+
+      - name: Resolve the package cache key
+        id: cache-key
+        shell: pwsh
+        run: |
+          # Prism is a local package (set_sourcedir in xmake.lua): xmake keys its
+          # build on configs, not on the submodule's commit, so a Prism bump would
+          # silently reuse the old library. Key on the pinned commit instead.
+          $prism = (git rev-parse HEAD:lib/prism).Trim()
+          # And on the runner image: Prism is built with LTCG, so its .lib holds
+          # compiler IR, and a restore built by a different MSVC fails to link
+          # with C1047 rather than degrading.
+          "key=xmake-pkgs-$env:ImageOS-$env:ImageVersion-$prism" | Add-Content $env:GITHUB_OUTPUT
+          "Prism pinned at $prism; image $env:ImageOS $env:ImageVersion"
+
+      - name: Cache xmake packages
+        uses: actions/cache@v6
+        with:
+          path: ~/AppData/Local/.xmake/packages
+          # No restore-keys, deliberately: for the LTCG reason above, a near-miss
+          # restore is not a partial win but a broken link.
+          key: ${{ steps.cache-key.outputs.key }}-${{ hashFiles('xmake-requires.lock') }}
+
+      - name: Build
+        shell: pwsh
+        run: |
+          # Same mode as the developer's checkout (.xmake/windows/x64/xmake.conf).
+          xmake f -p windows -a x64 -m release -y
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          xmake build -y
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Package the mod archive
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./tools/package-release.ps1 -Version $env:VERSION
+
+      - name: Upload mod archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: fallout4access-${{ steps.version.outputs.version }}
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF#refs/tags/v}"
+
+          # CHANGELOG.md is already written for players, so the release notes
+          # are its section for this version rather than a commit list. The build
+          # job has already refused a tag without one.
+          awk -v hdr="## v${VERSION}" '
+            index($0, hdr) == 1 && (length($0) == length(hdr) || substr($0, length(hdr) + 1, 1) == " ") { found = 1; next }
+            found && /^## v/ { exit }
+            found { print }
+          ' CHANGELOG.md > section.md
+          [ -s section.md ] || { echo "::error::No CHANGELOG.md section for v${VERSION}."; exit 1; }
+
+          {
+            cat section.md
+            echo
+            echo "## Installing"
+            echo
+            echo "Install \`fallout4access-${VERSION}.zip\` with Mod Organizer 2 or Vortex like any"
+            echo "other mod, or extract it into your game's \`Data\` folder. It needs F4SE and the"
+            echo "Address Library for F4SE; see the README for the full requirements."
+            echo
+            echo "### Checksum"
+            echo
+            echo '```'
+            cat artifacts/*.sha256
+            echo '```'
+          } > notes.md
+
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Fallout 4 Access ${VERSION}" \
+            --notes-file notes.md \
+            --verify-tag \
+            artifacts/*.zip artifacts/*.sha256

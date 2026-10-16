@@ -1,0 +1,262 @@
+name: Publish to Nexus Mods
+
+# Deliberately separate from build.yml, and deliberately manual.
+#
+# Tagging builds and publishes a GitHub release, which is cheap to delete and
+# bothers nobody. Publishing to Nexus is neither: it emails every user tracking
+# the mod, and POST /mods/{id}/changelogs is ADDITIVE -- re-running for a version
+# that is already up appends a duplicate changelog entry rather than replacing
+# it. So this runs only when someone asks for it, and defaults to a dry run.
+#
+# One-time setup before the first real publish (see docs/RELEASING.md):
+#   1. Repo secret NEXUSMODS_API_KEY  -- https://www.nexusmods.com/settings/api-keys
+#   2. Repo variable NEXUSMODS_MOD_ID  -- the GLOBAL v3 id, 4943507458010, not the
+#      100314 in the page URL (it is (1151 << 32) | 100314, Fallout 4 being game
+#      1151). Confirmed against the public v2 GraphQL API's legacyMods.uid.
+#   3. Repo variable NEXUSMODS_FILE_ID -- the global v3 mod-file id whose version
+#      history new uploads are appended to. Only the authenticated v3 API knows
+#      it: with the key set and this variable empty, a run of this workflow
+#      looks it up and prints the candidates.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish, e.g. v0.2.0. Must already have a GitHub release with the archive attached.'
+        required: true
+      dry_run:
+        description: 'Validate everything without uploading. Leave checked until you have reviewed the output.'
+        type: boolean
+        default: true
+      category:
+        description: 'Nexus file category. The API accepts only these three; "Update" and "Old version" are website-only.'
+        type: choice
+        options: [main, optional, miscellaneous]
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the one-time configuration is in place
+        # Passed through env rather than interpolated into the script body: a
+        # ${{ }} expansion is pasted in as literal shell source before bash sees
+        # it, so anything with a quote or a semicolon in it would be executed.
+        env:
+          API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
+          FILE_ID: ${{ vars.NEXUSMODS_FILE_ID }}
+          MOD_ID: ${{ vars.NEXUSMODS_MOD_ID }}
+        run: |
+          set -euo pipefail
+          missing=0
+          [ -n "$API_KEY" ] || { echo "::error::Secret NEXUSMODS_API_KEY is not set."; missing=1; }
+          [ -n "$MOD_ID" ]  || { echo "::error::Variable NEXUSMODS_MOD_ID is not set (it should be 4943507458010)."; missing=1; }
+          if [ -z "$FILE_ID" ]; then
+            echo "::error::Variable NEXUSMODS_FILE_ID is not set."
+            missing=1
+            # The one value no public endpoint returns. With the key and the mod
+            # id available, look it up now rather than send someone to curl.
+            if [ -n "$API_KEY" ] && [ -n "$MOD_ID" ]; then
+              resp="$(curl -sS -H "apikey: $API_KEY" "https://api.nexusmods.com/v3/mods/$MOD_ID/files" || true)"
+              {
+                echo "## NEXUSMODS_FILE_ID candidates"
+                echo
+                echo "Set the id of the entry named \`f4a\`:"
+                echo
+                echo '```'
+                printf '%s' "$resp" | jq -r '.data.mod_files[]? | "\(.id)\t\(.name // .display_name // "?")"' 2>/dev/null \
+                  || printf '%s\n' "$resp"
+                echo '```'
+                echo
+                echo "\`gh variable set NEXUSMODS_FILE_ID --body '<id>'\`"
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::notice::Candidate file ids are in the run summary."
+            fi
+          fi
+          if [ "$missing" = "1" ]; then
+            echo "::error::See the header comment in this workflow, or docs/RELEASING.md, for how to obtain each."
+            exit 1
+          fi
+          echo "configuration present"
+
+      - name: Derive and validate the version
+        id: v
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          # Nexus rejects anything outside this set. Notably '+' is invalid, so a
+          # semver build-metadata suffix like 0.2.0+ci would be refused after the
+          # archive had already been uploaded.
+          if ! printf '%s' "$VERSION" | grep -Eq '^[a-zA-Z0-9.-]+$'; then
+            echo "::error::Version '$VERSION' contains characters Nexus rejects. Allowed: A-Z a-z 0-9 . -"
+            exit 1
+          fi
+          if [ "${#VERSION}" -gt 50 ]; then echo "::error::Version longer than 50 characters."; exit 1; fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing version $VERSION"
+
+      - uses: actions/checkout@v7
+        with:
+          # The changelog is cut from CHANGELOG.md as it stood at the tag.
+          ref: ${{ inputs.tag }}
+
+      - name: Fetch the archive from the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+          # Publish exactly the bytes users already downloaded from the GitHub
+          # release, rather than rebuilding and hoping the result is identical.
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.zip' --dir upload
+          cd upload
+          ls -la
+          test "$(ls -1 *.zip | wc -l)" = "1" || { echo "::error::Expected exactly one zip on release $TAG."; exit 1; }
+          echo "ARCHIVE=$(ls -1 *.zip)" >> "$GITHUB_ENV"
+
+      - name: Verify the archive before it goes anywhere public
+        run: |
+          set -euo pipefail
+          cd upload
+          # A Nexus upload cannot be un-sent to trackers, so confirm the archive is
+          # actually the mod, rooted at Data, and not an empty or half-built zip.
+          listing="$(unzip -Z1 "$ARCHIVE")"
+          printf '%s\n' "$listing"
+          for required in \
+              "F4SE/Plugins/fallout4access.dll" \
+              "fallout4access.esp" \
+              "Scripts/F4A/AutoWalk.pex" \
+              "Scripts/F4A/AutoWalkHelper.pex" \
+              "Scripts/F4A/SoundHelper.pex" \
+              "MCM/Config/fallout4access/config.json" \
+              "Sound/FX/F4A/UI/UI_TargetLOS.wav" \
+              "PRISM-LICENSE.txt"; do
+            printf '%s\n' "$listing" | grep -qxF "$required" \
+              || { echo "::error::Archive is missing $required (or it is not at the archive root)"; exit 1; }
+          done
+          echo "archive looks complete"
+
+      - name: Build the changelog from CHANGELOG.md
+        id: changelog
+        env:
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          BODY="$(awk -v hdr="## v${VERSION}" '
+            index($0, hdr) == 1 && (length($0) == length(hdr) || substr($0, length(hdr) + 1, 1) == " ") { found = 1; next }
+            found && /^## v/ { exit }
+            found { print }
+          ' CHANGELOG.md)"
+          if [ -z "$BODY" ]; then
+            echo "::error::CHANGELOG.md at $TAG has no '## v${VERSION}' section."
+            exit 1
+          fi
+          # Nexus does not render Markdown, so strip the markup that would show
+          # up literally (**bold**, *italic*, `code`, ### headings). Nexus
+          # requires 1-65535 characters.
+          BODY="$(printf '%s\n' "$BODY" \
+            | sed -e 's/\*\*//g' -e 's/\*\([^* ][^*]*\)\*/\1/g' -e 's/`//g' -e 's/^### \(.*\)$/\1:/' \
+            | head -c 60000)"
+          {
+            echo 'text<<CHANGELOG_EOF'
+            printf '%s\n' "$BODY"
+            echo 'CHANGELOG_EOF'
+          } >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$BODY"
+
+      - name: Dry run summary
+        if: ${{ inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          CATEGORY: ${{ inputs.category }}
+          FILE_ID: ${{ vars.NEXUSMODS_FILE_ID }}
+          MOD_ID: ${{ vars.NEXUSMODS_MOD_ID }}
+          CHANGELOG: ${{ steps.changelog.outputs.text }}
+        run: |
+          {
+            echo "## Dry run -- nothing was uploaded"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| archive | \`$ARCHIVE\` |"
+            echo "| version | \`$VERSION\` |"
+            echo "| display name | \`f4a\` (the file entry, not the mod title) |"
+            echo "| category | \`$CATEGORY\` |"
+            echo "| file id | \`$FILE_ID\` |"
+            echo "| mod id | \`$MOD_ID\` |"
+            echo
+            echo "### Changelog that would be posted"
+            echo
+            echo '```'
+            printf '%s\n' "$CHANGELOG"
+            echo '```'
+            echo
+            echo "Re-run with **dry_run unchecked** to publish."
+            echo
+            echo "Remember the changelog endpoint is additive: publishing the same"
+            echo "version twice appends a duplicate entry on the mod page."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload to Nexus Mods
+        if: ${{ !inputs.dry_run }}
+        # Pinned to the commit behind v1.0.0-beta.10, the same pin as
+        # FalloutNVAccess. The action is still 1.0.0-beta, so a moving tag is not
+        # a stable target; beta.8 renamed every input with no aliases
+        # (file_group_id -> file_id, file_category -> category,
+        # archive_existing_file -> archive_existing_version), and releases before
+        # it call createUpdateGroupVersion, deprecated 2026-06-11.
+        uses: Nexus-Mods/upload-action@c96019556046053aa26044b44396cd38929daf23
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_id: ${{ vars.NEXUSMODS_FILE_ID }}
+          mod_id: ${{ vars.NEXUSMODS_MOD_ID }}
+          filename: upload/${{ env.ARCHIVE }}
+          # This names the FILE entry, not the mod. The mod is titled "Fallout 4
+          # Access", but every file on its Files tab has been named "f4a" -- and
+          # Nexus derives the download filename from this, so passing the mod
+          # title would rename the entry and change every future download's name.
+          #
+          # No version in it either: Nexus generates the download filename as
+          # {display_name}_{version}_{slug}.zip, so putting the version in both
+          # places yields "f4a 0.2.0_0.2.0_x7k2p.zip".
+          display_name: f4a
+          version: ${{ steps.v.outputs.version }}
+          category: ${{ inputs.category }}
+          # Supersede the previous file rather than leaving two live downloads --
+          # a mod page offering two versions is a genuine trap for a screen reader
+          # user paging through the Files tab.
+          archive_existing_version: true
+          update_mod_version: true
+          primary_mod_manager_download: true
+          allow_mod_manager_download: true
+          changelog: ${{ steps.changelog.outputs.text }}
+
+      - name: What to check by hand
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          {
+            echo "## Published $VERSION to Nexus Mods"
+            echo
+            echo "The API reporting the upload as available is **not** the same as the"
+            echo "file being downloadable. Every upload is quarantined until scanning"
+            echo "finishes, and this mod ships an unsigned DLL that hooks a game process"
+            echo "and patches memory -- textbook antivirus false-positive shape."
+            echo
+            echo "Check <https://www.nexusmods.com/fallout4/mods/100314?tab=files>:"
+            echo "- green tick: passed internal scanning and VirusTotal"
+            echo "- blue: passed internal scanning, VirusTotal unavailable"
+            echo "- yellow question mark: still scanning, nobody can download it yet"
+            echo "- red cross: failed, needs a moderator ticket"
+            echo
+            echo "Then download it once through Mod Organizer 2 and confirm it installs"
+            echo "with the right filename and folder layout before considering it shipped."
+          } >> "$GITHUB_STEP_SUMMARY"

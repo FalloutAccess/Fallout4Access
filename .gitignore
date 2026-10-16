@@ -7,12 +7,17 @@
 
 # folders
 build*/
+dist/
 vs*/
 __pycache__/
 
 # files
 *.zip
 *.pex
+# Compiled scripts that ship are committed: CI has no Papyrus compiler (it is
+# Creation Kit-only and not redistributable). tools/check-papyrus.ps1 fails the
+# build when one is older than its source.
+!Data/Scripts/F4A/*.pex
 *.pyc
 compile_commands.json
 

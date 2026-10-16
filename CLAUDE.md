@@ -28,6 +28,12 @@ Use the `/deploy` skill to build and install in one step, or manually:
 xmake build && xmake install-mo2
 ```
 
+### Releasing
+
+Tags build a GitHub release on the `FalloutAccess/Fallout4Access` mirror; publishing to Nexus is a separate manual workflow. The version lives only in `xmake.lua` (`F4A_VERSION`). See [docs/RELEASING.md](docs/RELEASING.md).
+
+**Compiled Papyrus is committed.** CI has no Papyrus compiler, so whenever a `.psc` under `Data/Scripts/Source/User` changes, rebuild (`xmake build` compiles it) and commit the matching `Data/Scripts/F4A/*.pex` in the same commit. `tools/check-papyrus.ps1` fails CI otherwise.
+
 ## Architecture
 
 ### Dependencies

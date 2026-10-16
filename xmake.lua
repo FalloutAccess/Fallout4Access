@@ -6,8 +6,12 @@ set_config("commonlib_json", true)
 includes("lib/commonlibf4")
 
 -- set project
+-- The one place the version lives. CI refuses to release a tag that disagrees
+-- with it, and the defines below carry it into the OG entry point, which (unlike
+-- the AE manifest generated from the plugin template) cannot read set_version.
+local F4A_VERSION = "0.1.0"
 set_project("fallout4access")
-set_version("0.1.0")
+set_version(F4A_VERSION)
 set_license("MIT")
 
 -- set defaults
@@ -166,6 +170,11 @@ target("fallout4access")
     -- REL::VariantID runtime slots (OG/NG/AE). Only our TUs instantiate VariantID,
     -- so defining it on this target (not in commonlib-shared) is sufficient + ODR-safe.
     add_defines("COMMONLIB_RUNTIMECOUNT=3")
+    -- PluginInfo::version for the OG F4SEPlugin_Query; see F4A_VERSION above.
+    -- A version that is not MAJOR.MINOR.PATCH leaves these nil, and the
+    -- concatenation below then fails the configure, which is the intent.
+    local major, minor, patch = F4A_VERSION:match("^(%d+)%.(%d+)%.(%d+)$")
+    add_defines("F4A_VERSION_MAJOR=" .. major, "F4A_VERSION_MINOR=" .. minor, "F4A_VERSION_PATCH=" .. patch)
 
 
     -- add commonlibsse plugin

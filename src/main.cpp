@@ -146,7 +146,7 @@ F4SE_EXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface* a_query, F
 {
 	a_info->infoVersion = F4SE::PluginInfo::kVersion;
 	a_info->name = "fallout4access";
-	a_info->version = REL::Version{ 0, 1, 0, 0 }.pack();
+	a_info->version = REL::Version{ F4A_VERSION_MAJOR, F4A_VERSION_MINOR, F4A_VERSION_PATCH, 0 }.pack();
 
 	return a_query->RuntimeVersion() == kOGRuntimeVersion;
 }

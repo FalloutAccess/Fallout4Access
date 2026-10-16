@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.1 (Oct 17, 2026)
+
+### Improvements
+- **Smaller, cleaner download** — The download is now about a third of its previous size. Earlier versions accidentally included unused draft sounds and backup copies of sound files; only the sounds the mod actually plays are included now. The archive is also laid out exactly like your `Data` folder, with no extra `fallout4access` folder around it, so mod managers install it without any adjustment and a manual install is simply extracting it into `Data`.
+
 ## v0.1.0 (Jun 13 - Aug 5, 2026)
 
 ### New Features

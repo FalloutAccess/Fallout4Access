@@ -47,20 +47,27 @@ Nothing else needs to be installed for screen reader support. In particular ther
 ## Installation
 
 1. Install F4SE and Address Library if you haven't already
-2. Copy the `fallout4access` folder into your Fallout 4 Data directory (or install via a mod manager)
-3. The folder structure should be:
+2. Download the latest version from [Nexus Mods](https://www.nexusmods.com/fallout4/mods/100314) or the [GitHub releases](https://github.com/FalloutAccess/Fallout4Access/releases), and install it with Mod Organizer 2 or Vortex, or extract it directly into your Fallout 4 `Data` directory. The archive is laid out like `Data` itself, so the result should be:
    ```
    Data/
+     fallout4access.esp
      F4SE/
        Plugins/
          fallout4access.dll
+     Interface/
+       Translations/
+     MCM/
+       Config/
+         fallout4access/
+     Scripts/
+       F4A/
      Sound/
        FX/
          F4A/
            UI/
              (sound files)
    ```
-4. Load `fallout4access.esp` in your mod load order
+3. Load `fallout4access.esp` in your mod load order
 
 ## Building from Source
 
