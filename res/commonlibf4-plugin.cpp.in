@@ -4,10 +4,12 @@
 // rule via plugin_template). Must be named commonlibf4-plugin.cpp.in so its
 // generated output matches the commonlibf4-plugin.cpp the rule adds to files.
 //
-// The ONLY delta from CommonLibF4's default template is that we omit the two
-// NG (1.10.984) independence bits. Everything else is kept in sync with it --
-// upstream now drops the CompatibleVersions pin itself, so that is no longer
-// our reason for overriding.
+// The only meaningful delta from CommonLibF4's default template is that we omit
+// the two NG (1.10.984) independence bits. We also drop its
+// CompatibleVersions({ RUNTIME_LATEST }) line, but that is cosmetic: F4SE's
+// PluginManager::checkPluginCompatibility only consults compatibleVersions when
+// the plugin is NOT version-independent, and AddressLibrary_1_11_137 +
+// 1_11_137Layout make us independent on every AE patch.
 //
 // Why NG is deliberately excluded: those bits are load gates, not metadata.
 // UsesAddressLibraryNG/IsLayoutDependentNG tell F4SE it may load us on NG, but

@@ -1948,8 +1948,7 @@ std::string ObjectScanner::FindObjectiveName(RE::TESObjectREFR* a_ref, RE::Playe
 			if (!alias)
 				continue;
 
-			RE::ObjectRefHandle aliasHandle;
-			quest->GetAliasedRef(&aliasHandle, alias->aliasID);
+			const auto aliasHandle = quest->GetAliasedRef(alias->aliasID);
 
 			if (aliasHandle) {
 				auto aliasRefPtr = aliasHandle.get();

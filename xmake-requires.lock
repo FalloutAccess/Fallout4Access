@@ -11,6 +11,14 @@
             },
             version = "4.2.2"
         },
+        ["glaze v7.0.0#f56260b5"] = {
+            repo = {
+                branch = "master",
+                commit = "88f360d1006923f0a60eea5e09f2ca81ac40f4fb",
+                url = "https://github.com/xmake-io/xmake-repo.git"
+            },
+            version = "v7.0.0"
+        },
         ["ninja#f56260b5"] = {
             repo = {
                 branch = "master",
@@ -21,6 +29,30 @@
         },
         ["prism#a0c24696"] = {
             version = "latest"
+        },
+        ["spdlog v1.16.0#09c8c173"] = {
+            repo = {
+                branch = "master",
+                commit = "88f360d1006923f0a60eea5e09f2ca81ac40f4fb",
+                url = "https://github.com/xmake-io/xmake-repo.git"
+            },
+            version = "v1.16.0"
+        },
+        ["zycore-c v1.5.2#f56260b5"] = {
+            repo = {
+                branch = "master",
+                commit = "88f360d1006923f0a60eea5e09f2ca81ac40f4fb",
+                url = "https://github.com/xmake-io/xmake-repo.git"
+            },
+            version = "v1.5.2"
+        },
+        ["zydis#f56260b5"] = {
+            repo = {
+                branch = "master",
+                commit = "88f360d1006923f0a60eea5e09f2ca81ac40f4fb",
+                url = "https://github.com/xmake-io/xmake-repo.git"
+            },
+            version = "v4.1.1"
         }
     }
 }

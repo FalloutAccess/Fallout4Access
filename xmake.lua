@@ -173,8 +173,8 @@ target("fallout4access")
         name = "fallout4access",
         author = "alex19EP",
         description = "F4SE plugin providing access to Fallout 4 for blind users",
-        -- De-pinned manifest (no CompatibleVersions lock) so one build loads on
-        -- every AE 1.11.137+ patch; OG 1.10.163 handled by F4SEPlugin_Query.
+        -- Custom manifest that leaves the NG (1.10.984) load bits unset; see
+        -- the template's header. OG 1.10.163 handled by F4SEPlugin_Query.
         plugin_template = path.join(os.scriptdir(), "res", "commonlibf4-plugin.cpp.in"),
     })
 
