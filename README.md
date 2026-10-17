@@ -80,8 +80,8 @@ Nothing else needs to be installed for screen reader support. In particular ther
 ### Clone
 
 ```bash
-git clone --recurse-submodules https://git.alex19ep.me/alex19EP/f4access
-cd fallout4access
+git clone --recurse-submodules https://github.com/FalloutAccess/Fallout4Access
+cd Fallout4Access
 ```
 
 ### Build

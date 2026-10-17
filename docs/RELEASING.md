@@ -15,9 +15,8 @@ emails everyone tracking the mod and its changelog endpoint is *additive* — po
 the same version twice and the mod page shows the entry twice — so it never
 happens without someone asking for it.
 
-The repository lives on git.alex19ep.me (`origin`) and is mirrored to
-<https://github.com/FalloutAccess/Fallout4Access> (`github`), where the workflows
-run. Push tags to `github`; pushing them only to `origin` releases nothing.
+The repository lives at <https://github.com/FalloutAccess/Fallout4Access>
+(`origin`), where the workflows run.
 
 ## Cutting a release
 
@@ -49,7 +48,6 @@ run. Push tags to `github`; pushing them only to `origin` releases nothing.
    git commit -am "release 0.2.0"
    git tag v0.2.0
    git push origin main --tags
-   git push github main --tags
    ```
 
 5. **Wait for the Build workflow.** On a tag it builds the plugin, packages the
