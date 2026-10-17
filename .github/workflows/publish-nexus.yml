@@ -6,7 +6,13 @@ name: Publish to Nexus Mods
 # bothers nobody. Publishing to Nexus is neither: it emails every user tracking
 # the mod, and POST /mods/{id}/changelogs is ADDITIVE -- re-running for a version
 # that is already up appends a duplicate changelog entry rather than replacing
-# it. So this runs only when someone asks for it, and defaults to a dry run.
+# it. So this runs only when someone asks for it.
+#
+# A real publish is the default. Every check below runs before anything is
+# sent, in both modes, so a dry run guards against nothing a real run would
+# miss; what it adds is a look at the parameters and the converted changelog
+# before the irreversible part. Tick it when the CHANGELOG section is unusual
+# (tables, links, nested lists) or after changing this workflow.
 #
 # One-time setup before the first real publish (done 2026-10-17; see
 # docs/RELEASING.md):
@@ -28,9 +34,9 @@ on:
         description: 'Release tag to publish, e.g. v0.2.0. Must already have a GitHub release with the archive attached.'
         required: true
       dry_run:
-        description: 'Validate everything without uploading. Leave checked until you have reviewed the output.'
+        description: 'Validate and preview the changelog without uploading. The checks run either way; tick this only to review what would be sent.'
         type: boolean
-        default: true
+        default: false
       category:
         description: 'Nexus file category. The API accepts only these three; "Update" and "Old version" are website-only.'
         type: choice
@@ -207,7 +213,7 @@ jobs:
             printf '%s\n' "$CHANGELOG"
             echo '```'
             echo
-            echo "Re-run with **dry_run unchecked** to publish."
+            echo "Re-run with **dry_run unticked** (the default) to publish."
             echo
             echo "Remember the changelog endpoint is additive: publishing the same"
             echo "version twice appends a duplicate entry on the mod page."

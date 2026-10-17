@@ -55,13 +55,28 @@ run. Push tags to `github`; pushing them only to `origin` releases nothing.
 5. **Wait for the Build workflow.** On a tag it builds the plugin, packages the
    archive, and publishes a GitHub release carrying the zip and its SHA-256.
 
-6. **Check the release**, then publish to Nexus: Actions → *Publish to Nexus
-   Mods* → Run workflow, with the tag. **Leave the dry-run box ticked the first
-   time.** It downloads the archive from the release, verifies the layout, and
-   prints exactly what it would send — including the converted changelog —
-   without sending it. Re-run with dry run unticked to publish.
+6. **Test the release zip in-game**, on both runtimes, installed through Mod
+   Organizer 2. This is the real gate: nothing after it can be taken back.
 
-7. **Check the Nexus Files tab by hand.** The API calling an upload "available"
+7. **Publish to Nexus**: Actions → *Publish to Nexus Mods* → Run workflow, with
+   the tag, or:
+
+   ```bash
+   gh workflow run publish-nexus.yml --repo FalloutAccess/Fallout4Access -f tag=v0.2.0
+   ```
+
+   It downloads the archive from the release, verifies the configuration, the
+   version string and the archive layout, and only then uploads. A failed check
+   stops it with nothing sent.
+
+   The *dry run* box (`-f dry_run=true`) is optional and off by default. It runs
+   the same checks and prints exactly what it would send — including the
+   changelog after Markdown is converted to plain text — without sending it.
+   Use it when the CHANGELOG section has tables, links or nested lists, or after
+   changing the workflow: the changelog entry, the tracking email and archiving
+   the previous version cannot be undone through the API.
+
+8. **Check the Nexus Files tab by hand.** The API calling an upload "available"
    is not the same as it being downloadable — see below.
 
 ## One-time setup
