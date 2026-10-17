@@ -61,19 +61,25 @@ jobs:
             # id available, look it up now rather than send someone to curl.
             if [ -n "$API_KEY" ] && [ -n "$MOD_ID" ]; then
               resp="$(curl -sS -H "apikey: $API_KEY" "https://api.nexusmods.com/v3/mods/$MOD_ID/files" || true)"
+              candidates="$(printf '%s' "$resp" | jq -r '.data.mod_files[]? | "\(.id)\t\(.name // .display_name // "?")"' 2>/dev/null \
+                || printf '%s\n' "$resp")"
+              # In the log as well as the summary: `gh run view --log` reaches the
+              # log, and nothing in the API reaches the summary. Mod-file ids are
+              # public identifiers, not credentials.
+              echo "NEXUSMODS_FILE_ID candidates (set the id of the entry named f4a):"
+              printf '%s\n' "$candidates"
               {
                 echo "## NEXUSMODS_FILE_ID candidates"
                 echo
                 echo "Set the id of the entry named \`f4a\`:"
                 echo
                 echo '```'
-                printf '%s' "$resp" | jq -r '.data.mod_files[]? | "\(.id)\t\(.name // .display_name // "?")"' 2>/dev/null \
-                  || printf '%s\n' "$resp"
+                printf '%s\n' "$candidates"
                 echo '```'
                 echo
                 echo "\`gh variable set NEXUSMODS_FILE_ID --body '<id>'\`"
               } >> "$GITHUB_STEP_SUMMARY"
-              echo "::notice::Candidate file ids are in the run summary."
+              echo "::notice::Candidate file ids are listed above and in the run summary."
             fi
           fi
           if [ "$missing" = "1" ]; then
