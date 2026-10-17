@@ -9,7 +9,7 @@ includes("lib/commonlibf4")
 -- The one place the version lives. CI refuses to release a tag that disagrees
 -- with it, and the defines below carry it into the OG entry point, which (unlike
 -- the AE manifest generated from the plugin template) cannot read set_version.
-local F4A_VERSION = "0.1.0"
+local F4A_VERSION = "0.1.1"
 set_project("fallout4access")
 set_version(F4A_VERSION)
 set_license("MIT")
