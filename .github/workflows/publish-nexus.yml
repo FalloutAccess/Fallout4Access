@@ -8,15 +8,18 @@ name: Publish to Nexus Mods
 # that is already up appends a duplicate changelog entry rather than replacing
 # it. So this runs only when someone asks for it, and defaults to a dry run.
 #
-# One-time setup before the first real publish (see docs/RELEASING.md):
-#   1. Repo secret NEXUSMODS_API_KEY  -- https://www.nexusmods.com/settings/api-keys
+# One-time setup before the first real publish (done 2026-10-17; see
+# docs/RELEASING.md):
+#   1. Secret NEXUSMODS_API_KEY -- an ORGANISATION secret on FalloutAccess,
+#      shared with FalloutNVAccess. Do not add a repo secret of the same name;
+#      it would silently override the org one.
 #   2. Repo variable NEXUSMODS_MOD_ID  -- the GLOBAL v3 id, 4943507458010, not the
 #      100314 in the page URL (it is (1151 << 32) | 100314, Fallout 4 being game
 #      1151). Confirmed against the public v2 GraphQL API's legacyMods.uid.
-#   3. Repo variable NEXUSMODS_FILE_ID -- the global v3 mod-file id whose version
-#      history new uploads are appended to. Only the authenticated v3 API knows
-#      it: with the key set and this variable empty, a run of this workflow
-#      looks it up and prints the candidates.
+#   3. Repo variable NEXUSMODS_FILE_ID -- 3131410, the global v3 mod-file id of
+#      the "f4a" entry, whose version history new uploads are appended to. Only
+#      the authenticated v3 API knows it: with the key set and this variable
+#      empty, a run of this workflow looks it up and prints the candidates.
 
 on:
   workflow_dispatch:

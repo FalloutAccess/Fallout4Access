@@ -66,17 +66,31 @@ run. Push tags to `github`; pushing them only to `origin` releases nothing.
 
 ## One-time setup
 
+Done on 2026-10-17; nothing to repeat unless the API key is rotated or the mod
+page is recreated.
+
 | Where | Name | Value | How to get it |
 | --- | --- | --- | --- |
-| Repo **secret** | `NEXUSMODS_API_KEY` | — | <https://www.nexusmods.com/settings/api-keys> (the same account key as FalloutNVAccess works) |
+| **Org secret** (FalloutAccess) | `NEXUSMODS_API_KEY` | — | The account's *Personal API Key*, at the bottom of <https://www.nexusmods.com/settings/api-keys> |
 | Repo **variable** | `NEXUSMODS_MOD_ID` | `4943507458010` | `(1151 << 32) \| 100314`; confirmed via the public v2 GraphQL API, `legacyMods.uid` |
-| Repo **variable** | `NEXUSMODS_FILE_ID` | — | Run *Publish to Nexus Mods* (dry run) with it unset: the run summary lists the candidates; take the `f4a` entry |
+| Repo **variable** | `NEXUSMODS_FILE_ID` | `3131410` | Run *Publish to Nexus Mods* (dry run) with it unset: the log lists the candidates; take the `f4a` entry |
+
+The API key is one organisation secret shared by FalloutNVAccess and this repo
+(visibility *selected*, so only repos granted it can read it). Rotating it is a
+single change, and a new mod repo needs to be granted access rather than given
+its own copy. Do **not** also set a repo secret of the same name: a repo secret
+silently overrides the org one, so the two would drift apart on the next
+rotation.
 
 ```bash
-gh secret set NEXUSMODS_API_KEY --repo FalloutAccess/Fallout4Access
-gh variable set NEXUSMODS_MOD_ID  --repo FalloutAccess/Fallout4Access --body '4943507458010'
-gh variable set NEXUSMODS_FILE_ID --repo FalloutAccess/Fallout4Access --body '<id from the run summary>'
+# Rotate the key (prompts for the value):
+gh secret set NEXUSMODS_API_KEY --org FalloutAccess --visibility selected --repos FalloutNVAccess,Fallout4Access
+# Which repos can see it:
+gh api orgs/FalloutAccess/actions/secrets/NEXUSMODS_API_KEY/repositories --jq '.repositories[].full_name'
 ```
+
+Managing org secrets needs the `admin:org` scope on the gh login
+(`gh auth refresh -h github.com -s admin:org`).
 
 Neither ID is a number you can read off the website. `NEXUSMODS_MOD_ID` is not
 the 100314 from the page URL, and `NEXUSMODS_FILE_ID` is not the `fileId` the
